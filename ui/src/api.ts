@@ -65,8 +65,11 @@ export interface Theme {
   author: string | null;
   /** The built-in theme that the variables override. */
   base: "light" | "dark";
-  /** Global theme folder or vault. A vault theme wins over a global one with the same name. */
-  source: "global" | "vault";
+  /**
+   * Built into the app, global theme folder or vault. A later one wins over an
+   * earlier one with the same name: vault, then global, then built-in.
+   */
+  source: "builtIn" | "global" | "vault";
   /** A vault theme that has a global copy; this one hides the copy. */
   shadowsGlobal: boolean;
   /** Names without `--`. The core already checked the values. */

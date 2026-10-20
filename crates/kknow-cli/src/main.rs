@@ -709,6 +709,7 @@ fn themes(workspace: &Workspace) {
         let source = match theme.source {
             Source::Vault => "хранилище",
             Source::Global => "общая",
+            Source::BuiltIn => "встроенная",
         };
         println!(
             "{}  «{}» ({base}, {source}), переменных: {}",

@@ -1,7 +1,7 @@
 //! Themes: a manifest with a set of colours.
 //!
 //! A theme is a JSON file in the vault `.kknow/themes/` or in the shared themes
-//! folder next to the app settings. It is not a stylesheet: it sets values of
+//! folder next to the app settings. A few themes are built into the binary. It is not a stylesheet: it sets values of
 //! known variables and does not contain CSS. So a theme author cannot break the
 //! layout or make the app go to the network. The UI puts the values into
 //! `:root` and does nothing else.
@@ -36,6 +36,17 @@ pub const GLOBAL_DIR: &str = "themes";
 pub fn global_dir(config_dir: impl AsRef<Path>) -> PathBuf {
     config_dir.as_ref().join(GLOBAL_DIR)
 }
+
+/// Themes inside the binary: `(id, manifest)`.
+///
+/// The app comes from a release, and its user has no theme files. Without
+/// these, the gear menu has only the light and the dark base. Built-in themes
+/// are ordinary manifests, so they go through the same checks, and a file with
+/// the same `id` in the shared folder or in the vault replaces them.
+const BUILT_IN: &[(&str, &str)] = &[
+    ("gruvbox", include_str!("../themes/gruvbox.json")),
+    ("gruvbox-light", include_str!("../themes/gruvbox-light.json")),
+];
 
 /// Variables that the UI knows.
 ///
@@ -98,12 +109,14 @@ pub enum Base {
 ///
 /// This is for the user, not the UI: a shared theme and a vault theme are edited
 /// in different places, and "Make shared" makes sense only for a vault theme.
+/// A built-in theme has no file at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Source {
     #[default]
     Vault,
     Global,
+    BuiltIn,
 }
 
 /// A parsed and checked theme.
@@ -235,13 +248,24 @@ fn check_value(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Vault themes together with shared ones.
+/// Built-in themes, then shared ones, then vault themes.
 ///
-/// Shared themes load first, and a vault theme with the same `id` replaces
-/// them: a vault "gruvbox" is there on purpose, for example tuned for this
-/// vault. Missing directories are normal: nobody added themes.
+/// A later theme with the same `id` replaces an earlier one: a vault "gruvbox"
+/// is there on purpose, for example tuned for this vault. Missing directories
+/// are normal: nobody added themes.
 pub fn load(vault_root: Option<&Path>, global: Option<&Path>) -> ThemeSet {
     let mut set = ThemeSet::default();
+
+    for (id, json) in BUILT_IN {
+        match Theme::parse(*id, json) {
+            Ok(mut theme) => {
+                theme.source = Source::BuiltIn;
+                set.themes.push(theme);
+            }
+            // Tests catch this, but a broken manifest must not hide silently.
+            Err(reason) => set.problems.push(format!("встроенная тема {id}: {reason}")),
+        }
+    }
 
     if let Some(dir) = global {
         load_dir(dir, Source::Global, &mut set);
@@ -282,9 +306,13 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
             Ok(json) => match Theme::parse(id, &json) {
                 Ok(mut theme) => {
                     theme.source = source;
-                    let before = set.themes.len();
+                    // Only a shared copy counts: a built-in theme has no file
+                    // that "Update shared" could overwrite.
+                    theme.shadows_global = set
+                        .themes
+                        .iter()
+                        .any(|known| known.id == theme.id && known.source == Source::Global);
                     set.themes.retain(|known| known.id != theme.id);
-                    theme.shadows_global = set.themes.len() != before;
                     set.themes.push(theme);
                 }
                 Err(reason) => set.problems.push(format!("{}: {reason}", path.display())),
@@ -329,6 +357,14 @@ mod tests {
 
     fn theme(json: &str) -> Theme {
         Theme::parse("проба", json).expect("манифест разобран")
+    }
+
+    /// Themes from files: built-in themes are in every set.
+    fn own(set: &ThemeSet) -> Vec<&Theme> {
+        set.themes
+            .iter()
+            .filter(|theme| theme.source != Source::BuiltIn)
+            .collect()
     }
 
     #[test]
@@ -428,10 +464,11 @@ mod tests {
         fs::write(themes.join("заметка.md"), "# не тема").unwrap();
 
         let set = load(Some(dir.path()), None);
+        let themes = own(&set);
 
-        let names: Vec<&str> = set.themes.iter().map(|theme| theme.name.as_str()).collect();
+        let names: Vec<&str> = themes.iter().map(|theme| theme.name.as_str()).collect();
         assert_eq!(names, ["Ночь", "Сепия"], "список отсортирован по имени");
-        assert_eq!(set.themes[0].id, "night");
+        assert_eq!(themes[0].id, "night");
         assert_eq!(set.problems.len(), 1, "{:?}", set.problems);
     }
 
@@ -439,22 +476,26 @@ mod tests {
     fn a_vault_without_themes_is_normal() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert_eq!(load(Some(dir.path()), None), ThemeSet::default());
+        let set = load(Some(dir.path()), None);
+
+        assert!(own(&set).is_empty());
+        assert!(set.problems.is_empty(), "{:?}", set.problems);
     }
 
     #[test]
     fn global_themes_are_seen_from_every_vault() {
         let vault = tempfile::tempdir().unwrap();
         let global = tempfile::tempdir().unwrap();
-        fs::write(global.path().join("gruvbox.json"), r#"{"name":"Gruvbox"}"#).unwrap();
+        fs::write(global.path().join("sepia.json"), r#"{"name":"Сепия"}"#).unwrap();
 
         let set = load(Some(vault.path()), Some(global.path()));
+        let themes = own(&set);
 
-        assert_eq!(set.themes.len(), 1);
-        assert_eq!(set.themes[0].id, "gruvbox");
-        assert_eq!(set.themes[0].source, Source::Global);
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].id, "sepia");
+        assert_eq!(themes[0].source, Source::Global);
         assert_eq!(
-            load(None, Some(global.path())).themes.len(),
+            own(&load(None, Some(global.path()))).len(),
             1,
             "и без хранилища вовсе"
         );
@@ -475,14 +516,14 @@ mod tests {
 
         let set = load(Some(vault.path()), Some(global.path()));
 
-        let seen: Vec<(&str, Source)> = set
-            .themes
+        let themes = own(&set);
+        let seen: Vec<(&str, Source)> = themes
             .iter()
             .map(|theme| (theme.name.as_str(), theme.source))
             .collect();
         assert_eq!(seen, [("Своя", Source::Vault), ("Сепия", Source::Global)]);
-        assert!(set.themes[0].shadows_global);
-        assert!(!set.themes[1].shadows_global);
+        assert!(themes[0].shadows_global);
+        assert!(!themes[1].shadows_global);
     }
 
     #[test]
@@ -500,12 +541,58 @@ mod tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), json, "байт в байт");
         let other = tempfile::tempdir().unwrap();
         assert_eq!(
-            load(Some(other.path()), Some(&global)).themes[0].source,
+            own(&load(Some(other.path()), Some(&global)))[0].source,
             Source::Global
         );
         let home = load(Some(vault.path()), Some(&global));
-        assert_eq!(home.themes.len(), 1, "своя и общая — одна тема");
-        assert!(home.themes[0].shadows_global);
+        let home = own(&home);
+        assert_eq!(home.len(), 1, "своя и общая — одна тема");
+        assert!(home[0].shadows_global);
+    }
+
+    #[test]
+    fn built_in_themes_come_without_any_files() {
+        let set = load(None, None);
+
+        let ids: Vec<&str> = set.themes.iter().map(|theme| theme.id.as_str()).collect();
+        assert_eq!(ids, ["gruvbox-light", "gruvbox"], "по имени: «светлая» < «тёмная»");
+        assert!(set.problems.is_empty(), "{:?}", set.problems);
+        for theme in &set.themes {
+            assert_eq!(theme.source, Source::BuiltIn);
+            assert!(theme.warnings.is_empty(), "{}: {:?}", theme.id, theme.warnings);
+            assert!(!theme.variables.is_empty(), "{}", theme.id);
+        }
+    }
+
+    #[test]
+    fn a_file_with_the_same_id_replaces_a_built_in_theme() {
+        let vault = tempfile::tempdir().unwrap();
+        let global = tempfile::tempdir().unwrap();
+        fs::write(global.path().join("gruvbox.json"), r#"{"name":"Общая"}"#).unwrap();
+
+        let set = load(None, Some(global.path()));
+        let gruvbox: Vec<&Theme> = set.themes.iter().filter(|t| t.id == "gruvbox").collect();
+        assert_eq!(gruvbox.len(), 1);
+        assert_eq!(gruvbox[0].source, Source::Global);
+
+        fs::create_dir_all(vault.path().join(THEMES_DIR)).unwrap();
+        fs::write(
+            vault.path().join(THEMES_DIR).join("gruvbox-light.json"),
+            r#"{"name":"Своя"}"#,
+        )
+        .unwrap();
+        let set = load(Some(vault.path()), None);
+        let light: Vec<&Theme> = set
+            .themes
+            .iter()
+            .filter(|t| t.id == "gruvbox-light")
+            .collect();
+        assert_eq!(light.len(), 1);
+        assert_eq!(light[0].source, Source::Vault);
+        assert!(
+            !light[0].shadows_global,
+            "у встроенной темы нет общей копии, которую можно обновить"
+        );
     }
 
     #[test]

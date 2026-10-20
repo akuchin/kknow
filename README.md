@@ -657,8 +657,9 @@ The interface has no separate refresh function.
 
 ## Themes
 
-A theme is a manifest in the vault's `.kknow/themes/<name>.json` or in the
-shared themes folder. It is a set of values for style variables, not a
+kknow has two built-in themes: Gruvbox dark and Gruvbox light. Other themes
+are manifests in the vault's `.kknow/themes/<name>.json` or in the shared
+themes folder. It is a set of values for style variables, not a
 stylesheet.
 
 ```json
@@ -698,7 +699,12 @@ folder.
 A vault and the shared folder can both have a theme with the same file name.
 Then that vault uses its own theme. For such a theme, the button is "Update
 shared". It overwrites the shared copy with the vault version. `kknow themes`
-shows the source of each theme: `хранилище` (vault) or `общая` (shared).
+shows the source of each theme: `встроенная` (built-in), `хранилище` (vault)
+or `общая` (shared).
+
+To change a built-in theme, put a file with the same name (`gruvbox.json` or
+`gruvbox-light.json`) into the shared folder or into a vault. That file
+replaces the built-in theme.
 
 ## Interface language
 

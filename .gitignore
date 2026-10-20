@@ -2,7 +2,7 @@
 **/*.rs.bk
 .DS_Store
 .kknow/
-# Except the sample theme: it is part of the repository, not vault state.
+# Except the sample vault theme: it is part of the repository, not vault state.
 !testdata/vault/.kknow/
 testdata/vault/.kknow/*
 !testdata/vault/.kknow/themes/

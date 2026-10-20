@@ -888,7 +888,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
             name: "Gruvbox светлая",
             author: "kknow",
             base: "light",
-            source: "global",
+            source: "builtIn",
             shadowsGlobal: false,
             variables: {
               bg: "#fbf1c7",

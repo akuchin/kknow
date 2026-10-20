@@ -342,6 +342,16 @@ a `README.md` from a repository, a draft on the desktop.
 - kknow gives the path to the shared folder at startup (`AppState::use_themes`),
   as with the path to the commands file. The code does not find the path
   itself. Tests must not read the real folder of the person who runs them.
+- Built-in themes (`gruvbox`, `gruvbox-light`) are manifests in
+  `crates/kknow-app/themes/`, and `include_str!` puts them into the binary. The
+  app comes from a release or Homebrew, and a new user has no theme files.
+  Files in the app bundle or a copy into the shared folder at first start would
+  be worse: the first gives a file that nobody can edit, the second writes into
+  the user's folder without asking. A built-in theme goes through the same
+  checks as a file. The order is built-in, then shared, then vault, and a later
+  theme with the same `id` wins. Thus a user can change a built-in theme: put a
+  file with its `id` into the shared folder. `shadowsGlobal` stays true only
+  over a shared copy: a built-in theme has no file to update.
 - "Make shared" (`theme::share`) copies the file byte for byte. It does not
   build the manifest again. Thus the copy keeps the variables that this version
   does not know yet. The `id` comes from the window. Thus the core refuses any

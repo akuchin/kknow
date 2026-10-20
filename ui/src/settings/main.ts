@@ -407,15 +407,19 @@ async function renderAppearance(): Promise<void> {
 /**
  * A custom theme row: its source and, for a vault theme, "Make shared".
  *
- * A shared theme needs no button: all vaults already see it. A vault theme
+ * A shared or built-in theme needs no button: all vaults already see it. A vault theme
  * with a shared namesake hides that namesake, so it gets the same button, but
  * the button updates the shared copy.
  */
 function themeRow(theme: Theme): HTMLElement {
-  if (theme.source === "global") {
+  if (theme.source !== "vault") {
     const label = document.createElement("span");
     label.className = "settings-row-detail";
-    label.textContent = t("settings.appearance.source.global");
+    label.textContent = t(
+      theme.source === "global"
+        ? "settings.appearance.source.global"
+        : "settings.appearance.source.builtIn",
+    );
     return row(theme.name, label);
   }
 

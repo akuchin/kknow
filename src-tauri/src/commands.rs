@@ -1113,7 +1113,13 @@ mod tests {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        assert_eq!(list_themes(app.state(), None).unwrap(), ThemeSet::default());
+        let own = |set: ThemeSet| -> Vec<theme::Theme> {
+            set.themes
+                .into_iter()
+                .filter(|theme| theme.source != theme::Source::BuiltIn)
+                .collect()
+        };
+        assert!(own(list_themes(app.state(), None).unwrap()).is_empty());
 
         fs::create_dir_all(dir.path().join(".kknow/themes")).unwrap();
         fs::write(
@@ -1122,10 +1128,10 @@ mod tests {
         )
         .unwrap();
 
-        let set = list_themes(app.state(), None).unwrap();
-        assert_eq!(set.themes.len(), 1);
-        assert_eq!(set.themes[0].id, "sepia");
-        assert_eq!(set.themes[0].variables["bg"], "#f4ecd8");
+        let themes = own(list_themes(app.state(), None).unwrap());
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].id, "sepia");
+        assert_eq!(themes[0].variables["bg"], "#f4ecd8");
     }
 
     #[test]
@@ -1146,18 +1152,19 @@ mod tests {
         let first_id = app.state::<AppState>().entries()[0].id.clone();
         let second_id = app.state::<AppState>().entries()[1].id.clone();
 
-        assert!(
-            list_themes(app.state(), Some(second_id.clone()))
-                .unwrap()
-                .themes
-                .is_empty()
-        );
+        let own = |set: ThemeSet| -> Vec<theme::Theme> {
+            set.themes
+                .into_iter()
+                .filter(|theme| theme.source != theme::Source::BuiltIn)
+                .collect()
+        };
+        assert!(own(list_themes(app.state(), Some(second_id.clone())).unwrap()).is_empty());
 
         share_theme(app.state(), "sepia".into(), Some(first_id)).unwrap();
 
-        let set = list_themes(app.state(), Some(second_id)).unwrap();
-        assert_eq!(set.themes.len(), 1);
-        assert_eq!(set.themes[0].source, theme::Source::Global);
+        let themes = own(list_themes(app.state(), Some(second_id)).unwrap());
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].source, theme::Source::Global);
         assert!(matches!(
             share_theme(app.state(), "../x".into(), None),
             Err(Error::ShareTheme(_))
@@ -1167,7 +1174,7 @@ mod tests {
         empty
             .state::<AppState>()
             .use_themes(Some(global.path().join("themes")));
-        assert_eq!(list_themes(empty.state(), None).unwrap().themes.len(), 1);
+        assert_eq!(own(list_themes(empty.state(), None).unwrap()).len(), 1);
     }
 
     /// Tests only path resolution: the real reveal would start Finder for the
