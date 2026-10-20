@@ -1,0 +1,16 @@
+{
+  "name": "Сепия",
+  "author": "kknow",
+  "base": "light",
+  "variables": {
+    "bg": "#f6efe0",
+    "bg-soft": "#efe6d3",
+    "bg-raised": "#fbf6ea",
+    "border": "#ddd0b4",
+    "text": "#3f3527",
+    "text-muted": "#8a7c62",
+    "accent": "#9c5b28",
+    "accent-soft": "#f0e0c9",
+    "selection": "#e6d3ae"
+  }
+}

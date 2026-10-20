@@ -1,0 +1,18 @@
+[package]
+name = "kknow-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kknow"
+path = "src/main.rs"
+
+[dependencies]
+kknow-app.workspace = true
+kknow-core.workspace = true
+kknow-index.workspace = true
+kknow-sync = { workspace = true, features = ["s3"] }
+kknow-run.workspace = true
+clap.workspace = true

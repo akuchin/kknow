@@ -1,0 +1,38 @@
+[package]
+name = "kknow-desktop"
+description = "kknow desktop app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "kknow_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+kknow-app.workspace = true
+kknow-core.workspace = true
+kknow-index.workspace = true
+# The window app builds the binary, so it selects the storage backend.
+kknow-sync = { workspace = true, features = ["s3"] }
+kknow-run.workspace = true
+
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+thiserror.workspace = true
+# OS keyring: macOS Keychain, Windows Credential Manager, Secret Service.
+keyring = { version = "3", features = [
+  "apple-native",
+  "windows-native",
+  "sync-secret-service",
+  "crypto-rust",
+] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+tempfile.workspace = true

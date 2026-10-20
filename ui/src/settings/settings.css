@@ -1,0 +1,529 @@
+/* Settings window: sections on the left, content on the right, and for vaults
+   a list between them. Variables and buttons match the main window: it is one
+   app, and it must look the same. */
+
+#settings {
+  display: grid;
+  grid-template-columns: 186px 1fr;
+  height: 100%;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border);
+}
+
+.settings-section {
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.settings-section:hover {
+  background: var(--bg-raised);
+}
+
+.settings-section[aria-current="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 500;
+}
+
+/* App version at the bottom of the list, where people look for it. */
+.settings-version {
+  margin-top: auto;
+  padding: 8px 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-body {
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.settings-heading {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.settings-heading:not(:first-child) {
+  margin-top: 18px;
+}
+
+/* Settings row: label on the left, field on the right. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.settings-row > *:last-child {
+  margin-left: auto;
+  flex: none;
+}
+
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-row-detail {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.settings-row select,
+.settings-row input {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+
+/* Toggle switch: it shows its state, not only a label next to it. */
+.settings-toggle {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border: none;
+  border-radius: 11px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.settings-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 120ms ease;
+}
+
+.settings-toggle[aria-checked="true"] {
+  background: var(--ok);
+}
+
+.settings-toggle[aria-checked="true"]::after {
+  transform: translateX(16px);
+}
+
+.settings-problem {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* Sections with a list on the left and the selected item on the right: vaults and commands. */
+.settings-vaults,
+.settings-commands {
+  display: grid;
+  grid-template-columns: 212px 1fr;
+  min-height: 100%;
+}
+
+.settings-vault-list,
+.settings-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 6px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.settings-vault-count {
+  margin: 0 0 4px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-vault,
+.settings-command {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.settings-vault:hover,
+.settings-command:hover {
+  background: var(--bg-raised);
+}
+
+.settings-vault[aria-current="true"],
+.settings-command[aria-current="true"] {
+  background: var(--bg-raised);
+  border-color: var(--border);
+}
+
+.settings-vault-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-vault-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sync state dot, the same as in the main window status bar. */
+.settings-vault .status-dot[data-tone="ready"] {
+  background: var(--ok);
+}
+
+.settings-vault .status-dot[data-tone="conflict"] {
+  background: var(--warning);
+}
+
+.settings-vault .status-dot[data-tone="error"],
+.settings-command .status-dot[data-tone="error"] {
+  background: var(--danger);
+}
+
+.settings-vault-tools,
+.settings-command-tools {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-vault-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+.settings-vault-names {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The vault name is edited in place: one line does not need a dialog. */
+.settings-name {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 4px 6px;
+}
+
+.settings-name:hover {
+  border-color: var(--border);
+}
+
+.settings-name:focus {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.settings-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-colors {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-color {
+  width: 18px;
+  height: 18px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--label-blue);
+  cursor: pointer;
+}
+
+.settings-color[data-color="violet"] {
+  background: var(--label-violet);
+}
+
+.settings-color[data-color="amber"] {
+  background: var(--label-amber);
+}
+
+.settings-color[data-color="red"] {
+  background: var(--label-red);
+}
+
+.settings-color[data-color="green"] {
+  background: var(--label-green);
+}
+
+.settings-color[data-color="teal"] {
+  background: var(--label-teal);
+}
+
+.settings-color[aria-pressed="true"] {
+  border-color: var(--text);
+}
+
+.settings-stats {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Shortcut help: two columns, the shortcut and what it does. */
+.settings-keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+
+.settings-keys dt {
+  margin: 0;
+}
+
+.settings-keys dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* S3 fields are rarely filled in, so they fold into a compact form. */
+.settings-s3 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.settings-s3 label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.settings-s3 input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+
+.settings-s3 span {
+  width: 12ch;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.settings-s3 menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+/* Command form. Fields use the full width: the script and the pattern list
+   need more than half a row, and "label left, field right" gives them half. */
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.settings-field > .settings-row-detail {
+  order: 3;
+}
+
+.settings-mono,
+.settings-script {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+
+.settings-mono:focus,
+.settings-script:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.settings-script {
+  resize: vertical;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* Toggles for targets and vaults: the selection is visible at once. */
+.settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-chip {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 11px;
+  cursor: pointer;
+}
+
+.settings-chip:hover {
+  color: var(--text);
+}
+
+.settings-chip[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* Command variables: name and value in one row, "add" below them. */
+.settings-env {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-env-row {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-env-row input:first-child {
+  width: 22ch;
+  flex: none;
+}
+
+.settings-env-row input:last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-env > button {
+  align-self: flex-start;
+}
+
+/* Help on the script environment. It is collapsed because it is not needed
+   every time, but it belongs here, next to the script field. */
+.settings-vars {
+  margin: 10px 0 0;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+
+.settings-vars summary {
+  padding: 8px 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-vars[open] summary {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.settings-vars dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 10px;
+}
+
+.settings-vars dt {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.settings-vars dd {
+  margin: 0;
+  color: var(--text-muted);
+}

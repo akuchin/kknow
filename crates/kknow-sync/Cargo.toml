@@ -1,0 +1,23 @@
+[package]
+name = "kknow-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = ["s3"]
+s3 = ["dep:opendal", "dep:tokio"]
+
+[dependencies]
+kknow-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+
+opendal = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true

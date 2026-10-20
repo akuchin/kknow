@@ -1,0 +1,24 @@
+{
+  "name": "Gruvbox тёмная",
+  "author": "kknow",
+  "base": "dark",
+  "variables": {
+    "bg": "#282828",
+    "bg-soft": "#32302f",
+    "bg-raised": "#3c3836",
+    "border": "#504945",
+    "text": "#ebdbb2",
+    "text-muted": "#a89984",
+    "heading": "#d79921",
+    "accent": "#fe8019",
+    "accent-soft": "#4e3a28",
+    "danger": "#fb4934",
+    "selection": "#504945",
+    "code-keyword": "#fb4934",
+    "code-string": "#b8bb26",
+    "code-comment": "#928374",
+    "code-number": "#d3869b",
+    "code-type": "#fabd2f",
+    "code-function": "#8ec07c"
+  }
+}

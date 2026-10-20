@@ -1,0 +1,19 @@
+[package]
+name = "kknow-run"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Only for `killpg`. On timeout we must kill everything the shell started,
+# not only the shell. The standard library has no process groups.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true

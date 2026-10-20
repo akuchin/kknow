@@ -1,0 +1,25 @@
+[package]
+name = "kknow-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kknow-core.workspace = true
+kknow-index.workspace = true
+# The app does not need storage backends: it uses the SyncProvider trait,
+# and the binary that builds the app adds the concrete S3 backend.
+kknow-sync.workspace = true
+# Commands attached to a note, folder or vault: the trait and the runner live
+# there, and target resolution by note ID lives here.
+kknow-run.workspace = true
+thiserror.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
+# Only for theme manifests: no other app state is serialized.
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,15 @@
+/target
+**/*.rs.bk
+.DS_Store
+.kknow/
+# Except the sample theme: it is part of the repository, not vault state.
+!testdata/vault/.kknow/
+testdata/vault/.kknow/*
+!testdata/vault/.kknow/themes/
+
+node_modules/
+ui/dist/
+src-tauri/gen/
+
+.idea/
+.vscode/

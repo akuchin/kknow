@@ -1,0 +1,38 @@
+# MinIO for sync tests: the same protocol as S3, but local.
+#
+#   docker compose up -d
+#   cargo test -p kknow-sync --test minio -- --ignored
+#
+# Console: http://localhost:9001 (kknowkknow / kknowkknow).
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: kknowkknow
+      MINIO_ROOT_PASSWORD: kknowkknow
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    # Data stays in the container. This is a test setup, so data loss is fine.
+    tmpfs:
+      - /data
+
+  # The bucket must exist before the first test, so a separate step creates it.
+  bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 kknowkknow kknowkknow &&
+        mc mb --ignore-existing local/kknow &&
+        echo 'bucket kknow ready'
+      "

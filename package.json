@@ -1,0 +1,19 @@
+{
+  "name": "kknow",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:app": "tauri build --bundles app",
+    "install:app": "pnpm build:app && scripts/install-app.sh",
+    "ui:dev": "pnpm --filter kknow-ui dev",
+    "ui:mock": "KKNOW_MOCK=1 pnpm --filter kknow-ui dev",
+    "ui:build": "pnpm --filter kknow-ui build",
+    "tauri": "tauri",
+    "icons:mac": "python3 scripts/gen-macos-icon.py"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Gruvbox светлая",
+  "author": "kknow",
+  "base": "light",
+  "variables": {
+    "bg": "#fbf1c7",
+    "bg-soft": "#f2e5bc",
+    "bg-raised": "#f9f5d7",
+    "border": "#d5c4a1",
+    "text": "#3c3836",
+    "text-muted": "#7c6f64",
+    "heading": "#b57614",
+    "accent": "#af3a03",
+    "accent-soft": "#f2ddb0",
+    "danger": "#9d0006",
+    "selection": "#d5c4a1",
+    "code-keyword": "#9d0006",
+    "code-string": "#79740e",
+    "code-comment": "#928374",
+    "code-number": "#8f3f71",
+    "code-type": "#b57614",
+    "code-function": "#427b58"
+  }
+}

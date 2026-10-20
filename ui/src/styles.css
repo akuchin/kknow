@@ -1,0 +1,2420 @@
+/* Variables define the theme; a theme manifest overrides them. */
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f6f6f4;
+  --bg-raised: #ffffff;
+  --border: #e3e2dd;
+  --text: #23221f;
+  --text-muted: #78766f;
+  /* Heading color. It follows the text color by default, so the built-in
+     themes stay the same; a manifest theme can set its own. */
+  --heading: var(--text);
+  --accent: #4a5cd6;
+  --accent-soft: #eceefb;
+  --danger: #b3402c;
+  --selection: #d9dcf7;
+  /* Code blocks. Own variables, not text shades: syntax needs six distinct
+     colors, and one accent cannot give them. */
+  --code-keyword: #8250df;
+  --code-string: #0a7a3f;
+  --code-comment: #78766f;
+  --code-number: #b35c00;
+  --code-type: #0969da;
+  --code-function: #4a5cd6;
+  --font-text: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* Sidebar width. A variable, not a number in three places: the header also
+     aligns to it, so the note name sits above the work area, not above the
+     tree. Themes do not set it: it is layout, not color. */
+  --sidebar: 260px;
+  --ok: #3f8f4f;
+  --warning: #a2701c;
+  /* Vault labels. The set is fixed because the color sits next to text, and
+     an arbitrary shade from settings would break on the dark theme. */
+  --label-blue: #4a5cd6;
+  --label-violet: #8b5cf6;
+  --label-amber: #d98a1a;
+  --label-red: #cf4a35;
+  --label-green: #3f8f4f;
+  --label-teal: #1e8f8f;
+}
+
+:root[data-theme="dark"] {
+  --bg: #1b1c1e;
+  --bg-soft: #202123;
+  --bg-raised: #26272a;
+  --border: #35363a;
+  --text: #e6e4df;
+  --text-muted: #92908a;
+  --accent: #97a3f5;
+  --accent-soft: #2b2f4a;
+  --danger: #e08b7a;
+  --selection: #363a5c;
+  --code-keyword: #c9a2ff;
+  --code-string: #7fcf8f;
+  --code-comment: #92908a;
+  --code-number: #e0a860;
+  --code-type: #7fb8f5;
+  --code-function: #97a3f5;
+  --ok: #6cc287;
+  --warning: #d8b163;
+  --label-blue: #8f9bf3;
+  --label-violet: #b28cf9;
+  --label-amber: #e0b165;
+  --label-red: #e5907f;
+  --label-green: #6cc287;
+  --label-teal: #63c2c2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+/* The app window never scrolls as a whole; scrolling lives inside panels.
+   Otherwise everything in `body` next to `#app` (palette, menus) would drag
+   the header and status bar with it. */
+body {
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-text);
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Three vertical bands: the header for content navigation, the footer for app
+   state, and the work area between them. */
+#app {
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(320px, 1fr) minmax(320px, 1fr);
+  grid-template-rows: 44px 1fr 26px;
+  grid-template-areas:
+    "top top top"
+    "side editor preview"
+    "status status status";
+}
+
+/* Note mode. "Edit": markup renders in the text itself, no preview needed.
+   "Read": the preview takes the editor's place. "Side by side": the grid above. */
+#app[data-mode="edit"] {
+  grid-template-columns: var(--sidebar) 1fr;
+  grid-template-areas:
+    "top top"
+    "side editor"
+    "status status";
+}
+
+#app[data-mode="edit"] .preview-pane {
+  display: none;
+}
+
+#app[data-mode="read"] {
+  grid-template-columns: var(--sidebar) 1fr;
+  grid-template-areas:
+    "top top"
+    "side preview"
+    "status status";
+}
+
+#app[data-mode="read"] .editor {
+  display: none;
+}
+
+/* In "Read" mode the text is one centered column: a full-width line is hard
+   to read. The base size is on the panel, not on the preview: the note zoom
+   applies to the preview in percent and multiplies the base. */
+#app[data-mode="read"] .preview-pane {
+  font-size: 16.5px;
+}
+
+#app[data-mode="read"] .preview {
+  padding: 36px max(32px, calc((100% - 720px) / 2));
+  line-height: 1.7;
+}
+
+#app[data-mode="read"] .backlinks,
+#app[data-mode="read"] .panel {
+  font-size: 13px;
+  padding-inline: max(14px, calc((100% - 720px) / 2));
+}
+
+/* Collapsed sidebar: the column stays in the grid with zero width. The header
+   uses the same variable, so the note name moves to the center. */
+#app[data-sidebar="hidden"] {
+  --sidebar: 0px;
+}
+
+#app[data-sidebar="hidden"] .sidebar {
+  display: none;
+}
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Above the sidebar: the sidebar toggle and history buttons, about what is
+   open and where you came from. The block is exactly as wide as the sidebar
+   (minus the header padding and gap), so the note name sits above the editor,
+   not above the tree. */
+.topbar-nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  width: calc(var(--sidebar) - 20px);
+}
+
+#app[data-sidebar="hidden"] .topbar-nav {
+  width: auto;
+}
+
+#app[data-sidebar="hidden"] .topbar-nav .spacer {
+  flex: none;
+  width: 4px;
+}
+
+/* The open note name in the center, its location muted next to it. There is
+   no absolute centering on purpose: with it a long name would slide under the
+   buttons on the right. This way it stops at them and ends with an ellipsis.
+
+   The name is a button: it opens the note menu (commands, rename, reveal), the
+   same menu as its tree row. */
+.topbar-note {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.topbar-note-title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.topbar-note-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-note-title .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+}
+
+/* Without a note the name is just the "no note open" text. */
+.topbar-note-title:disabled {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.topbar-note-title:disabled .icon {
+  display: none;
+}
+
+.topbar-note-folder {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.topbar-note-folder[hidden],
+.topbar-note-folder .vault-label[hidden] {
+  display: none;
+}
+
+#note-folder-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Note mode: three buttons in one track. You see all modes and the current
+   one at once. */
+.mode-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 1px;
+  padding: 2px;
+  margin: 0 4px;
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+}
+
+.mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mode-switch button:hover {
+  color: var(--text);
+}
+
+.mode-switch button[aria-pressed="true"] {
+  background: var(--bg-raised);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+.mode-switch .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.topbar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Header search: the same field-like button that was in the sidebar, but
+   shorter. The header has less room, and the button shows the shortcut anyway. */
+.topbar-actions .search-button {
+  flex: none;
+  width: 124px;
+}
+
+/* In a narrow window search shrinks to an icon and status bar words give way:
+   the note name and state matter more. */
+@media (max-width: 900px) {
+  .topbar-actions .search-button {
+    width: auto;
+  }
+
+  .topbar-actions .search-button > span,
+  .topbar-actions .search-button > kbd {
+    display: none;
+  }
+
+  #status-words {
+    display: none;
+  }
+}
+
+/* Vault label: a small square of a color from a fixed set. */
+.vault-label {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--label-blue);
+}
+
+.vault-label[data-color="violet"] {
+  background: var(--label-violet);
+}
+
+.vault-label[data-color="amber"] {
+  background: var(--label-amber);
+}
+
+.vault-label[data-color="red"] {
+  background: var(--label-red);
+}
+
+.vault-label[data-color="green"] {
+  background: var(--label-green);
+}
+
+.vault-label[data-color="teal"] {
+  background: var(--label-teal);
+}
+
+/* Button icon: the color comes from the label, so the theme colors it. */
+.icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* Header button: icon and label in one line.
+
+   It has four visible states: hover gives a background and border, press an
+   accent background, keyboard focus a ring, and "on" the full accent. Without
+   them a borderless button looks like plain text. */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.ghost:hover,
+.picker:focus-within {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+button.ghost:active:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+button.ghost:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Toggle button: its look shows whether it is on. */
+button.ghost[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Icon only: `aria-label` replaces the visible label. */
+.ghost.bare {
+  padding: 5px;
+}
+
+/* Removing a vault erases a setting. */
+.ghost.danger:hover {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 35%, transparent);
+}
+
+/* One focus ring for the whole window: it shows where Enter goes. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost,
+  .note-list .chevron,
+  .settings-toggle,
+  .settings-toggle::after {
+    transition: none;
+  }
+
+  #status-sync[data-tone="busy"] .status-dot {
+    animation: none;
+  }
+}
+
+/* Status bar: app state and quick switches.
+   Each segment is a button or a label; nothing here opens a modal window. */
+.statusbar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border);
+}
+
+.status-item {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  max-width: 40ch;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A label, not an action: word count and reading time switch nothing. */
+.status-item.static {
+  cursor: default;
+}
+
+button.status-item:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+button.status-item:disabled {
+  cursor: default;
+}
+
+.status-item .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Chip for a problem elsewhere: a conflict or sync failure in an inactive
+   vault. It never opens a modal window, so it does not block work. */
+.status-item.chip {
+  gap: 6px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.status-item.chip[data-tone="warning"] {
+  background: color-mix(in oklab, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+
+button.status-item.chip:hover {
+  background: color-mix(in oklab, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+
+button.status-item.chip[data-tone="warning"]:hover {
+  background: color-mix(in oklab, var(--warning) 26%, transparent);
+  color: var(--warning);
+}
+
+/* Otherwise inline-flex overrides the hidden attribute. */
+.status-item.chip[hidden] {
+  display: none;
+}
+
+#status-vault .icon {
+  width: 10px;
+  height: 10px;
+}
+
+/* The gear has no label, only an icon slightly larger than its neighbours. */
+#status-more .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.status-run-icon {
+  display: inline-flex;
+}
+
+/* Otherwise inline-flex overrides the hidden attribute. */
+#status-scale[hidden],
+#status-run[hidden] {
+  display: none;
+}
+
+.status-vault-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Sync state dot: green is ready, gray is off, red is failed, a blinking
+   accent dot means sync is running. */
+.status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+#status-sync[data-tone="ready"] .status-dot {
+  background: var(--ok);
+}
+
+#status-sync[data-tone="error"] .status-dot {
+  background: var(--danger);
+}
+
+/* A conflict is not a failure: sync finished, but the folder has copies. */
+#status-sync[data-tone="conflict"] .status-dot {
+  background: var(--warning);
+}
+
+#status-sync[data-tone="busy"] .status-dot {
+  background: var(--accent);
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+.status-message {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 36ch;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-message[data-tone="work"] {
+  color: var(--accent);
+}
+
+.status-message[data-tone="error"] {
+  color: var(--danger);
+}
+
+/* Popup menu: one style for all window menus, so the rules are few. */
+.menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 340px;
+  padding: 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+.menu-title {
+  padding: 5px 8px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Vault label on a hit from another vault. Hits from the active vault get
+   none: that vault is already open. */
+.palette-vault {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* A group header on a group other than the first gets a separator line. */
+.menu-title:not(:first-child),
+.menu-item + .menu-title {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
+  background: var(--accent-soft);
+}
+
+.menu-item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.menu-item .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.menu-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Second line of an item: path, provider, last sync time. */
+.menu-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The current choice: theme, language, active vault. */
+.menu-item[data-checked="true"] {
+  color: var(--accent);
+}
+
+.menu-item[data-checked="true"]::after {
+  content: "✓";
+  flex: none;
+  font-size: 12px;
+}
+
+.menu-item[data-tone="danger"] {
+  color: var(--danger);
+}
+
+.menu-item[data-tone="warning"] {
+  color: var(--warning);
+}
+
+/* A folder dropped on the window becomes a vault. While files are over the
+   window, it says so: without a hint it is not clear whether to release.
+   The hint ignores the mouse: the shell handles the drag, and there is nothing
+   to click. */
+.drop-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent-soft) 75%, transparent);
+  border: 2px dashed var(--accent);
+  pointer-events: none;
+}
+
+/* Otherwise display: flex overrides the hidden attribute. */
+.drop-hint[hidden] {
+  display: none;
+}
+
+.sidebar {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+/* Search opens in a separate overlay, so only a header button is left. It
+   looks like a field, to show that it is input and not an action, but it
+   acts as a button and shows the shortcut. */
+.search-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.search-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.search-button .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.search-button span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+kbd {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.new-note input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.search-button:focus-visible,
+.new-note input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* Sidebar header: the sidebar shows a list of vaults, not one folder, and it
+   needs a title. Otherwise the tree roots would read as plain folders. */
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 4px 14px;
+}
+
+.sidebar-title {
+  flex: 1;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The new note name is typed here, next to the tree: the header button only
+   opens the field. */
+.new-note {
+  display: flex;
+  padding: 10px 10px 6px;
+}
+
+/* Otherwise display: flex overrides the hidden attribute. */
+.new-note[hidden] {
+  display: none;
+}
+
+.note-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 10px 6px 12px;
+}
+
+.note-list button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.note-list button:hover {
+  background: var(--bg-raised);
+}
+
+/* Otherwise display: flex overrides the hidden attribute. During a rename the
+   row must disappear, not stand next to the field. */
+.note-list button[hidden] {
+  display: none;
+}
+
+/* Folder tree: nested list indentation shows the depth, so nothing computes
+   it; the markup defines it. */
+.note-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 14px;
+}
+
+.note-list button.folder {
+  color: var(--text-muted);
+}
+
+.note-list button.folder .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* A note needs no arrow, but its space stays empty. Otherwise the note name
+   would sit left of its parent folder name. */
+.note-list button.note {
+  padding-left: 28px;
+}
+
+/* Standalone files go below the vault tree. They have their own scroll and a
+   max height: a long file list must not push out the tree, which is the main
+   purpose of the sidebar. */
+.files {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 40%;
+  border-top: 1px solid var(--border);
+}
+
+.files .file-list {
+  padding-top: 2px;
+}
+
+/* File name with its folder below: only the folder tells two README.md apart. */
+.file-list button.note {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding-left: 8px;
+}
+
+.file-folder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* A tree row has two parts: a full-width button on the left and "⋯" on the
+   right, so the button cannot be the only row content. All three row kinds
+   (vault, folder, note) work this way and share one rule. */
+.tree-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.tree-row:hover {
+  background: var(--bg-raised);
+}
+
+.note-list .tree-row > button:first-child {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+/* Tree root: a vault. */
+.note-list button.vault {
+  font-weight: 600;
+}
+
+.note-list button.vault .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* The button needs no background: the whole row draws it. */
+.note-list .tree-row button:hover {
+  background: transparent;
+}
+
+.note-list button.vault[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+/* Active vault: ⌘N, sync and the status bar work with it. The tree must show
+   it without a look at the footer. */
+.vault-row[data-active="true"] button.vault {
+  color: var(--accent);
+}
+
+/* The folder is missing (an external disk was unplugged): the row fades but
+   stays, because its "⋯" menu still has "Remove from the list". */
+.vault-row[data-missing="true"] button.vault {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* "⋯" appears on hover and keyboard focus: a permanent column of ellipses in
+   the tree is noise. */
+.note-list .row-menu {
+  flex: none;
+  width: 26px;
+  padding: 6px 4px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.note-list .row-menu .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.tree-row:hover .row-menu,
+.note-list .row-menu:focus-visible,
+.note-list .row-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+
+/* In-place rename of a vault, folder or note: the field replaces the row and
+   keeps its size, so the tree does not jump. */
+.tree-rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+
+/* A rotated arrow marks an open folder, not a second icon. */
+.note-list .chevron {
+  transition: transform 120ms ease;
+}
+
+.note-list button.folder[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+/* The open note: a background plus an edge bar, so peripheral vision finds it
+   in the list without reading.
+
+   The row selector keeps the mark on hover: `.tree-row button:hover` clears
+   the button background (the row draws it), and without this pair a hover on
+   the open note would erase its accent. */
+.note-list .tree-row button.active,
+.note-list button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Note and folder names are always one line with an ellipsis.
+   Wrapping would break row heights, and the tree is read by row order and
+   indentation. The hover tooltip shows the full long name. */
+.note-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor {
+  grid-area: editor;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+
+/* Live preview: the diagram replaces the ```mermaid``` block. The button shows
+   the source again; a cursor inside the block does the same. */
+.cm-diagram {
+  position: relative;
+  padding: 8px 0;
+}
+
+.cm-diagram pre.mermaid {
+  margin: 0;
+}
+
+.cm-diagram-edit {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.cm-diagram-edit .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.cm-diagram-edit:hover {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.cm-diagram:hover .cm-diagram-edit,
+.cm-diagram-edit:focus-visible {
+  opacity: 1;
+}
+
+/* Note images in the preview and the editor. A huge screenshot must not split
+   the text by a full screen, so the width is at most the column and the
+   height at most a third to half of the window; a click shows the full image.
+   A size from the caption (`![diagram|300](…)`) comes as an inline style and
+   wins over these rules, but it also stays within the column. */
+img.note-image {
+  display: block;
+  max-width: 100%;
+  max-height: min(60vh, 480px);
+  object-fit: contain;
+  margin: 8px 0;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.cm-image {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Lower in the editor: people type there, and an image must not push the text
+   out of view. */
+.cm-image img.note-image {
+  max-height: min(40vh, 360px);
+}
+
+.cm-image:hover .cm-diagram-edit,
+.cm-image .cm-diagram-edit:focus-visible {
+  opacity: 1;
+}
+
+.note-image-missing {
+  display: inline-block;
+  margin: 4px 0;
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in oklab, black 75%, transparent);
+  cursor: zoom-out;
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  /* A transparent PNG would be invisible on a dark background. */
+  background: var(--bg);
+}
+
+/* Editor links: brackets of `[[name]]` and `[text](url)` are hidden. */
+.cm-live-link {
+  color: var(--accent);
+}
+
+.cm-inline-code {
+  background: var(--bg-soft);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* Words with an agent note (`<!-- @agent … -->`), in both the editor and the
+   preview. The warning color, not the accent: links already use the accent,
+   and a note means "there is work to do here". */
+.cm-agent-note,
+.preview mark.agent-note {
+  color: inherit;
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+  border-bottom: 2px solid color-mix(in oklab, var(--warning) 60%, transparent);
+  border-radius: 3px 3px 0 0;
+  cursor: help;
+}
+
+/* A note whose words no longer match the stored ones: an icon, not a highlight. */
+.cm-agent-note.is-detached,
+.preview .agent-note.is-detached {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin: 0 2px;
+  color: var(--warning);
+  background: none;
+  border: none;
+}
+
+.cm-agent-note.is-detached .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.preview .agent-note.is-detached::before {
+  content: "💬";
+  font-size: 0.8em;
+}
+
+/* Popup above the words: the "For agent" button, the instruction or the form.
+   The selector is more specific than the CodeMirror theme; otherwise its
+   border and background would override ours. */
+.cm-editor .cm-tooltip.cm-agent-popup,
+.preview-note-popup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(420px, 90vw);
+  padding: 4px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+
+.cm-editor .cm-tooltip.cm-agent-popup.is-form,
+.preview-note-popup.is-form {
+  flex-direction: column;
+  align-items: stretch;
+  width: min(420px, 90vw);
+  padding: 8px;
+}
+
+/* The same popup over a preview selection: it lives in `body`, above everything. */
+.preview-note-popup {
+  position: fixed;
+  z-index: 50;
+}
+
+.preview-note-popup[hidden] {
+  display: none;
+}
+
+.cm-agent-popup button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cm-agent-popup button:hover {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.cm-agent-popup button.is-primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.cm-agent-popup .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.cm-agent-popup-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--warning);
+  padding-left: 4px;
+}
+
+.cm-agent-popup-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cm-agent-popup-field {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.cm-agent-popup-field:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.cm-agent-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* The whole code block while the cursor is outside: the same as in the
+   preview. Lines do not wrap, so ASCII diagrams stay aligned, and the block
+   has a single scrollbar. */
+.cm-code-block {
+  margin: 8px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  overflow-x: auto;
+  cursor: text;
+  /* Without explicit permission WebKit does not select text in a
+     non-editable island (a CodeMirror widget is `contenteditable=false`)
+     inside the editor; Chromium allows it. `.cm-table` has the same rule,
+     which is why tables already worked. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Editor table. A wide table scrolls on its own, like a code block.
+   Space for the toolbar is always reserved: the toolbar can appear, but it
+   must not move the table under the cursor. */
+.cm-table {
+  position: relative;
+  margin: 4px 0;
+  padding-top: 24px;
+  overflow-x: auto;
+  /* People read and copy the table with the mouse. CodeMirror does not touch
+     text selection inside the widget: it ignores events from here. */
+  user-select: text;
+}
+
+/* While a selection spans several lines, the widget's own selection is off.
+   Otherwise a second per-cell highlight lies over the CodeMirror band, and
+   you get boxes with gaps instead of one band. Within one line nothing
+   changes: there the browser selection is how people read and copy table
+   text. */
+.cm-content[data-selection="block"] .cm-table,
+.cm-content[data-selection="block"] .cm-code-block,
+.cm-content[data-selection="block"] .cm-diagram {
+  user-select: none;
+}
+
+.cm-table table {
+  border-collapse: collapse;
+}
+
+/* Cells wrap only at word boundaries. For long code lines CodeMirror sets
+   `word-break: break-word` and `overflow-wrap: anywhere`. A cell inherits
+   that, its min width drops to one letter, and the browser shrinks columns
+   and breaks words by letters instead of scrolling. */
+.cm-table th,
+.cm-table td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+  cursor: text;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  min-width: 8ch;
+}
+
+/* The whole cursor row is highlighted: in a wide table the eye otherwise
+   slips to the next row. There is one highlight, none for the cursor cell:
+   two at once read as noise, not as "you are here". */
+.cm-table tr:hover > th,
+.cm-table tr:hover > td {
+  background: color-mix(in oklab, var(--accent) 5%, transparent);
+}
+
+/* Row and column handles: thin strips along the table edge. Their space is
+   always reserved: they can appear on hover, but must not move the table
+   under the cursor. No borders: they would draw an empty grid over the table. */
+.cm-table th.cm-table-handle,
+.cm-table th.cm-table-corner {
+  padding: 0;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cm-table th.cm-table-corner {
+  cursor: default;
+}
+
+.cm-table .cm-table-handles th {
+  height: 8px;
+}
+
+.cm-table th.cm-table-handle[data-handle="row"] {
+  width: 8px;
+}
+
+.cm-table:hover th.cm-table-handle {
+  background: color-mix(in oklab, var(--text-muted) 22%, transparent);
+}
+
+.cm-table tr:hover > th.cm-table-handle,
+.cm-table th.cm-table-handle:hover {
+  background: color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+/* The selected cell rectangle: a reading highlight and the target of the
+   toolbar buttons.
+
+   One fill covers all cells, and a line marks the rectangle edge: without it
+   you cannot see where the selection ends if neighbour cells have the same
+   color. The line is an inset shadow, not a border: table borders collapse
+   (`border-collapse`), and a neighbour cell would cover half the edge. */
+.cm-table th.is-selected,
+.cm-table td.is-selected {
+  background: color-mix(in oklab, var(--accent) 13%, transparent);
+  --edge-top: 0;
+  --edge-right: 0;
+  --edge-bottom: 0;
+  --edge-left: 0;
+  box-shadow:
+    inset 0 calc(var(--edge-top) * 1px) 0 0 var(--accent),
+    inset calc(var(--edge-right) * -1px) 0 0 0 var(--accent),
+    inset 0 calc(var(--edge-bottom) * -1px) 0 0 var(--accent),
+    inset calc(var(--edge-left) * 1px) 0 0 0 var(--accent);
+}
+
+.cm-table .is-selected.edge-top {
+  --edge-top: 1;
+}
+
+.cm-table .is-selected.edge-right {
+  --edge-right: 1;
+}
+
+.cm-table .is-selected.edge-bottom {
+  --edge-bottom: 1;
+}
+
+.cm-table .is-selected.edge-left {
+  --edge-left: 1;
+}
+
+/* A handle lights up when the selection touches its strip, and brighter when
+   it covers the whole strip. This shows "part of a row" versus "a row". */
+.cm-table th.cm-table-handle.is-touched {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.cm-table th.cm-table-handle.is-selected {
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+/* While a rectangle is dragged, the browser must not select text: there would
+   be two highlights, a clean rectangle and a ragged per-letter one. */
+.cm-table[data-dragging],
+.cm-table[data-dragging] th,
+.cm-table[data-dragging] td {
+  user-select: none;
+}
+
+/* A cell in edit mode: the field fills it and looks like plain text.
+   The field has no scrollbar; `openCell` sets its height to fit the text. */
+.cm-table-input {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: transparent;
+  border: none;
+  padding: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+}
+
+.cm-table-tools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+}
+
+.cm-table:hover .cm-table-tools,
+.cm-table:focus-within .cm-table-tools {
+  opacity: 1;
+}
+
+.cm-table-tools button {
+  display: flex;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.cm-table-tools .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.cm-table-tools button:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-raised);
+  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.cm-table-tools button:active:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.cm-table-tools button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* CodeMirror highlighting does not work inside a widget, so we set accents here. */
+.cm-strong {
+  font-weight: 600;
+}
+
+.cm-emphasis {
+  font-style: italic;
+}
+
+/* The same block with the cursor inside: now it is plain text being edited,
+   so long lines wrap.
+
+   Background and border live in `::before` with a negative `z-index`. The
+   CodeMirror selection layer is drawn under the lines (`.cm-selectionLayer`,
+   z-index -2), and an opaque background on the line would hide it: the
+   selection in a code block was invisible. The pseudo-element goes even
+   lower, the text stays on top, and the selection band lies between them, as
+   on normal lines. */
+.cm-code-line {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0 12px;
+}
+
+.cm-code-line::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background: var(--bg-soft);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.cm-code-open {
+  padding-top: 6px;
+}
+
+.cm-code-open::before {
+  border-top: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+
+.cm-code-close {
+  padding-bottom: 6px;
+}
+
+.cm-code-close::before {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+}
+
+/* The fence and the language name are service lines, not code. */
+.cm-code-open,
+.cm-code-close {
+  color: var(--text-muted);
+}
+
+.preview-pane {
+  grid-area: preview;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.preview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  line-height: 1.65;
+}
+
+/* Source line marks (core, `LINE_MARK_CLASS`). They are empty: inside a
+   paragraph a point at the text start, before code and tables a zero-height
+   block. The bookmark marker sits in the left preview margin, as in the editor. */
+.preview .line-mark {
+  position: relative;
+}
+
+.preview .line-mark.is-block {
+  display: block;
+  height: 0;
+}
+
+.preview .line-mark.is-bookmarked::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 0.35em;
+  width: 8px;
+  height: 0.9em;
+  background-color: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
+}
+
+/* Before a block the mark sits above its top margin, so the marker moves down
+   to the first line. */
+.preview .line-mark.is-block.is-bookmarked::before {
+  top: 1.35em;
+}
+
+.preview h1,
+.preview h2,
+.preview h3 {
+  line-height: 1.3;
+  margin: 1.2em 0 0.5em;
+}
+
+.preview h1,
+.preview h2,
+.preview h3,
+.preview h4,
+.preview h5,
+.preview h6 {
+  color: var(--heading);
+}
+
+.preview h1:first-child {
+  margin-top: 0;
+}
+
+.preview a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+}
+
+.preview a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* A link to a missing note is muted; a click creates the note. */
+.preview a[href^="kknow://missing/"] {
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--text-muted);
+}
+
+.preview a[href^="kknow://tag/"] {
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border-bottom: none;
+}
+
+.preview code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-soft);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.preview pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.preview pre code {
+  background: none;
+  padding: 0;
+}
+
+/* A mermaid diagram is a picture, not a listing: it needs no background or
+   border. Until it renders, the block holds the source, so it stays monospace.
+
+   No `.preview` in the selector: the same block also lives in the editor,
+   inside `.cm-diagram`. */
+pre.mermaid {
+  background: none;
+  border: none;
+  padding: 8px 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The diagram failed to parse: keep the source and the mermaid error next to it. */
+pre.mermaid[data-error] {
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--danger);
+}
+
+pre.mermaid[data-error]::after {
+  content: attr(data-error);
+  display: block;
+  margin-top: 8px;
+  color: var(--danger);
+  font-family: var(--font-text);
+  font-size: 0.9em;
+  white-space: normal;
+}
+
+.preview blockquote {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* A wide table scrolls on its own, like a code block: `display: block` gives it
+   its own scrollbar, and `max-width` keeps it inside the preview. */
+.preview table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+/* Min width: without it the browser squeezes narrow columns to the longest
+   unbreakable piece and breaks short cells like "C-1" at the hyphen. */
+.preview th,
+.preview td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  min-width: 8ch;
+}
+
+/* Code in a cell does not wrap: `studio-prod` broken at the hyphen reads as
+   two different branches. If the table does not fit because of this, it scrolls. */
+.preview th code,
+.preview td code,
+.cm-table .cm-inline-code {
+  white-space: nowrap;
+}
+
+.backlinks,
+.panel {
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  padding: 10px 14px 14px;
+  max-height: 34%;
+  overflow-y: auto;
+}
+
+/* Otherwise the hidden attribute cannot hide the sync result panel. */
+.panel[hidden] {
+  display: none;
+}
+
+.panel h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel p {
+  margin: 0 0 6px;
+}
+
+.panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.panel li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/* The sync plan aligns actions in a column, because that is how people read it. */
+.panel li.plan {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+/* Command output: a small window above the status bar, near the segment that
+   opens it. It is no longer a panel on the right side: the open note is
+   there, and a command can run while the preview is closed. */
+.run-float {
+  position: fixed;
+  right: 12px;
+  bottom: 34px;
+  z-index: 30;
+  width: min(560px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+  padding: 10px 14px 14px;
+}
+
+.run-float[hidden] {
+  display: none;
+}
+
+.run-float h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.run-float p {
+  margin: 0 0 6px;
+}
+
+/* Agent notes: a small window under the header on the right, near its button. */
+.notes-float {
+  position: fixed;
+  top: 50px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(60vh, 520px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+  padding: 10px 8px 8px;
+}
+
+.notes-float[hidden] {
+  display: none;
+}
+
+.notes-float h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 6px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.notes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.notes-list .empty {
+  padding: 4px 6px;
+  color: var(--text-muted);
+}
+
+/* Item: the selected words on one line, the instruction in at most two lines.
+   A long one ends with an ellipsis; the tooltip shows it in full. */
+.notes-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.notes-item:hover,
+.notes-item:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.notes-words {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+  border-bottom: 2px solid color-mix(in oklab, var(--warning) 60%, transparent);
+  border-radius: 3px 3px 0 0;
+}
+
+.notes-words.is-detached {
+  background: none;
+  border-bottom-style: dashed;
+  color: var(--text-muted);
+}
+
+.notes-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+/* `.ghost` sets display and would override the `hidden` attribute. */
+#toggle-notes[hidden] {
+  display: none;
+}
+
+#toggle-notes[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Command result: a failure shows in the summary color, not only in the text. */
+.run-float[data-tone="error"] #run-summary,
+#status-run[data-tone="error"] {
+  color: var(--danger);
+}
+
+/* A check mark shows success, not the label color, so the command name stays readable. */
+#status-run[data-tone="ok"] .status-run-icon {
+  color: var(--ok);
+}
+
+/* The status bar toggle also shows that the window is open. */
+#status-run[data-open="true"] {
+  background: var(--accent-soft);
+}
+
+/* External program output: monospace, with long lines wrapped and its own
+   scroll. Without wrapping, a `find` that prints a long path would stretch the
+   panel and the whole right side of the window. */
+.run-output {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 18px 20px;
+  min-width: 420px;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.dialog h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.dialog label {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dialog input,
+.dialog select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.dialog input:focus,
+.dialog select:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* The settings form shows the fields of the selected provider: a folder has no
+   bucket or keys, and empty fields would only confuse. */
+.dialog form[data-provider="s3"] .only-folder,
+.dialog form[data-provider="folder"] .only-s3 {
+  display: none;
+}
+
+/* A field with a "choose…" button next to it. */
+.dialog .with-button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.dialog .with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dialog .with-button button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.dialog .hint {
+  margin: 12px 0;
+  max-width: 46ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.dialog menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--bg-raised);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.primary:active {
+  filter: brightness(0.94);
+}
+
+.backlinks h2,
+.panel h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.backlinks ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backlinks li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+button.link {
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+button.link:hover {
+  text-decoration: underline;
+}
+
+.muted,
+.empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Palette: vault search in a separate overlay.
+
+   It sits under the header, not in the screen center: the list grows down,
+   and a top-anchored overlay does not jump while typing. Otherwise rows would
+   move under the cursor. */
+/* The browser hides a closed `<dialog>`, but `display: flex` below overrides
+   that, and a closed palette would stay in the layout under the window. */
+.palette:not([open]) {
+  display: none;
+}
+
+.palette {
+  width: 680px;
+  max-width: calc(100vw - 32px);
+  margin: 92px auto auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow:
+    0 40px 90px -20px rgb(0 0 0 / 35%),
+    0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.palette::backdrop {
+  background: rgb(0 0 0 / 14%);
+}
+
+/* The window behind the palette is slightly blurred: the eye moves to the
+   palette, and the context below stays readable. */
+#app {
+  transition: filter 180ms ease;
+}
+
+body[data-palette="open"] #app {
+  filter: blur(1.2px);
+}
+
+.palette-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-head .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+
+.palette-head input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 17px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* Chips narrow the query to one index field: titles or tags. */
+.palette-chips {
+  display: flex;
+  flex: none;
+  gap: 3px;
+  padding: 2px;
+  background: var(--bg-soft);
+  border-radius: 7px;
+}
+
+.palette-chips button {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.palette-chips button:hover {
+  color: var(--text);
+}
+
+.palette-chips button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.palette-body {
+  overflow-y: auto;
+  max-height: min(520px, calc(100vh - 260px));
+  padding: 6px 0 4px;
+}
+
+/* Section header, in the same style as "Backlinks" on the right. */
+.palette-section {
+  margin: 9px 0 4px;
+  padding: 0 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+/* One highlight for mouse and keyboard: ↵ opens exactly the row the user looks
+   at. That is why there is no :hover here; the script controls it. */
+.palette-row.selected {
+  background: var(--accent-soft);
+}
+
+.palette-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+
+.palette-row.selected .palette-icon {
+  color: var(--bg-raised);
+  background: var(--accent);
+}
+
+.palette-icon .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.palette-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.palette-row-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The snippet is a hint, not content: one line, then an ellipsis. */
+.palette-snippet {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-snippet b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* The hit folder goes on the right: on the left it would take the title's
+   place, and the title matters more. */
+.palette-meta {
+  flex: none;
+  max-width: 30%;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-message {
+  margin: 0;
+  padding: 14px 16px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.palette-message[hidden] {
+  display: none;
+}
+
+.palette-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 16px 8px;
+}
+
+.palette-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.palette-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* For an action without a shortcut, an empty `kbd` would leave a stray border. */
+.palette-action kbd:empty {
+  display: none;
+}
+
+.palette-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border);
+}

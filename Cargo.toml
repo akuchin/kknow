@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/aakuchin/kknow"
+
+[workspace.dependencies]
+kknow-core = { path = "crates/kknow-core" }
+kknow-index = { path = "crates/kknow-index" }
+kknow-app = { path = "crates/kknow-app" }
+# Crates that need storage backends enable them. The core needs only the trait.
+kknow-sync = { path = "crates/kknow-sync", default-features = false }
+kknow-run = { path = "crates/kknow-run" }
+
+thiserror = "2"
+walkdir = "2"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+clap = { version = "4", features = ["derive", "env"] }
+tempfile = "3"
+tantivy = "0.25"
+notify = "8"
+notify-debouncer-full = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1"
+opendal = { version = "0.57", features = ["services-s3", "blocking"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

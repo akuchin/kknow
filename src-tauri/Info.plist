@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the app can open. The bundler adds these keys to the keys it builds
+  from tauri.conf.json.
+
+  Folder (`public.folder`): for `open -a kknow ~/notes` and "Open With" in
+  Finder. Without a declared document type, macOS only brings the app to the
+  front and does not pass the folder. LSHandlerRank = Alternate: the app opens
+  a folder on request, but Finder stays the owner of folders. We do not claim
+  the double click.
+
+  Markdown (`net.daringfireball.markdown`): for a double click on `.md`.
+  LSHandlerRank = Default: markdown is the kknow format, so kknow claims it.
+  This does not force the system. If `.md` already belongs to another app, it
+  stays there. The user can change this in kknow settings
+  ("General → Open .md files in kknow") or in Finder:
+  "Get Info → Open with → Change All".
+
+  The type is declared as imported (UTImportedTypeDeclarations). New macOS
+  versions already know it. On old versions, without this declaration, `.md`
+  maps to no type. An imported declaration yields to the system one, so it
+  does not conflict.
+-->
+<plist version="1.0">
+  <dict>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Каталог с заметками</string>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>LSHandlerRank</key>
+        <string>Alternate</string>
+        <key>LSItemContentTypes</key>
+        <array>
+          <string>public.folder</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Markdown</string>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>LSHandlerRank</key>
+        <string>Default</string>
+        <key>LSItemContentTypes</key>
+        <array>
+          <string>net.daringfireball.markdown</string>
+        </array>
+      </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+      <dict>
+        <key>UTTypeIdentifier</key>
+        <string>net.daringfireball.markdown</string>
+        <key>UTTypeDescription</key>
+        <string>Markdown</string>
+        <key>UTTypeConformsTo</key>
+        <array>
+          <string>public.plain-text</string>
+        </array>
+        <key>UTTypeReferenceURL</key>
+        <string>https://daringfireball.net/projects/markdown/</string>
+        <key>UTTypeTagSpecification</key>
+        <dict>
+          <key>public.filename-extension</key>
+          <array>
+            <string>md</string>
+            <string>markdown</string>
+            <string>mdown</string>
+          </array>
+          <key>public.mime-type</key>
+          <array>
+            <string>text/markdown</string>
+          </array>
+        </dict>
+      </dict>
+    </array>
+  </dict>
+</plist>
