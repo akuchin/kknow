@@ -2607,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "kknow-core",
  "kknow-index",
@@ -2623,7 +2623,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "kknow-app",
@@ -2635,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "tempfile",
  "thiserror 2.0.19",
@@ -2644,7 +2644,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "keyring",
  "kknow-app",
@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-index"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "kknow-core",
  "pulldown-cmark",
@@ -2673,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-run"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "serde",
@@ -2684,7 +2684,7 @@ dependencies = [
 
 [[package]]
 name = "kknow-sync"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
  "kknow-core",
