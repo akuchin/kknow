@@ -7,7 +7,7 @@ version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/aakuchin/kknow"
+repository = "https://github.com/akuchin/kknow"
 
 [workspace.dependencies]
 kknow-core = { path = "crates/kknow-core" }
