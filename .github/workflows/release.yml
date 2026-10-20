@@ -1,6 +1,6 @@
 # Release on tag: `git tag v0.1.0 && git push origin v0.1.0`.
 #
-# Builds the app (macOS arm64 and x86_64, Linux, Windows) and the `kknow` CLI,
+# Builds the app (macOS Apple Silicon only, Linux, Windows) and the `kknow` CLI,
 # and uploads them to the GitHub Release for the tag. The app is not signed.
 # The README "Installation" section tells how to open it on macOS.
 name: Release
@@ -45,8 +45,6 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
           - os: windows-latest

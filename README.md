@@ -45,10 +45,34 @@ the core with no change in the user interface (UI).
 
 ## Installation
 
-The [Releases](https://github.com/aakuchin/kknow/releases) page has prebuilt
+### Homebrew (macOS)
+
+On macOS, you can install the app with [Homebrew](https://brew.sh) from the
+[akuchin/homebrew-kknow](https://github.com/akuchin/homebrew-kknow) tap:
+
+```bash
+brew install --cask akuchin/kknow/kknow
+```
+
+The cask is for Apple Silicon only. The command installs `kknow.app` into
+`/Applications`. To get a new version, run `brew upgrade --cask kknow`.
+
+About the quarantine: the app has no Apple signature, so macOS puts the
+downloaded app in quarantine, and Gatekeeper calls it "damaged". The cask
+removes the quarantine flag after each installation and upgrade, so the app
+opens at once. If macOS still refuses to open the app, remove the flag
+yourself:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/kknow.app
+```
+
+### Prebuilt binaries
+
+The [Releases](https://github.com/akuchin/kknow/releases) page has prebuilt
 binaries:
 
-- the app for macOS (Apple Silicon — `aarch64`, Intel — `x64`);
+- the app for macOS (Apple Silicon — `aarch64` only; there is no build for Intel Macs);
 - the app for Linux (`.deb`, `.rpm`, `.AppImage`);
 - the app for Windows;
 - archives with the `kknow` CLI for the same platforms.
