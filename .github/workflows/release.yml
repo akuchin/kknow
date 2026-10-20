@@ -1,8 +1,10 @@
-# Release on tag: `git tag v0.1.0 && git push origin v0.1.0`.
+# Release on tag. Prepare it with `scripts/release.sh X.Y.Z`, then
+# `git push origin main vX.Y.Z`.
 #
 # Builds the app (macOS Apple Silicon only, Linux, Windows) and the `kknow` CLI,
 # and uploads them to the GitHub Release for the tag. The app is not signed.
-# The README "Installation" section tells how to open it on macOS.
+# The README "Installation" section tells how to open it on macOS. At the end,
+# the Homebrew cask gets the new version and checksum.
 name: Release
 
 on:
@@ -21,7 +23,25 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
+  # The file names come from the version in Cargo.toml, and the cask builds its
+  # URL from the tag. If they differ, Homebrew cannot find the file. Stop here,
+  # before the release exists.
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Tag matches Cargo.toml
+        run: |
+          version="$(scripts/version.sh)"
+          if [[ "$TAG" != "v$version" ]]; then
+            echo "::error::tag $TAG, but Cargo.toml has version $version"
+            exit 1
+          fi
+
   create-release:
+    needs: check-version
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
@@ -104,3 +124,45 @@ jobs:
             file="$name.tar.gz"
           fi
           gh release upload "$TAG" "$file" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # Updates the cask in akuchin/homebrew-kknow. The workflow token cannot write
+  # to another repository, so this needs the HOMEBREW_TAP_TOKEN secret: a
+  # fine-grained token with "Contents: read and write" on that repository only.
+  update-tap:
+    needs: app
+    runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Update the cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$TAP_TOKEN" ]]; then
+            echo "::warning::no HOMEBREW_TAP_TOKEN secret; update the cask by hand"
+            exit 0
+          fi
+
+          version="${TAG#v}"
+          dmg="kknow_${version}_aarch64.dmg"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$dmg"
+          sha="$(sha256sum "$dmg" | cut -d' ' -f1)"
+
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/akuchin/homebrew-kknow.git" tap
+          cd tap
+          sed -i \
+            -e "s/^  version \".*\"$/  version \"$version\"/" \
+            -e "s/^  sha256 \".*\"$/  sha256 \"$sha\"/" \
+            Casks/kknow.rb
+          grep -q "version \"$version\"" Casks/kknow.rb
+          grep -q "sha256 \"$sha\"" Casks/kknow.rb
+
+          if git diff --quiet; then
+            echo "the cask already has $version"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "kknow $version"
+          git push origin HEAD

@@ -1,7 +1,6 @@
 {
   "name": "kknow",
   "private": true,
-  "version": "0.1.1",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
