@@ -98,16 +98,16 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      # Only the line of `[workspace.package]` starts with `version =`;
-      # dependency lines have it inside braces. `-i.bak` works with both GNU
-      # sed (Linux, Windows) and BSD sed (macOS). Cargo then updates the
-      # versions of the workspace crates in Cargo.lock by itself.
+      # `cargo set-version` (cargo-edit) sets `[workspace.package]` and updates
+      # Cargo.lock. Only this one command is built, and rust-cache keeps the
+      # binary in ~/.cargo/bin between runs.
       - name: Set version from tag
         shell: bash
         run: |
-          sed -i.bak "s/^version = \".*\"$/version = \"${TAG#v}\"/" Cargo.toml
-          rm Cargo.toml.bak
-          grep -qx "version = \"${TAG#v}\"" Cargo.toml
+          if ! cargo set-version --help >/dev/null 2>&1; then
+            cargo install cargo-edit --locked --no-default-features --features set-version
+          fi
+          cargo set-version --workspace "${TAG#v}"
 
       - name: Build and upload app
         uses: tauri-apps/tauri-action@v0
