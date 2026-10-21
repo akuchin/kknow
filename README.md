@@ -87,27 +87,24 @@ xattr -dr com.apple.quarantine /Applications/kknow.app
 
 ### Making a release
 
-The version is in one place: `version` in `[workspace.package]` of the root
-`Cargo.toml`. The CLI, the app and the names of the release files all take it
-from there.
+The git tag is the version. Make a tag and push it:
 
 ```bash
-scripts/release.sh 0.1.2
+git tag -m "kknow v0.1.4" v0.1.4
+git push origin v0.1.4
 ```
 
-The script sets the version, runs the tests and clippy, and makes the commit
-and the tag `v0.1.2`. It does not push. Push when you are ready:
+GitHub Actions (`.github/workflows/release.yml`) writes the version from the
+tag into `Cargo.toml` and builds the release. The CLI, the app and the names of
+the release files get this version. In the repository, `Cargo.toml` keeps
+`0.0.0`, so a local build shows 0.0.0. The tag must look like `vX.Y.Z`,
+otherwise the workflow stops at once.
 
-```bash
-git push origin main v0.1.2
-```
-
-GitHub Actions (`.github/workflows/release.yml`) then builds the release. It
-stops at once if the tag differs from the version in `Cargo.toml`. At the end,
-it puts the new version and checksum into the Homebrew cask. For this, the
-repository needs the `HOMEBREW_TAP_TOKEN` secret: a fine-grained token with
-"Contents: Read and write" access to `akuchin/homebrew-kknow` only. Without the
-secret, the release still works, and you update the cask by hand.
+At the end, the workflow puts the new version and checksum into the Homebrew
+cask. For this, the repository needs the `HOMEBREW_TAP_TOKEN` secret: a
+fine-grained token with "Contents: Read and write" access to
+`akuchin/homebrew-kknow` only. Without the secret, the release still works, and
+you update the cask by hand.
 
 ## Running the app
 

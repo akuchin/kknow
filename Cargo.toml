@@ -3,7 +3,9 @@ resolver = "3"
 members = ["crates/*", "src-tauri"]
 
 [workspace.package]
-version = "0.1.3"
+# Release builds take the version from the git tag (see release.yml).
+# 0.0.0 marks a local build.
+version = "0.0.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"

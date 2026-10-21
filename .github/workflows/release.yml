@@ -1,5 +1,9 @@
-# Release on tag. Prepare it with `scripts/release.sh X.Y.Z`, then
-# `git push origin main vX.Y.Z`.
+# Release on tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+#
+# The tag is the only source of the version. `Cargo.toml` in the repository
+# keeps `0.0.0`, and each build job writes the tag version into it before it
+# builds. Thus a tag and the files cannot disagree, and a release needs no
+# version commit.
 #
 # Builds the app (macOS Apple Silicon only, Linux, Windows) and the `kknow` CLI,
 # and uploads them to the GitHub Release for the tag. The app is not signed.
@@ -23,25 +27,21 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  # The file names come from the version in Cargo.toml, and the cask builds its
-  # URL from the tag. If they differ, Homebrew cannot find the file. Stop here,
-  # before the release exists.
-  check-version:
+  # The version goes into Cargo.toml, file names and the cask. Windows MSI
+  # accepts only numbers, so `v1.2` or `v1.2.3-beta` stop here, before the
+  # release exists.
+  check-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
-      - name: Tag matches Cargo.toml
+      - name: Tag is vX.Y.Z
         run: |
-          version="$(scripts/version.sh)"
-          if [[ "$TAG" != "v$version" ]]; then
-            echo "::error::tag $TAG, but Cargo.toml has version $version"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag $TAG is not vX.Y.Z"
             exit 1
           fi
 
   create-release:
-    needs: check-version
+    needs: check-tag
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
@@ -97,6 +97,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      # Only the line of `[workspace.package]` starts with `version =`;
+      # dependency lines have it inside braces. `-i.bak` works with both GNU
+      # sed (Linux, Windows) and BSD sed (macOS). Cargo then updates the
+      # versions of the workspace crates in Cargo.lock by itself.
+      - name: Set version from tag
+        shell: bash
+        run: |
+          sed -i.bak "s/^version = \".*\"$/version = \"${TAG#v}\"/" Cargo.toml
+          rm Cargo.toml.bak
+          grep -qx "version = \"${TAG#v}\"" Cargo.toml
 
       - name: Build and upload app
         uses: tauri-apps/tauri-action@v0
