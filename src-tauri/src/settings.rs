@@ -67,6 +67,8 @@ pub fn set_settings<R: Runtime>(
     settings: AppSettings,
 ) -> Result<AppSettings> {
     let saved = state.put(settings);
+    #[cfg(target_os = "macos")]
+    crate::menu::relabel(&app, &saved.locale);
     let _ = app.emit(EVENT, saved.clone());
     Ok(saved)
 }

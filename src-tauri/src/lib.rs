@@ -2,6 +2,8 @@ mod association;
 mod commands;
 mod files;
 mod live;
+#[cfg(target_os = "macos")]
+mod menu;
 mod run;
 mod secrets;
 mod settings;
@@ -213,7 +215,24 @@ pub fn run() {
         }
     }
 
-    tauri::Builder::default()
+    // The menu is built before the window loads, so it takes the language
+    // from the settings read above.
+    #[cfg(target_os = "macos")]
+    let locale = settings.get().locale;
+
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(move |handle| menu::build(handle, &locale))
+        .on_menu_event(|app, event| {
+            if event.id() == menu::SETTINGS_ITEM {
+                if let Err(error) = commands::open_settings(app.clone(), None) {
+                    eprintln!("не удалось открыть настройки: {error}");
+                }
+            }
+        });
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .manage(sync_status::SyncStatuses::default())
