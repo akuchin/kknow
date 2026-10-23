@@ -265,8 +265,12 @@ a `README.md` from a repository, a draft on the desktop.
   standalone file.
 - The folder of the file does **not** become a vault. A double-click on
   `README.md` is not a reason to parse, index and sync all of the repository.
-  Thus a standalone file has no graph, search, backlinks or commands, because
-  their scope is paths from the vault root. `[[links]]` in the preview are
+  Thus a standalone file has no graph, search or backlinks, because their
+  scope is paths from the vault root.
+- A standalone file gets commands: it is a note without a vault. It gets the
+  commands for notes that have no `vaults` and no `match`. These two fields
+  mean "only there", and a file is in no vault and has no root. Read
+  "Commands on targets". `[[links]]` in the preview are
   broken. kknow has nothing to resolve them against. A guess from nearby files
   that kknow did not parse would be random.
 - A standalone file has no watcher. kknow sees an external edit when it
@@ -371,7 +375,15 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - `requires` (frontmatter fields).
 
   An empty condition does not limit anything. Thus a manifest with four fields
-  works everywhere.
+  works everywhere: in all vaults and on standalone files.
+- A standalone file is a `note` target, not a fourth kind (`Target::file`). A
+  separate kind would hide all existing commands from files until you mark
+  each one. The vault ID is empty, the command starts in the folder of the
+  file, and the script gets no `KKNOW_VAULT*` and no `KKNOW_NOTE`. With
+  `KKNOW_VAULT`, `kknow list` in the script would take the folder as a vault.
+  The window sends the path, and the core accepts only a file from the list of
+  open files, as for `save_file`. In the terminal: `kknow run <id> --file
+  README.md`. It needs no vault.
 - There are more fields:
   - `cwd` — `vault` by default, or `target`;
   - `timeoutSeconds` — 60;
@@ -481,6 +493,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     folder.
   - For a vault, the "Commands…" item gives them.
   - The palette (⌘K) also has the commands of the open note.
+  - The menu of a standalone file also has its commands.
   - The same menu has file operations above the commands. They are: rename,
     move, duplicate, copy the path and the `[[link]]`, open in the default app,
     reveal in Finder. Delete is the last item.

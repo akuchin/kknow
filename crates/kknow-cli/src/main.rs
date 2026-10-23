@@ -12,7 +12,7 @@ use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
 use kknow_index::{Edge, EdgeKind, Subpath};
-use kknow_run::{CommandSet, CommandSpec, Outcome, TargetKind};
+use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
 use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings, SyncEngine};
 
 #[derive(Parser)]
@@ -84,6 +84,9 @@ enum Command {
         /// Target kind, if the name matches both a note and a folder.
         #[arg(long, value_enum)]
         kind: Option<TargetChoice>,
+        /// A markdown file outside any vault, as a note target.
+        #[arg(long, conflicts_with_all = ["target", "kind"])]
+        file: Option<PathBuf>,
         /// Write an example file if it does not exist yet.
         #[arg(long)]
         example: bool,
@@ -101,6 +104,9 @@ enum Command {
         /// Target kind, if the name matches both a note and a folder.
         #[arg(long, value_enum)]
         kind: Option<TargetChoice>,
+        /// A markdown file outside any vault, as a note target.
+        #[arg(long, conflicts_with_all = ["target", "kind"])]
+        file: Option<PathBuf>,
     },
     /// Watch the directory and print changes.
     Watch,
@@ -248,6 +254,31 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    // A standalone file is a note without a vault, so its commands need none.
+    // `README.md` in a repository must not need `--vault`.
+    match &cli.command {
+        Command::Commands {
+            file: Some(file),
+            example,
+            ..
+        } => {
+            let target =
+                kknow_app::commands::file_target(file).map_err(|error| error.to_string())?;
+            commands(Some(target), *example)?;
+            return Ok(ExitCode::SUCCESS);
+        }
+        Command::Run {
+            command,
+            file: Some(file),
+            ..
+        } => {
+            let target =
+                kknow_app::commands::file_target(file).map_err(|error| error.to_string())?;
+            return run_command(command, &target);
+        }
+        _ => {}
+    }
+
     let path = vault_path(&cli.vault)?;
     // Commands need the vault ID and name: the ID limits their scope (`vaults`
     // in the manifest), and the script sees the name.
@@ -277,12 +308,42 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             target,
             kind,
             example,
-        } => commands(&workspace, &id, &name, target.as_deref(), kind, example)?,
+            ..
+        } => {
+            // With a target, show what applies. Without one, show the whole
+            // file: otherwise commands for notes are not visible until you
+            // name a note.
+            let target = if target.is_some() || kind.is_some() {
+                let target = kknow_app::commands::resolve(
+                    &workspace,
+                    &id,
+                    &name,
+                    kind.map(Into::into),
+                    target.as_deref(),
+                )
+                .map_err(|error| error.to_string())?;
+                Some(target)
+            } else {
+                None
+            };
+            commands(target, example)?
+        }
         Command::Run {
             command,
             target,
             kind,
-        } => code = run_command(&workspace, &id, &name, &command, target.as_deref(), kind)?,
+            ..
+        } => {
+            let target = kknow_app::commands::resolve(
+                &workspace,
+                &id,
+                &name,
+                kind.map(Into::into),
+                target.as_deref(),
+            )
+            .map_err(|error| error.to_string())?;
+            code = run_command(&command, &target)?
+        }
         // Handled above: this command needs no vault.
         Command::Vaults { .. } => unreachable!(),
         Command::Watch => watch(&mut workspace)?,
@@ -733,14 +794,7 @@ fn themes(workspace: &Workspace) {
 /// directory: a command manifest is executable code, and it must not arrive
 /// through sync. So it is edited by hand, like themes, not in a form in the
 /// window.
-fn commands(
-    workspace: &Workspace,
-    id: &str,
-    name: &str,
-    target: Option<&str>,
-    kind: Option<TargetChoice>,
-    example: bool,
-) -> Result<(), String> {
+fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     let path = kknow_app::commands::config_path()
         .ok_or("не найден каталог настроек: в окружении нет HOME")?;
 
@@ -756,14 +810,14 @@ fn commands(
 
     let set = CommandSet::load(&path).map_err(|error| error.to_string())?;
 
-    // With a target, show what applies. Without one, show the whole file:
-    // otherwise commands for notes are not visible until you name a note.
-    let picked: Vec<&CommandSpec> = if target.is_some() || kind.is_some() {
-        let target =
-            kknow_app::commands::resolve(workspace, id, name, kind.map(Into::into), target)
-                .map_err(|error| error.to_string())?;
-        println!("цель: {} ({})", target.path.display(), of(target.kind));
-        set.for_target(&target)
+    let picked: Vec<&CommandSpec> = if let Some(target) = &target {
+        let kind = if target.standalone() {
+            "файл вне хранилища"
+        } else {
+            of(target.kind)
+        };
+        println!("цель: {} ({kind})", target.path.display());
+        set.for_target(target)
     } else {
         set.commands.iter().collect()
     };
@@ -826,14 +880,7 @@ fn of(kind: TargetKind) -> &'static str {
 /// The command output goes to the same streams as in the command:
 /// `kknow run … | jq` must work. kknow writes its own messages to stderr so
 /// they do not mix with the command output.
-fn run_command(
-    workspace: &Workspace,
-    id: &str,
-    name: &str,
-    command: &str,
-    target: Option<&str>,
-    kind: Option<TargetChoice>,
-) -> Result<ExitCode, String> {
+fn run_command(command: &str, target: &Target) -> Result<ExitCode, String> {
     let set = kknow_app::commands::load().map_err(|error| error.to_string())?;
     if set.get(command).is_none() {
         return Err(format!(
@@ -841,13 +888,10 @@ fn run_command(
         ));
     }
 
-    let target = kknow_app::commands::resolve(workspace, id, name, kind.map(Into::into), target)
-        .map_err(|error| error.to_string())?;
-
     // Run through the set, not directly: only the set knows the shared
     // environment of the file.
     let outcome = set
-        .run(command, &target)
+        .run(command, target)
         .map_err(|error| error.to_string())?;
     report(&outcome)
 }

@@ -117,8 +117,11 @@ pub struct Target {
     /// There are two sources, frontmatter and `<!-- key: value -->` comments,
     /// merged before they get here. Folders and vaults have none.
     pub fields: BTreeMap<String, String>,
+    /// Empty for a standalone file: it belongs to no vault.
     pub vault_id: String,
     pub vault_name: String,
+    /// The vault root; for a standalone file, its folder. The command starts
+    /// there with the default `cwd`.
     pub vault_root: PathBuf,
 }
 
@@ -136,6 +139,36 @@ impl Target {
             vault_name: name.to_string(),
             vault_root: root,
         }
+    }
+
+    /// A markdown file opened without a vault, as a note target.
+    ///
+    /// It is a note, not a fourth target kind: a command for notes is useful
+    /// on a `README.md` too, and a separate kind would hide every existing
+    /// command from files until the user ticks it in each one. The scope rules
+    /// that need a vault (`vaults`, `match`) do not match it. See
+    /// [`CommandSpec::applies_to`].
+    pub fn file(path: impl Into<PathBuf>, fields: BTreeMap<String, String>) -> Self {
+        let path = path.into();
+        let folder = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        Target {
+            kind: TargetKind::Note,
+            relative: path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            path,
+            note: None,
+            fields,
+            vault_id: String::new(),
+            vault_name: String::new(),
+            vault_root: folder,
+        }
+    }
+
+    /// The target is a standalone file, outside any vault.
+    pub fn standalone(&self) -> bool {
+        self.vault_id.is_empty()
     }
 
     fn working_dir(&self, cwd: Cwd) -> &Path {
@@ -216,12 +249,16 @@ pub fn environment(target: &Target) -> BTreeMap<String, String> {
     put("KKNOW_PATH", target.path.to_string_lossy().into_owned());
     put("KKNOW_TARGET", target.kind.as_str().to_string());
     put("KKNOW_RELATIVE", target.relative.clone());
-    put(
-        "KKNOW_VAULT",
-        target.vault_root.to_string_lossy().into_owned(),
-    );
-    put("KKNOW_VAULT_ID", target.vault_id.clone());
-    put("KKNOW_VAULT_NAME", target.vault_name.clone());
+    // A standalone file has no vault. Its folder in `KKNOW_VAULT` would make
+    // `kknow list` in the script treat that folder as a vault.
+    if !target.standalone() {
+        put(
+            "KKNOW_VAULT",
+            target.vault_root.to_string_lossy().into_owned(),
+        );
+        put("KKNOW_VAULT_ID", target.vault_id.clone());
+        put("KKNOW_VAULT_NAME", target.vault_name.clone());
+    }
     // The note ID is the path without extension. Scripts need it to call
     // `kknow show`, which takes an ID, not a file.
     if let Some(note) = &target.note {
@@ -588,6 +625,34 @@ mod tests {
         assert_eq!(env["KKNOW_VAULT_ID"], "work");
         assert_eq!(env["KKNOW_VAULT_NAME"], "Работа");
         assert_eq!(env["KKNOW_RELATIVE"], "Docs/Index.md");
+    }
+
+    /// A standalone file has no vault. The script gets no vault variables,
+    /// and it starts in the folder of the file.
+    #[test]
+    fn a_standalone_file_runs_in_its_folder_without_a_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("README.md");
+        std::fs::write(&path, "# Проект\n").unwrap();
+        let target = Target::file(&path, BTreeMap::new());
+
+        let env = environment(&target);
+        assert_eq!(env["KKNOW_TARGET"], "note");
+        assert_eq!(env["KKNOW_RELATIVE"], "README.md");
+        for absent in [
+            "KKNOW_VAULT",
+            "KKNOW_VAULT_ID",
+            "KKNOW_VAULT_NAME",
+            "KKNOW_NOTE",
+        ] {
+            assert!(!env.contains_key(absent), "{absent}");
+        }
+
+        let outcome = run(&spec("pwd"), &target).unwrap();
+        assert_eq!(
+            std::fs::canonicalize(outcome.stdout.trim()).unwrap(),
+            std::fs::canonicalize(dir.path()).unwrap()
+        );
     }
 
     #[test]

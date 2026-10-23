@@ -245,6 +245,11 @@ export interface CommandTarget {
   name?: string;
   /** The vault; the active one if empty. */
   vault?: string;
+  /**
+   * Absolute path of a standalone file. It is a note without a vault: it gets
+   * the commands with no `vaults` and no `match`.
+   */
+  file?: string;
 }
 
 /** A command in the target menu. */
@@ -427,6 +432,7 @@ export const api = {
       kind: target.kind,
       target: target.name ?? null,
       vault: target.vault ?? null,
+      file: target.file ?? null,
     }),
   /** Runs a command and waits for it. The core runs it off the main thread. */
   runCommand: (command: string, target: CommandTarget) =>
@@ -435,6 +441,7 @@ export const api = {
       kind: target.kind,
       target: target.name ?? null,
       vault: target.vault ?? null,
+      file: target.file ?? null,
     }),
   /** The full manifest for the settings form. */
   editCommands: () => invoke<CommandManifest>("edit_commands"),

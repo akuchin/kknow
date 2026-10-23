@@ -41,14 +41,26 @@ pub struct CommandList {
 /// The core computes the path from the note ID or the folder name. The
 /// frontend sends only a name, so this call cannot point a command at a file
 /// outside the vault. `reveal_note` uses the same approach.
+///
+/// A standalone file comes as `file`, an absolute path. The path must be in
+/// the list of opened files, as for `save_file`: a person picked that file.
 fn target_of(
     state: &AppState,
     vault: Option<&str>,
     kind: &str,
     target: Option<&str>,
+    file: Option<&str>,
 ) -> Result<Target> {
     let kind = TargetKind::parse(kind)
         .ok_or_else(|| Error::Run(kknow_run::Error::UnknownKind(kind.to_string())))?;
+
+    if let Some(file) = file {
+        // A file is a note: it is not a folder and not a vault.
+        if kind != TargetKind::Note {
+            return Err(Error::UnknownFile(file.to_string()));
+        }
+        return Ok(kknow_app::commands::file_target(&state.known_file(file)?)?);
+    }
 
     let slot = state.slot(vault)?;
     slot.read(|workspace| {
@@ -68,9 +80,16 @@ pub fn list_commands(
     kind: String,
     target: Option<String>,
     vault: Option<String>,
+    file: Option<String>,
 ) -> Result<CommandList> {
     let set = state.commands()?;
-    let resolved = target_of(&state, vault.as_deref(), &kind, target.as_deref())?;
+    let resolved = target_of(
+        &state,
+        vault.as_deref(),
+        &kind,
+        target.as_deref(),
+        file.as_deref(),
+    )?;
 
     Ok(CommandList {
         commands: set
@@ -104,13 +123,20 @@ pub fn run_command(
     kind: String,
     target: Option<String>,
     vault: Option<String>,
+    file: Option<String>,
 ) -> Result<Outcome> {
     let set = state.commands()?;
     if set.get(&command).is_none() {
         return Err(Error::Run(kknow_run::Error::Unknown(command)));
     }
 
-    let resolved = target_of(&state, vault.as_deref(), &kind, target.as_deref())?;
+    let resolved = target_of(
+        &state,
+        vault.as_deref(),
+        &kind,
+        target.as_deref(),
+        file.as_deref(),
+    )?;
     // Run through the set, not directly: only the set knows the shared env.
     Ok(set.run(&command, &resolved)?)
 }
@@ -262,8 +288,9 @@ mod tests {
         let dir = vault();
         let (_config, app) = app(dir.path(), SAMPLE);
 
-        let note = list_commands(app.state(), "note".into(), Some("Index".into()), None).unwrap();
-        let vault = list_commands(app.state(), "vault".into(), None, None).unwrap();
+        let note =
+            list_commands(app.state(), "note".into(), Some("Index".into()), None, None).unwrap();
+        let vault = list_commands(app.state(), "vault".into(), None, None, None).unwrap();
 
         assert_eq!(note.commands.len(), 1);
         assert_eq!(note.commands[0].id, "echo");
@@ -277,7 +304,7 @@ mod tests {
         let dir = vault();
         let (_config, app) = app(dir.path(), SAMPLE);
 
-        let listed = list_commands(app.state(), "vault".into(), None, None).unwrap();
+        let listed = list_commands(app.state(), "vault".into(), None, None, None).unwrap();
 
         assert_eq!(listed.problems.len(), 1);
         assert!(
@@ -298,6 +325,7 @@ mod tests {
             "note".into(),
             Some("Docs/Свод".into()),
             None,
+            None,
         )
         .unwrap();
 
@@ -317,6 +345,7 @@ mod tests {
             "here".into(),
             "folder".into(),
             Some("Docs".into()),
+            None,
             None,
         )
         .unwrap();
@@ -341,7 +370,8 @@ mod tests {
                     "here".into(),
                     "folder".into(),
                     Some(target.into()),
-                    None
+                    None,
+                    None,
                 )
                 .is_err(),
                 "{target}"
@@ -357,13 +387,63 @@ mod tests {
         // "echo" is declared only for notes. It cannot run on a vault, even
         // without the menu.
         assert!(matches!(
-            run_command(app.state(), "echo".into(), "vault".into(), None, None),
+            run_command(app.state(), "echo".into(), "vault".into(), None, None, None),
             Err(Error::Run(kknow_run::Error::NotApplicable { .. }))
         ));
         assert!(matches!(
-            run_command(app.state(), "нет такой".into(), "vault".into(), None, None),
+            run_command(
+                app.state(),
+                "нет такой".into(),
+                "vault".into(),
+                None,
+                None,
+                None
+            ),
             Err(Error::Run(kknow_run::Error::Unknown(_)))
         ));
+    }
+
+    /// A standalone file gets the commands for notes. The window sends its
+    /// path, and the path must be one that a person opened.
+    #[test]
+    fn a_standalone_file_gets_the_note_commands() {
+        let dir = vault();
+        let (_config, app) = app(dir.path(), SAMPLE);
+        let outside = tempfile::tempdir().unwrap();
+        let readme = outside.path().join("README.md");
+        fs::write(&readme, "# Проект\n").unwrap();
+        let raw = || Some(readme.to_string_lossy().into_owned());
+
+        // Not opened yet: the window cannot point a command at any file.
+        assert!(list_commands(app.state(), "note".into(), None, None, raw()).is_err());
+
+        let state = app.state::<AppState>();
+        state.remember_file(&readme).unwrap();
+        let path = state.known_file(&raw().unwrap()).unwrap();
+        let file = || Some(path.to_string_lossy().into_owned());
+
+        let listed = list_commands(app.state(), "note".into(), None, None, file()).unwrap();
+        let ids: Vec<&str> = listed
+            .commands
+            .iter()
+            .map(|view| view.id.as_str())
+            .collect();
+        assert_eq!(ids, ["echo"]);
+
+        let outcome = run_command(
+            app.state(),
+            "echo".into(),
+            "note".into(),
+            None,
+            None,
+            file(),
+        )
+        .unwrap();
+        assert!(outcome.ok(), "{outcome:?}");
+        assert_eq!(outcome.stdout, format!("{}|note", path.display()));
+
+        // A file is a note, never a folder or a vault.
+        assert!(list_commands(app.state(), "vault".into(), None, None, file()).is_err());
     }
 
     #[test]
@@ -381,7 +461,7 @@ mod tests {
             .expect("мок-приложение собрано");
 
         assert!(
-            list_commands(app.state(), "vault".into(), None, None)
+            list_commands(app.state(), "vault".into(), None, None, None)
                 .unwrap()
                 .commands
                 .is_empty()
@@ -390,7 +470,7 @@ mod tests {
         fs::write(&file, SAMPLE).unwrap();
 
         assert_eq!(
-            list_commands(app.state(), "vault".into(), None, None)
+            list_commands(app.state(), "vault".into(), None, None, None)
                 .unwrap()
                 .commands
                 .len(),
@@ -422,7 +502,7 @@ mod tests {
         assert_eq!(edit_commands(app.state()).unwrap().commands.len(), 3);
         // It shows in the menu at once. No restart is necessary: the file is
         // read on each request.
-        let listed = list_commands(app.state(), "vault".into(), None, None).unwrap();
+        let listed = list_commands(app.state(), "vault".into(), None, None, None).unwrap();
         assert!(listed.problems.is_empty());
         assert!(listed.commands.iter().any(|view| view.id == "плохая"));
     }
@@ -469,7 +549,7 @@ mod tests {
             .build(mock_context(noop_assets()))
             .expect("мок-приложение собрано");
 
-        let listed = list_commands(app.state(), "vault".into(), None, None).unwrap();
+        let listed = list_commands(app.state(), "vault".into(), None, None, None).unwrap();
 
         assert!(listed.commands.is_empty());
         assert!(listed.problems.is_empty());

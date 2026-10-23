@@ -136,9 +136,15 @@ impl CommandSpec {
     /// There are three optional conditions: target kind, vault and path. An
     /// empty condition does not narrow anything. A command without `vaults`
     /// and `match` applies to everything, which is a good default for a first
-    /// command.
+    /// command. This includes standalone files: they are notes.
+    ///
+    /// A standalone file is in no vault and has no vault root, so a command
+    /// with `vaults` or `match` is not for it. These fields mean "only there".
     pub fn applies_to(&self, target: &Target) -> bool {
         if !self.targets.contains(&target.kind) {
+            return false;
+        }
+        if target.standalone() && !(self.vaults.is_empty() && self.patterns.is_empty()) {
             return false;
         }
         if !self.vaults.is_empty() && !self.vaults.contains(&target.vault_id) {
@@ -496,6 +502,36 @@ mod tests {
 
         assert!(spec.applies_to(&target(TargetKind::Vault, "", "work")));
         assert!(!spec.applies_to(&target(TargetKind::Note, "Index.md", "work")));
+    }
+
+    /// A standalone file is a note without a vault. A command without a scope
+    /// is for it too; a command that names vaults or paths is not.
+    #[test]
+    fn a_standalone_file_gets_only_the_unscoped_commands() {
+        let parsed = set(r#"{"commands":[
+                 {"id":"all","name":"Везде","kind":"shell","script":"…"},
+                 {"id":"notes","name":"Заметки","kind":"shell","script":"…","targets":["note"]},
+                 {"id":"folders","name":"Папки","kind":"shell","script":"…","targets":["folder"]},
+                 {"id":"work","name":"Работа","kind":"shell","script":"…","vaults":["work"]},
+                 {"id":"docs","name":"Docs","kind":"shell","script":"…","match":["**/*.md"]},
+                 {"id":"wiki","name":"Вики","kind":"shell","script":"…","requires":["confluence"]}]}"#);
+        let mut file = Target::file("/Users/me/README.md", BTreeMap::new());
+
+        let ids = |file: &Target| -> Vec<String> {
+            parsed
+                .for_target(file)
+                .into_iter()
+                .map(|spec| spec.id.clone())
+                .collect()
+        };
+
+        assert!(file.standalone());
+        assert_eq!(ids(&file), ["all", "notes"]);
+
+        // The file passes its parameters the same way a note does.
+        file.fields
+            .insert("confluence".to_string(), "123456789".to_string());
+        assert_eq!(ids(&file), ["all", "notes", "wiki"]);
     }
 
     #[test]

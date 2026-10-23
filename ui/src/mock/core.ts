@@ -917,9 +917,13 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
 
     case "list_commands": {
       const kind = args?.kind as TargetKind;
+      // A standalone file has no vault and no root: the core gives it only the
+      // commands without `vaults` and `match`.
+      const file = Boolean(args?.file);
       return {
         commands: healthyCommands()
           .filter((command) => command.targets.includes(kind))
+          .filter((command) => !file || (command.vaults.length === 0 && command.match.length === 0))
           .map(({ id, name, kind: runner, confirm }) => ({
             id,
             name,
@@ -940,7 +944,10 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         command: command.id,
         code: command.output.code,
         stdout: command.output.stdout
-          .replace("{path}", `/Users/kknow/${(args?.target as string) ?? "(каталог)"}`)
+          .replace(
+            "{path}",
+            (args?.file as string) ?? `/Users/kknow/${(args?.target as string) ?? "(каталог)"}`,
+          )
           .replace("{target}", (args?.kind as string) ?? "vault"),
         stderr: command.output.stderr,
         timedOut: command.output.code === null,

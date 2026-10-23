@@ -1504,27 +1504,8 @@ async function openCommandMenu(
   target: CommandTarget,
   title: string,
 ): Promise<void> {
-  let commands: CommandView[] = [];
-  try {
-    const listed = await api.listCommands(target);
-    commands = listed.commands;
-    // Report a typo in the commands file. Else the command just does not
-    // appear in the menu, and kknow looks broken.
-    if (listed.problems.length > 0) setStatus(listed.problems[0], "error");
-  } catch (error) {
-    fail(error);
-    return;
-  }
-
-  const items: MenuItem[] =
-    commands.length > 0
-      ? commands.map((command) => ({
-          label: command.name,
-          detail: command.kind,
-          glyph: "terminal" as const,
-          run: () => void runCommand(command, target),
-        }))
-      : [{ label: t("commands.none"), disabled: true, run: () => {} }];
+  const items = await commandItems(target);
+  if (!items) return;
 
   // Section order follows file managers: create, then rename and move, then
   // clipboard and system, then user commands, and delete last, away from the
@@ -1660,17 +1641,51 @@ async function openCommandMenu(
     ...scale,
     { title, items },
     ...removal,
-    {
-      items: [
-        {
-          label: t("commands.edit"),
-          detail: t("commands.edit.detail"),
-          glyph: "code",
-          run: () => void editCommands(),
-        },
-      ],
-    },
+    editCommandsSection(),
   ]);
+}
+
+/**
+ * Menu items for the commands of a target, or `null` if the core failed.
+ *
+ * The note menu and the standalone file menu share it, so both report a typo
+ * in the commands file in the same way.
+ */
+async function commandItems(target: CommandTarget): Promise<MenuItem[] | null> {
+  let commands: CommandView[] = [];
+  try {
+    const listed = await api.listCommands(target);
+    commands = listed.commands;
+    // Report a typo in the commands file. Else the command just does not
+    // appear in the menu, and kknow looks broken.
+    if (listed.problems.length > 0) setStatus(listed.problems[0], "error");
+  } catch (error) {
+    fail(error);
+    return null;
+  }
+
+  return commands.length > 0
+    ? commands.map((command) => ({
+        label: command.name,
+        detail: command.kind,
+        glyph: "terminal" as const,
+        run: () => void runCommand(command, target),
+      }))
+    : [{ label: t("commands.none"), disabled: true, run: () => {} }];
+}
+
+/** The last menu section: the way to the command settings. */
+function editCommandsSection(): MenuSection {
+  return {
+    items: [
+      {
+        label: t("commands.edit"),
+        detail: t("commands.edit.detail"),
+        glyph: "code",
+        run: () => void editCommands(),
+      },
+    ],
+  };
 }
 
 /**
@@ -1764,16 +1779,15 @@ let noteCommands: CommandView[] = [];
 let noteCommandsFor: string | null = null;
 
 async function refreshNoteCommands(): Promise<void> {
-  // A separate file has no commands: command scopes are paths from the vault
-  // root, and a file has no root.
-  const key = current && vault && !current.file ? `${vault.id}/${current.id}` : null;
+  const target = currentTarget();
+  // A standalone file is keyed by its path: it has no vault.
+  const key = target ? (target.file ?? `${target.vault}/${target.name}`) : null;
   if (key === noteCommandsFor) return;
 
   noteCommandsFor = key;
   noteCommands = [];
-  if (!current || !vault || current.file) return;
+  if (!target) return;
 
-  const target: CommandTarget = { kind: "note", name: current.id, vault: vault.id };
   try {
     const listed = await api.listCommands(target);
     // Another note can open during the core call; then the answer is stale.
@@ -1781,6 +1795,16 @@ async function refreshNoteCommands(): Promise<void> {
   } catch (error) {
     fail(error);
   }
+}
+
+/**
+ * The open note as a command target. A standalone file is a note without a
+ * vault: the core gives it the commands that are not tied to a vault or a path.
+ */
+function currentTarget(): CommandTarget | null {
+  if (!current) return null;
+  if (current.file) return { kind: "note", file: current.id };
+  return vault ? { kind: "note", name: current.id, vault: vault.id } : null;
 }
 
 /** Label colors. The theme sets the actual values (`--label-*`). */
@@ -2363,13 +2387,21 @@ function fileItem(entry: FileEntry): HTMLLIElement {
   row.append(button, more);
   row.oncontextmenu = (event) => {
     event.preventDefault();
-    openFileMenu(more, entry);
+    void openFileMenu(more, entry);
   };
   item.append(row);
   return item;
 }
 
-function openFileMenu(anchor: HTMLElement, entry: FileEntry): void {
+/**
+ * Menu of a standalone file. It has the note commands too: a file is a note
+ * without a vault. The order is the same as in the note menu.
+ */
+async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void> {
+  const target: CommandTarget = { kind: "note", file: entry.path };
+  const items = await commandItems(target);
+  if (!items) return;
+
   openMenu(anchor, [
     {
       title: entry.name,
@@ -2390,6 +2422,7 @@ function openFileMenu(anchor: HTMLElement, entry: FileEntry): void {
       ],
     },
     scaleSection(`file:${entry.path}`),
+    { title: t("commands.title.note", { name: entry.name }), items },
     {
       items: [
         {
@@ -2400,6 +2433,7 @@ function openFileMenu(anchor: HTMLElement, entry: FileEntry): void {
         },
       ],
     },
+    editCommandsSection(),
   ]);
 }
 
@@ -2859,7 +2893,7 @@ function openNoteMenu(): void {
   if (current.file) {
     const path = current.id;
     const entry = files.find((candidate) => candidate.path === path);
-    if (entry) openFileMenu(el.noteMenu, entry);
+    if (entry) void openFileMenu(el.noteMenu, entry);
     return;
   }
   if (!vault) return;
@@ -2993,8 +3027,8 @@ const palette = new Palette({
       // for them would take a shortcut from the window.
       hint: "",
       run: () => {
-        if (!current || !vault) return;
-        void runCommand(command, { kind: "note", name: current.id, vault: vault.id });
+        const target = currentTarget();
+        if (target) void runCommand(command, target);
       },
     })),
     { label: t("palette.action.newNote"), hint: "⌘N", run: () => el.newNote.click() },

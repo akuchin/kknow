@@ -17,7 +17,7 @@ All functions in this document work:
 - sync with S3-compatible storage (the Amazon S3 protocol) and with a plain folder;
 - themes;
 - settings in a separate window;
-- custom commands for a note, a folder or a vault.
+- custom commands for a note, a folder, a vault or a file outside a vault.
 
 [TODO.md](TODO.md) lists the remaining work.
 [ARCHITECTURE.md](ARCHITECTURE.md) tells how kknow works inside and why it has

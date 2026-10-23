@@ -83,6 +83,22 @@ pub fn folder_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> 
     })
 }
 
+/// A standalone file: markdown opened without a vault.
+///
+/// The caller checks that the person opened this file (the window keeps the
+/// list). Here the file is read only for its metadata: a `README.md` passes a
+/// page number to its command the same way a note does.
+///
+/// The path becomes absolute: the CLI gets `README.md` as typed, and the
+/// script needs a full `$KKNOW_PATH` and a real folder to start in.
+pub fn file_target(path: &Path) -> Result<Target> {
+    let path = path
+        .canonicalize()
+        .map_err(|source| Error::io(path, source))?;
+    let content = std::fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
+    Ok(Target::file(path, kknow_index::parse(&content).fields))
+}
+
 /// Target by kind and string. Without a kind, guess the way the CLI needs.
 ///
 /// Notes come first: `kknow run push Docs` usually means the note `Docs`, not
@@ -226,6 +242,21 @@ mod tests {
         assert_eq!(target.kind, TargetKind::Vault);
         assert_eq!(target.path, workspace.root());
         assert_eq!(target.relative, "");
+    }
+
+    #[test]
+    fn a_standalone_file_brings_its_fields_and_has_no_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("README.md");
+        fs::write(&path, "# Проект\n\n<!-- confluence: 987654321 -->\n").unwrap();
+
+        let target = file_target(&path).unwrap();
+
+        assert_eq!(target.kind, TargetKind::Note);
+        assert_eq!(target.path, path.canonicalize().unwrap());
+        assert!(target.standalone());
+        assert_eq!(target.fields["confluence"], "987654321");
+        assert!(file_target(&dir.path().join("нет.md")).is_err());
     }
 
     #[test]
