@@ -17,6 +17,9 @@ const STEP = 0.1;
 const MIN = 0.7;
 const MAX = 2;
 
+/** The same bounds in percents, for the status bar slider. */
+export const SCALE_PERCENT = { min: MIN * 100, max: MAX * 100, step: STEP * 100 };
+
 /** Only scales other than 100% are stored: new files have no entry anyway. */
 function load(): Record<string, number> {
   try {
@@ -59,12 +62,6 @@ export function stepScale(key: string, steps: number): number {
   return scale;
 }
 
-/** Whether one more step is possible, for the menu items. */
-export function canStep(key: string, steps: number): boolean {
-  const scale = scaleOf(key);
-  return steps > 0 ? scale < MAX : scale > MIN;
-}
-
 /** The file was renamed or moved; its scale moves with it. */
 export function moveScale(from: string, to: string): void {
   if (!(from in scales)) return;
@@ -73,7 +70,7 @@ export function moveScale(from: string, to: string): void {
   store();
 }
 
-/** Menu label, for example "120%". */
+/** Label, for example "120%". */
 export function scaleLabel(scale: number): string {
   return `${Math.round(scale * 100)}%`;
 }

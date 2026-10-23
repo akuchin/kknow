@@ -251,9 +251,20 @@ The header shows what is open:
 - In the center are the note name and its location: the vault with its label,
   and the folder. The name is a button that opens the note menu. This menu is
   the same as the menu of the note row in the tree. It has the note commands,
-  rename, move, duplicate, link, Finder, font size and delete.
-- On the right are notes for the agent 💬, the note mode, search (⌘K) and new
-  note.
+  rename, move, duplicate, link, Finder and delete.
+- On the right are notes for the agent 💬 and the note toolbar:
+  - the bookmark ribbon: it fills when the note has bookmarks. Its menu goes
+    to each bookmark, sets or removes a bookmark on the cursor line (⌘⇧B) and
+    shows all bookmarks (⌘⌥B);
+  - ▶ runs the last command again. The arrow next to it opens the list of the
+    note commands;
+  - backlinks with their count. The menu opens a note that links here.
+
+  After the toolbar are the note mode and search (⌘K).
+
+The sidebar header has its own toolbar: new note (⌘N), new folder, collapse all
+vaults and add a vault. A new note or folder goes into the folder of the open
+note.
 
 A note has three modes. Press ⌘E to go to the next mode:
 
@@ -293,15 +304,16 @@ Its right side is about the note and the window:
 - the result of the last command;
 - a chip about a problem in another vault;
 - the word count and the reading time;
-- the font size, if it is not 100% (click it to reset the size);
+- the font size of the note: −, a slider, + and the value. Click the value to
+  go back to 100%;
 - a gear with theme, language and "Settings" in one menu.
 
 The status bar does not show the full file path. The tooltip on the folder in
 the header shows it. The note menu has "Reveal in Finder" and "Copy path".
 
 Each note and file has its own font size. Press ⌘= for larger, ⌘− for smaller
-and ⌘0 for normal. The range is 70% to 200%, in steps of 10%. The note menu has
-the same items and shows the current size. The ⌘K palette also has them. The
+and ⌘0 for normal. The range is 70% to 200%, in steps of 10%. The status bar
+has the same control with a slider. The ⌘K palette also has these actions. The
 size applies to the editor and the preview together, and also in "Read" mode.
 kknow keeps the size after a restart.
 
@@ -370,7 +382,7 @@ full directory:
 - change the label color;
 - remove it from the list.
 
-To add a folder from disk, click "+" in the sidebar header. You can also drag
+To add a folder from disk, click the folder button in the sidebar header. You can also drag
 the folder from Finder into the window. While you drag files over the window, it
 shows a hint. When you drop the folder, it becomes a vault. You can drop many
 folders at the same time.
@@ -749,7 +761,9 @@ messages, and they do not go through this dictionary.
 
 You can attach your own program to a note, folder or vault. For example, publish
 a page to Confluence, run a linter or build an archive. In the window, the
-commands are in the tree row menu ("⋯" or right-click). The ⌘K palette also
+commands are in the tree row menu ("⋯" or right-click). While the menu is
+open, one key runs an item: the key shows on the right of the item, for example
+R for rename or 1 for the first command. The ⌘K palette also
 shows the commands for the open note. In the terminal, use `kknow commands` and
 `kknow run`.
 

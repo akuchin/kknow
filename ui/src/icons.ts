@@ -17,6 +17,8 @@ const PATHS = {
     "M12 10v6",
     "M9 13h6",
   ],
+  // Plus: a new note from a tree row.
+  plus: ["M12 5v14", "M5 12h14"],
   // Ellipsis: the menu of a tree row.
   dots: ["M6 12h.01", "M12 12h.01", "M18 12h.01"],
   // Right panel: preview.
@@ -97,7 +99,13 @@ const PATHS = {
     "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7",
     "M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
   ],
+  // Backlink: an arrow that comes back into the page.
+  backlink: ["M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4", "M10 17 5 12l5-5", "M5 12h11"],
   external: ["M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", "M15 3h6v6", "M10 14 21 3"],
+  // Run the last command: a triangle, as on a player.
+  play: ["M7 4v16l13-8z"],
+  // Collapse all: two chevrons that point at a line in the middle.
+  collapse: ["M4 12h16", "m8 3 4 4 4-4", "m8 21 4-4 4 4"],
   // Command: a terminal window with a prompt.
   terminal: [
     "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
@@ -112,10 +120,6 @@ const PATHS = {
   // Agent note and its removal.
   comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
-  // Note font size: a magnifier with plus and minus; "Aa" resets it.
-  zoomIn: ["M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14", "M16.5 16.5 21 21", "M8 11h6", "M11 8v6"],
-  zoomOut: ["M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14", "M16.5 16.5 21 21", "M8 11h6"],
-  textSize: ["M3 19 8 5l5 14", "M4.8 14h6.4", "M14 19l3.5-9 3.5 9", "M15.2 16h4.6"],
 } satisfies Record<string, string[]>;
 
 export type IconName = keyof typeof PATHS;

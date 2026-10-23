@@ -550,6 +550,79 @@ button.status-item.chip[data-tone="warning"]:hover {
   display: none;
 }
 
+/* Note font size: − / slider / + / value, as in the font panel of macOS apps. */
+.status-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+#status-scale-smaller,
+#status-scale-larger {
+  padding-inline: 5px;
+  font-size: 13px;
+}
+
+/* The value has a fixed width: from 90% to 100% the slider must not move. */
+#status-scale-value {
+  justify-content: flex-end;
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+}
+
+#status-scale-value[data-changed="true"] {
+  color: var(--accent);
+}
+
+#status-scale-slider {
+  width: 72px;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#status-scale-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--text) 18%, transparent);
+}
+
+#status-scale-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#status-scale-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--text) 18%, transparent);
+}
+
+#status-scale-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-raised);
+}
+
+/* In a narrow window the slider goes: − and + still work. */
+@media (max-width: 900px) {
+  #status-scale-slider {
+    display: none;
+  }
+}
+
 .status-vault-name {
   font-weight: 600;
   color: var(--text);
@@ -605,12 +678,12 @@ button.status-item.chip[data-tone="warning"]:hover {
 .menu {
   position: fixed;
   z-index: 20;
-  min-width: 200px;
+  min-width: 220px;
   max-width: 340px;
-  padding: 5px;
+  padding: 6px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 12px;
   box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
 }
 
@@ -641,9 +714,15 @@ button.status-item.chip[data-tone="warning"]:hover {
 /* A group header on a group other than the first gets a separator line. */
 .menu-title:not(:first-child),
 .menu-item + .menu-title {
-  margin-top: 4px;
+  margin-top: 5px;
   border-top: 1px solid var(--border);
-  padding-top: 8px;
+  padding-top: 9px;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
 }
 
 .menu-item {
@@ -657,8 +736,8 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--text);
   background: transparent;
   border: none;
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: 7px;
+  padding: 7px 10px;
   cursor: pointer;
 }
 
@@ -715,6 +794,29 @@ button.status-item.chip[data-tone="warning"]:hover {
 
 .menu-item[data-tone="danger"] {
   color: var(--danger);
+}
+
+.menu-item[data-tone="danger"]:hover:not(:disabled),
+.menu-item[data-tone="danger"]:focus-visible {
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+}
+
+.menu-item[data-tone="danger"] .icon {
+  color: inherit;
+}
+
+/* Key on the right: plain muted text, not a key cap. A column of caps looks
+   heavy next to the labels; a letter is enough to read. */
+.menu-item .menu-key {
+  min-width: 1.4em;
+  margin-left: 12px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: right;
+  color: var(--text-muted);
+  background: none;
+  border: none;
 }
 
 .menu-item[data-tone="warning"] {
@@ -873,8 +975,8 @@ kbd {
   color: var(--text);
   background: transparent;
   border: none;
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: 7px;
+  padding: 7px 10px;
   cursor: pointer;
 }
 
@@ -995,9 +1097,30 @@ kbd {
   cursor: default;
 }
 
-/* "⋯" appears on hover and keyboard focus: a permanent column of ellipses in
-   the tree is noise. */
-.note-list .row-menu {
+/* Row buttons ("⋯", and "+" on vaults and folders) appear on hover and
+   keyboard focus: a permanent column of icons in the tree is noise. Hidden,
+   they take no width, so the name gets the whole row. Zero width, not
+   `display: none`: Tab still reaches the buttons, and the focus shows them. */
+.note-list .row-actions {
+  flex: none;
+  display: flex;
+  width: 0;
+  overflow: hidden;
+}
+
+.tree-row:hover .row-actions,
+.tree-row:focus-within .row-actions,
+.tree-row:has(.row-menu[aria-expanded="true"]) .row-actions {
+  width: auto;
+}
+
+/* The rename field takes the whole row: the buttons would only crowd it. */
+.tree-row:has(.tree-rename) .row-actions {
+  display: none;
+}
+
+.note-list .row-menu,
+.note-list .row-plus {
   flex: none;
   width: 26px;
   padding: 6px 4px;
@@ -1006,18 +1129,23 @@ kbd {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  opacity: 0;
 }
 
-.note-list .row-menu .icon {
+.note-list .row-menu .icon,
+.note-list .row-plus .icon {
   width: 16px;
   height: 16px;
 }
 
-.tree-row:hover .row-menu,
-.note-list .row-menu:focus-visible,
-.note-list .row-menu[aria-expanded="true"] {
-  opacity: 1;
+.note-list .tree-row .row-menu:hover,
+.note-list .tree-row .row-plus:hover:not(:disabled) {
+  color: var(--text);
+  background: rgb(127 127 127 / 14%);
+}
+
+.note-list .row-plus:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* In-place rename of a vault, folder or note: the field replaces the row and
@@ -1047,14 +1175,35 @@ kbd {
 /* The open note: a background plus an edge bar, so peripheral vision finds it
    in the list without reading.
 
-   The row selector keeps the mark on hover: `.tree-row button:hover` clears
-   the button background (the row draws it), and without this pair a hover on
-   the open note would erase its accent. */
-.note-list .tree-row button.active,
+   In the tree the row draws the mark, not the button: the row also holds "⋯",
+   and a mark on the button alone leaves "⋯" on a patch of another color. The
+   bar is a separate strip, not an inset shadow: a shadow follows the rounded
+   corners and bends. */
 .note-list button.active {
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.note-list .tree-row > button.active {
+  background: transparent;
+  box-shadow: none;
+}
+
+.tree-row:has(> button.active) {
+  position: relative;
+  background: var(--accent-soft);
+}
+
+.tree-row:has(> button.active)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 /* Note and folder names are always one line with an ellipsis.
@@ -1966,6 +2115,92 @@ pre.mermaid[data-error]::after {
 /* `.ghost` sets display and would override the `hidden` attribute. */
 #toggle-notes[hidden] {
   display: none;
+}
+
+/* Note toolbar: bookmarks, the run button and backlinks of the open note. */
+.note-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.note-tools[hidden],
+.note-tools button[hidden] {
+  display: none;
+}
+
+/* A counter next to the icon; empty, it takes no room. */
+.note-tools button > span:not(:empty) {
+  margin-left: 3px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ribbon fills when the note has bookmarks. */
+#note-bookmarks[data-on="true"] {
+  color: var(--accent);
+}
+
+#note-bookmarks[data-on="true"] .icon {
+  fill: currentColor;
+}
+
+/* Run and its menu: two halves of one button. The group, not a half, gets the
+   hover frame: a frame around one half looked like a cut button. A thin line
+   between the halves shows that each half is a separate target. */
+.split-button {
+  display: inline-flex;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.split-button:hover,
+.split-button:focus-within {
+  background: var(--bg-raised);
+  border-color: var(--border);
+}
+
+.split-button > button.ghost {
+  border: none;
+  border-radius: 0;
+}
+
+.split-button > button.ghost:hover {
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+  border-color: transparent;
+}
+
+.split-button > button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.split-button > button:last-child {
+  padding-inline: 1px;
+  border-radius: 0 5px 5px 0;
+}
+
+.split-button:hover > button:last-child,
+.split-button:focus-within > button:last-child {
+  box-shadow: inset 1px 0 var(--border);
+}
+
+.split-button > button:last-child .icon {
+  width: 11px;
+  height: 11px;
+}
+
+/* Sidebar toolbar: small buttons that do not compete with the tree. */
+.sidebar-tools {
+  display: flex;
+  gap: 1px;
+}
+
+.sidebar-tools .icon {
+  width: 15px;
+  height: 15px;
 }
 
 #toggle-notes[aria-pressed="true"] {

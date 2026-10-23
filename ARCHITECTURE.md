@@ -502,6 +502,14 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     submenus.
   - The section order is the same as in file managers: create, rename,
     clipboard and system, custom commands, delete.
+  - The custom commands section has the title "Commands", without the name of
+    the note or folder. The menu opens from that row or from the header, so
+    the name only made the line long.
+  - Each frequent item has a key of its own, as in macOS context menus:
+    R rename, M move, D duplicate, C copy path, L copy link, O open, S reveal
+    in Finder, E edit commands, ⌫ delete. The first nine custom commands get
+    digits. The menu matches `event.code`, not `event.key`, so the keys work
+    with the Russian layout on too.
   - The result goes to the status bar. The output goes to a small popup next to
     it. The popup has a summary with the exit code and the time, and both
     streams as text.
@@ -541,15 +549,35 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     tree.
   - In the centre: the name and the location of the note (the vault label,
     vault / folder). The tooltip shows the full path.
-  - On the right: 💬, the mode, search (⌘K) and new note.
+  - On the right: 💬, the note toolbar, the mode and search (⌘K).
 - The note name is a button. Its menu is the same as the menu of a tree row
   (`openCommandMenu`). For a standalone file, it is the menu of the file row.
 
   The header has no menu of its own on purpose. Two lists of actions for the
-  same note would become different with the first new command. There is also
-  no separate "Commands" button: the commands are in this menu. "Rename" from
+  same note would become different with the first new command. "Rename" from
   the header expands a collapsed sidebar, because the field appears in the tree
   row.
+- The note toolbar (`#note-tools`, `renderNoteTools`) has bookmarks, run and
+  backlinks. A toolbar button gets an action by one of these rules: the action
+  is frequent, or it has a state that you must see, or both. Rare and
+  dangerous actions (rename, move, delete) stay in the note menu only.
+  - A button does not replace a menu item. The run list is `commandItems`, the
+    same list as in the note menu, so the two cannot become different.
+  - Bookmarks belong to lines, not to the note. Thus the button is not a
+    toggle: its menu lists the bookmarks of the note. The filled ribbon shows
+    that the note has bookmarks. The toggle in the menu works on the cursor
+    line, as ⌘⇧B does.
+  - ▶ repeats the last command (`kknow:command:last`), from any menu. Usually
+    you run one command many times, for example a publish. If the open note
+    does not have that command, ▶ opens the list.
+  - Backlinks are also in the panel under the preview. The button is for the
+    "Edit" mode, which hides the preview. With zero links the button stays
+    disabled and does not disappear: a toolbar that changes its width from
+    note to note moves the buttons away from the cursor.
+  - A standalone file has no bookmarks and no backlinks, so only ▶ is visible.
+- The sidebar header has the tree toolbar: new note, new folder, collapse all
+  vaults, add a vault. "New note" moved here from the header: the field for the
+  name is in the sidebar. A click on it or ⌘N expands a collapsed sidebar.
 - History keeps places, not notes: `{ vault, id }` or the path of a standalone
   file. "Back" can go to a different vault. While the window itself moves
   through history (`travelling`), it does not record opens. If a place does not
@@ -662,7 +690,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - You can see edits in a different vault. `onExternalChange` reads again the
   tree of the vault that sent the event.
 - There are three ways to add a vault, and all of them meet in `adoptVaults`:
-  - "+" in the sidebar header;
+  - the folder button in the sidebar header;
   - "Add a vault…" in the status bar menu;
   - a folder that you drag into the window.
 
@@ -1030,6 +1058,13 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   change, the editor calls `requestMeasure()`. If not, CodeMirror computes line
   heights with the old font. The preview gets `font-size` in percent, and
   headings in `em` grow with it.
+- The control is in the status bar: −, a slider, + and the value (a click
+  resets to 100%). It is visible while a file is open, also at 100%. Before,
+  the size was a section of the note menu, and the status bar showed only a
+  changed value. That section made each context menu longer for a rare
+  action. A control that appears only after the first change is hard to find.
+  The slider sends a difference in steps to `changeCurrentScale`, so ⌘=/⌘−,
+  the palette and the slider use one path.
 - A note rename moves its size (`moveScale`). A folder move does not. It is a
   small thing, and it would need a loop over all keys.
 - ⌘0 is free, because vaults use ⌘1…⌘9. Tauri does not bind window zoom to

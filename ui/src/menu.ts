@@ -5,6 +5,10 @@
  * language, conflict resolution. It does not know what it shows; callers
  * give it ready items.
  *
+ * An item can have a key of its own: while the menu is open, that key runs the
+ * item, as in the context menus of macOS apps. The key shows on the right,
+ * where a global shortcut shows on other items.
+ *
  * Only one menu is open at a time: opening a second one closes the first.
  * The menu lives in `document.body` because its anchor button is in the
  * header or the status bar, and both clip their content.
@@ -17,8 +21,13 @@ export interface MenuItem {
   label: string;
   /** Second line: provider, path, last sync time. */
   detail?: string;
-  /** Shortcut shown on the right. */
+  /** Global shortcut shown on the right, for example `⌘,`. */
   hint?: string;
+  /**
+   * Key that runs the item while the menu is open: a Latin letter, a digit,
+   * `,` or `⌫`. It is shown instead of `hint`.
+   */
+  key?: string;
   glyph?: IconName;
   /** Vault color label: a color name from the set in `styles.css`. */
   color?: string;
@@ -61,6 +70,12 @@ export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
       title.className = "menu-title";
       title.textContent = section.title;
       root.append(title);
+    } else if (root.childElementCount > 0) {
+      // A group without a title still needs a border from the group above.
+      const line = document.createElement("div");
+      line.className = "menu-separator";
+      line.setAttribute("role", "separator");
+      root.append(line);
     }
     for (const item of section.items) root.append(itemButton(item));
   }
@@ -136,9 +151,12 @@ function itemButton(item: MenuItem): HTMLButtonElement {
   }
   button.append(text);
 
-  if (item.hint) {
+  if (item.key) button.dataset.key = keyCode(item.key);
+  const shortcut = item.key ?? item.hint;
+  if (shortcut) {
     const hint = document.createElement("kbd");
-    hint.textContent = item.hint;
+    hint.className = "menu-key";
+    hint.textContent = shortcut;
     button.append(hint);
   }
 
@@ -174,6 +192,20 @@ function place(root: HTMLElement, anchor: HTMLElement): void {
   }
 }
 
+/**
+ * Physical key of a menu key, as in `KeyboardEvent.code`.
+ *
+ * The code does not depend on the layout: with the Russian layout on, the key
+ * with the Latin "R" still runs the item that shows "R".
+ */
+function keyCode(key: string): string {
+  if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
+  if (/^[0-9]$/.test(key)) return `Digit${key}`;
+  if (key === ",") return "Comma";
+  if (key === "⌫") return "Backspace";
+  return key;
+}
+
 function enabledItems(root: HTMLElement): HTMLButtonElement[] {
   return [...root.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)")];
 }
@@ -199,6 +231,13 @@ function onKeyDown(event: KeyboardEvent): void {
   } else if (event.key === "End") {
     event.preventDefault();
     items[items.length - 1]?.focus();
+  } else if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+    // The item's own key. With a modifier it is a global shortcut, not ours.
+    const item = items.find((button) => button.dataset.key === event.code);
+    if (item) {
+      event.preventDefault();
+      item.click();
+    }
   }
 }
 

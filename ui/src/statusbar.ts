@@ -5,8 +5,8 @@
  * about the vault: which one is active, when it last synced (sync sits next to
  * the name because it belongs to the vault, not the window), and the message.
  * The right side is about the note and the window: the last command result,
- * problems in other vaults, words, scale, and one button for theme, language
- * and settings.
+ * problems in other vaults, words, the font size of the note, and one button
+ * for theme, language and settings.
  *
  * The full file path is gone: the header shows the folder, and "Reveal in
  * Finder" and "Copy path" are in the note menu. The path was the longest
@@ -18,6 +18,7 @@
 
 import { icon, iconMarkup } from "./icons";
 import { t } from "./i18n";
+import { SCALE_PERCENT } from "./note-scale";
 
 /** Words per minute for the reading time estimate. */
 const READING_SPEED = 200;
@@ -37,8 +38,8 @@ export interface StatusBarActions {
   run: () => void;
   /** Chip: a conflict or a failure in another vault. */
   chip: (anchor: HTMLElement) => void;
-  /** Note scale: reset to normal. */
-  scale: () => void;
+  /** Note font size: steps up or down; 0 resets to normal. */
+  scale: (steps: number) => void;
   /** Theme, language and settings in one menu. */
   more: (anchor: HTMLElement) => void;
 }
@@ -55,7 +56,13 @@ export class StatusBar {
   private readonly runIcon: HTMLSpanElement;
   private readonly runText: HTMLSpanElement;
   private readonly chip: HTMLButtonElement;
-  private readonly scale: HTMLButtonElement;
+  private readonly scale: HTMLDivElement;
+  private readonly scaleSlider: HTMLInputElement;
+  private readonly scaleSmaller: HTMLButtonElement;
+  private readonly scaleLarger: HTMLButtonElement;
+  private readonly scaleValue: HTMLButtonElement;
+  /** Current scale in percents: the slider moves by steps from it. */
+  private scalePercent = 100;
 
   constructor(root: HTMLElement, actions: StatusBarActions) {
     root.innerHTML = `
@@ -75,7 +82,13 @@ export class StatusBar {
       </button>
       <button class="status-item chip" id="status-chip" aria-haspopup="menu" hidden></button>
       <span class="status-item static" id="status-words"></span>
-      <button class="status-item" id="status-scale" hidden></button>
+      <div class="status-scale" id="status-scale" role="group" hidden>
+        <button class="status-item" id="status-scale-smaller">−</button>
+        <input type="range" id="status-scale-slider" min="${SCALE_PERCENT.min}"
+               max="${SCALE_PERCENT.max}" step="${SCALE_PERCENT.step}" value="100" />
+        <button class="status-item" id="status-scale-larger">+</button>
+        <button class="status-item" id="status-scale-value">100%</button>
+      </div>
       <button class="status-item" id="status-more" aria-haspopup="menu">
         ${iconMarkup("gear")}
       </button>
@@ -96,20 +109,40 @@ export class StatusBar {
     this.runText = pick(".status-run-text");
     this.chip = pick("#status-chip");
     this.scale = pick("#status-scale");
+    this.scaleSlider = pick("#status-scale-slider");
+    this.scaleSmaller = pick("#status-scale-smaller");
+    this.scaleLarger = pick("#status-scale-larger");
+    this.scaleValue = pick("#status-scale-value");
     const more = pick<HTMLButtonElement>("#status-more");
 
     this.vault.onclick = () => actions.vault(this.vault);
     this.sync.onclick = () => actions.sync();
     this.run.onclick = () => actions.run();
     this.chip.onclick = () => actions.chip(this.chip);
-    this.scale.onclick = () => actions.scale();
+    this.scaleSmaller.onclick = () => actions.scale(-1);
+    this.scaleLarger.onclick = () => actions.scale(1);
+    this.scaleValue.onclick = () => actions.scale(0);
+    // The slider sends the difference in steps: 0 would mean "reset".
+    this.scaleSlider.oninput = () => {
+      const steps = Math.round(
+        (Number(this.scaleSlider.value) - this.scalePercent) / SCALE_PERCENT.step,
+      );
+      if (steps !== 0) actions.scale(steps);
+    };
     more.onclick = () => actions.more(more);
 
     // The gear has no visible label, so `aria-label` tells screen readers what
     // it opens. The sync label shows a value, not a purpose.
     more.title = t("statusbar.more");
     more.setAttribute("aria-label", t("statusbar.more"));
-    this.scale.title = t("statusbar.scale.title");
+    this.scale.setAttribute("aria-label", t("statusbar.scale.title"));
+    this.scaleSlider.title = t("statusbar.scale.title");
+    this.scaleSlider.setAttribute("aria-label", t("statusbar.scale.title"));
+    this.scaleSmaller.title = t("statusbar.scale.smaller");
+    this.scaleSmaller.setAttribute("aria-label", t("statusbar.scale.smaller"));
+    this.scaleLarger.title = t("statusbar.scale.larger");
+    this.scaleLarger.setAttribute("aria-label", t("statusbar.scale.larger"));
+    this.scaleValue.title = t("statusbar.scale.reset");
     this.sync.setAttribute("aria-label", t("panel.sync.title"));
     this.setWords(0);
   }
@@ -184,12 +217,24 @@ export class StatusBar {
   }
 
   /**
-   * Scale of the open note. Visible only when it is not 100%: otherwise a
-   * larger font looks the same as a large theme.
+   * Font size of the open note: − / slider / + / value. The value resets to
+   * 100%. `null` hides the control: nothing is open, so there is nothing to
+   * scale.
+   *
+   * The control is always visible with a note open, not only away from 100%.
+   * Before, the size was in the note menu and the status bar showed only a
+   * changed value. A control that appears only after the first change cannot
+   * be found.
    */
-  setScale(scale: number): void {
-    this.scale.hidden = scale === 1;
-    this.scale.textContent = `${Math.round(scale * 100)}%`;
+  setScale(scale: number | null): void {
+    this.scale.hidden = scale === null;
+    if (scale === null) return;
+    this.scalePercent = Math.round(scale * 100);
+    this.scaleSlider.value = String(this.scalePercent);
+    this.scaleValue.textContent = `${this.scalePercent}%`;
+    this.scaleSmaller.disabled = this.scalePercent <= SCALE_PERCENT.min;
+    this.scaleLarger.disabled = this.scalePercent >= SCALE_PERCENT.max;
+    this.scaleValue.dataset.changed = String(this.scalePercent !== 100);
   }
 }
 

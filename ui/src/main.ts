@@ -37,7 +37,7 @@ import { icon, iconMarkup, type IconName } from "./icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
-import { canStep, moveScale, scaleLabel, scaleOf, stepScale } from "./note-scale";
+import { moveScale, scaleLabel, scaleOf, stepScale } from "./note-scale";
 import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
@@ -96,6 +96,30 @@ app.innerHTML = `
               title="${t("topbar.notes.title")}">
         ${iconMarkup("comment")}<span id="notes-count"></span>
       </button>
+      <!-- Note toolbar: the frequent note actions that the note menu hides.
+           The menu keeps them too; these buttons only make them one click
+           away and show their state. -->
+      <div id="note-tools" class="note-tools" role="toolbar"
+           aria-label="${t("topbar.tools")}" hidden>
+        <button id="note-bookmarks" class="ghost bare" aria-haspopup="menu"
+                title="${t("topbar.bookmarks.title")}" aria-label="${t("topbar.bookmarks.title")}">
+          ${iconMarkup("bookmark")}<span id="bookmarks-count"></span>
+        </button>
+        <div class="split-button">
+          <button id="run-last" class="ghost bare" title="${t("topbar.commands.title")}"
+                  aria-label="${t("topbar.commands.title")}">
+            ${iconMarkup("play")}
+          </button>
+          <button id="run-menu" class="ghost bare" aria-haspopup="menu"
+                  title="${t("topbar.commands.title")}" aria-label="${t("topbar.commands.title")}">
+            ${iconMarkup("caret")}
+          </button>
+        </div>
+        <button id="note-backlinks" class="ghost bare" aria-haspopup="menu"
+                title="${t("topbar.backlinks.title")}" aria-label="${t("topbar.backlinks.title")}">
+          ${iconMarkup("backlink")}<span id="backlinks-count"></span>
+        </button>
+      </div>
       <div class="mode-switch" role="group" aria-label="${t("topbar.mode")}"
            title="${t("topbar.mode")}">
         ${MODES.map(
@@ -111,20 +135,32 @@ app.innerHTML = `
         <span>${t("topbar.search")}</span>
         <kbd>⌘K</kbd>
       </button>
-      <button id="new-note" class="ghost bare" title="${t("topbar.newNote.title")}"
-              aria-label="${t("topbar.newNote.title")}">
-        ${iconMarkup("filePlus")}
-      </button>
     </div>
   </header>
 
   <aside class="sidebar" id="sidebar">
+    <!-- Sidebar toolbar: actions on the tree. New note and folder go to the
+         folder of the open note in the active vault, as ⌘N does. -->
     <div class="sidebar-head">
       <span class="sidebar-title">${t("sidebar.vaults")}</span>
-      <button id="add-vault" class="ghost bare" title="${t("menu.vault.add")}"
-              aria-label="${t("menu.vault.add")}">
-        ${iconMarkup("folderPlus")}
-      </button>
+      <div class="sidebar-tools" role="toolbar" aria-label="${t("sidebar.tools")}">
+        <button id="new-note" class="ghost bare" title="${t("topbar.newNote.title")}"
+                aria-label="${t("topbar.newNote.title")}">
+          ${iconMarkup("filePlus")}
+        </button>
+        <button id="new-folder" class="ghost bare" title="${t("sidebar.newFolder.title")}"
+                aria-label="${t("sidebar.newFolder.title")}">
+          ${iconMarkup("folderPlus")}
+        </button>
+        <button id="collapse-all" class="ghost bare" title="${t("sidebar.collapseAll")}"
+                aria-label="${t("sidebar.collapseAll")}">
+          ${iconMarkup("collapse")}
+        </button>
+        <button id="add-vault" class="ghost bare" title="${t("menu.vault.add")}"
+                aria-label="${t("menu.vault.add")}">
+          ${iconMarkup("folder")}
+        </button>
+      </div>
     </div>
     <form id="new-note-form" class="new-note" hidden>
       <input id="new-note-name" type="text" placeholder="${t("sidebar.newNote.placeholder")}"
@@ -232,6 +268,15 @@ const el = {
   runHide: document.querySelector<HTMLButtonElement>("#run-hide")!,
   toggleNotes: document.querySelector<HTMLButtonElement>("#toggle-notes")!,
   notesCount: document.querySelector<HTMLSpanElement>("#notes-count")!,
+  noteTools: document.querySelector<HTMLElement>("#note-tools")!,
+  noteBookmarks: document.querySelector<HTMLButtonElement>("#note-bookmarks")!,
+  bookmarksCount: document.querySelector<HTMLSpanElement>("#bookmarks-count")!,
+  runLast: document.querySelector<HTMLButtonElement>("#run-last")!,
+  runMenu: document.querySelector<HTMLButtonElement>("#run-menu")!,
+  noteBacklinks: document.querySelector<HTMLButtonElement>("#note-backlinks")!,
+  backlinksCount: document.querySelector<HTMLSpanElement>("#backlinks-count")!,
+  newFolder: document.querySelector<HTMLButtonElement>("#new-folder")!,
+  collapseAll: document.querySelector<HTMLButtonElement>("#collapse-all")!,
   notesFloat: document.querySelector<HTMLElement>("#notes-float")!,
   notesList: document.querySelector<HTMLUListElement>("#notes-list")!,
   notesHide: document.querySelector<HTMLButtonElement>("#notes-hide")!,
@@ -393,7 +438,7 @@ const status = new StatusBar(el.statusbar, {
   sync: () => void runSync(),
   run: () => showRunOutput(el.runFloat.hidden),
   chip: (anchor) => openChipMenu(anchor),
-  scale: () => changeCurrentScale(0),
+  scale: (steps) => changeCurrentScale(steps),
   more: (anchor) => openMoreMenu(anchor),
 });
 
@@ -712,7 +757,9 @@ function closeNote(): void {
   el.preview.innerHTML = "";
   el.backlinks.replaceChildren();
   status.setWords(0);
+  applyScale();
   markActive(null);
+  renderNoteTools();
 }
 
 /** Shows a note. Use `keepEditor` when the editor text is already current. */
@@ -751,7 +798,10 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   if (!view.file && vault && reveal(vault.id, view.id)) renderTree();
   markActive(view.id);
   // The palette needs this note's commands and collects actions synchronously.
+  // The refresh drops the old list before its first await, so the toolbar
+  // after it does not offer the command of the previous note.
   void refreshNoteCommands();
+  renderNoteTools();
 }
 
 /** Saves the reading position of the open note before it changes. */
@@ -778,15 +828,11 @@ function applyScale(): void {
   const scale = current ? scaleOf(positionKey(current)) : 1;
   editor.setScale(scale);
   el.preview.style.fontSize = scale === 1 ? "" : `${scale * 100}%`;
-  status.setScale(scale);
+  // Without an open file there is nothing to scale: the control hides.
+  status.setScale(current ? scale : null);
 }
 
-/**
- * Larger, smaller or default (`steps` = 0) for the file with this key.
- *
- * The tree menu also calls this for a note that is not open: then the size is
- * only saved and applies when the note opens.
- */
+/** Larger, smaller or default (`steps` = 0) for the file with this key. */
 function changeScale(key: string, steps: number): void {
   const scale = stepScale(key, steps);
   if (current && positionKey(current) === key) {
@@ -795,39 +841,9 @@ function changeScale(key: string, steps: number): void {
   }
 }
 
-/** The same for the open file: shortcuts and the palette. */
+/** The same for the open file: shortcuts, the palette and the status bar. */
 function changeCurrentScale(steps: number): void {
   if (current) changeScale(positionKey(current), steps);
-}
-
-/** Font size menu section. The title shows the current size. */
-function scaleSection(key: string): MenuSection {
-  return {
-    title: t("menu.scale", { scale: scaleLabel(scaleOf(key)) }),
-    items: [
-      {
-        label: t("menu.scale.larger"),
-        glyph: "zoomIn",
-        hint: "⌘=",
-        disabled: !canStep(key, 1),
-        run: () => changeScale(key, 1),
-      },
-      {
-        label: t("menu.scale.smaller"),
-        glyph: "zoomOut",
-        hint: "⌘−",
-        disabled: !canStep(key, -1),
-        run: () => changeScale(key, -1),
-      },
-      {
-        label: t("menu.scale.reset"),
-        glyph: "textSize",
-        hint: "⌘0",
-        disabled: scaleOf(key) === 1,
-        run: () => changeScale(key, 0),
-      },
-    ],
-  };
 }
 
 function renderBacklinks(view: NoteView): void {
@@ -1060,7 +1076,9 @@ function vaultItem(entry: VaultView): HTMLLIElement {
     openVaultRowMenu(anchor, entry),
   );
 
-  row.append(button, more);
+  const plus = rowPlus(t("sidebar.folder.newNote", { name: entry.name }), entry.id, "");
+  plus.disabled = !entry.available;
+  row.append(button, rowActions(more, plus));
   // A right click opens the same menu, as users expect in a tree.
   row.oncontextmenu = (event) => {
     event.preventDefault();
@@ -1185,6 +1203,37 @@ function rowMenu(title: string, open: (anchor: HTMLElement) => void): HTMLButton
   return more;
 }
 
+/**
+ * The "+" button of a vault or folder row: a new note inside it.
+ *
+ * Creation is the most frequent action on a folder, so it gets a button of
+ * its own next to "⋯", as in the sidebar of Claude. An inactive vault becomes
+ * active first, because the core creates in the active vault.
+ */
+function rowPlus(title: string, vaultId: string, folder: string): HTMLButtonElement {
+  const plus = document.createElement("button");
+  plus.className = "row-plus";
+  plus.title = title;
+  plus.setAttribute("aria-label", title);
+  plus.append(icon("plus"));
+  plus.onclick = async () => {
+    if (vaultId !== vault?.id) await switchVault(vaultId);
+    openNewNoteForm(folder ? `${folder}/` : "", "note");
+  };
+  return plus;
+}
+
+/**
+ * The row buttons on the right. They take no width until hover or keyboard
+ * focus, so the name gets the whole row.
+ */
+function rowActions(...buttons: HTMLButtonElement[]): HTMLSpanElement {
+  const actions = document.createElement("span");
+  actions.className = "row-actions";
+  actions.append(...buttons);
+  return actions;
+}
+
 function folderItem(folder: Folder, vaultId: string): HTMLLIElement {
   const item = document.createElement("li");
   const open = !foldersOf(vaultId).has(folder.path);
@@ -1205,9 +1254,8 @@ function folderItem(folder: Folder, vaultId: string): HTMLLIElement {
   button.append(arrow, name);
 
   const target: CommandTarget = { kind: "folder", name: folder.path, vault: vaultId };
-  const title = t("commands.title.folder", { name: folder.name });
   const more = rowMenu(t("sidebar.folder.menu", { name: folder.name }), (anchor) =>
-    void openCommandMenu(anchor, target, title),
+    void openCommandMenu(anchor, target),
   );
 
   const row = document.createElement("div");
@@ -1215,10 +1263,11 @@ function folderItem(folder: Folder, vaultId: string): HTMLLIElement {
   // Inline rename finds the row by these attributes.
   row.dataset.path = folder.path;
   row.dataset.vault = vaultId;
-  row.append(button, more);
+  const plus = rowPlus(t("sidebar.folder.newNote", { name: folder.name }), vaultId, folder.path);
+  row.append(button, rowActions(more, plus));
   row.oncontextmenu = (event) => {
     event.preventDefault();
-    void openCommandMenu(more, target, title);
+    void openCommandMenu(more, target);
   };
   item.append(row);
 
@@ -1285,19 +1334,18 @@ function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
   button.append(heading);
 
   const target: CommandTarget = { kind: "note", name: note.id, vault: vaultId };
-  const title = t("commands.title.note", { name: note.title });
   const more = rowMenu(t("sidebar.note.menu", { name: note.title }), (anchor) =>
-    void openCommandMenu(anchor, target, title),
+    void openCommandMenu(anchor, target),
   );
 
   const row = document.createElement("div");
   row.className = "tree-row note-row";
   row.dataset.id = note.id;
   row.dataset.vault = vaultId;
-  row.append(button, more);
+  row.append(button, rowActions(more));
   row.oncontextmenu = (event) => {
     event.preventDefault();
-    void openCommandMenu(more, target, title);
+    void openCommandMenu(more, target);
   };
   item.append(row);
   return item;
@@ -1362,6 +1410,7 @@ function toggleCurrentBookmark(): void {
 async function saveBookmarks(lines: number[], set: boolean): Promise<void> {
   if (!current || current.file) return;
   paintBookmarks(el.preview, lines);
+  renderNoteTools();
   try {
     await api.setBookmarks(current.id, lines, editor.getText());
     setStatus(t(set ? "status.bookmarkSet" : "status.bookmarkRemoved"));
@@ -1480,7 +1529,7 @@ function openVaultMenu(anchor: HTMLElement): void {
     { title: t("menu.vaults"), items },
     {
       items: [
-        { label: t("menu.vault.add"), glyph: "folder", run: () => void pickVault() },
+        { label: t("menu.vault.add"), glyph: "folder", key: "N", run: () => void pickVault() },
         {
           label: t("menu.vault.settings"),
           glyph: "gear",
@@ -1499,11 +1548,7 @@ function openVaultMenu(anchor: HTMLElement): void {
  * this note, folder or vault. A copy of this rule in the window could drift
  * from the terminal.
  */
-async function openCommandMenu(
-  anchor: HTMLElement,
-  target: CommandTarget,
-  title: string,
-): Promise<void> {
+async function openCommandMenu(anchor: HTMLElement, target: CommandTarget): Promise<void> {
   const items = await commandItems(target);
   if (!items) return;
 
@@ -1522,11 +1567,13 @@ async function openCommandMenu(
     label: t("commands.rename"),
     glyph: "pencil",
     detail: t("commands.rename.hint"),
+    key: "R",
     run: () => startTreeRename(target),
   };
   const move: MenuItem = {
     label: t("commands.move"),
     glyph: "folderMove",
+    key: "M",
     run: () => openMoveMenu(anchor, target),
   };
 
@@ -1543,11 +1590,13 @@ async function openCommandMenu(
         {
           label: t("commands.folder.newNote"),
           glyph: "filePlus",
+          key: "N",
           run: () => void inMine("note"),
         },
         {
           label: t("commands.folder.newFolder"),
           glyph: "folderPlus",
+          key: "F",
           run: () => void inMine("folder"),
         },
       ],
@@ -1558,11 +1607,13 @@ async function openCommandMenu(
         {
           label: t("commands.copyPath"),
           glyph: "copy",
+          key: "C",
           run: () => void copyText(absolutePath(vaultId, folder)),
         },
         {
           label: t("commands.reveal"),
           glyph: "folder",
+          key: "S",
           run: () => void revealFolder(folder, vaultId),
         },
       ],
@@ -1573,6 +1624,7 @@ async function openCommandMenu(
           label: t("commands.folder.delete"),
           glyph: "close",
           tone: "danger",
+          key: "⌫",
           run: () => void removeFolder(folder, vaultId),
         },
       ],
@@ -1588,6 +1640,7 @@ async function openCommandMenu(
         {
           label: t("commands.note.duplicate"),
           glyph: "filePlus",
+          key: "D",
           run: () => void duplicateNote(note, vaultId),
         },
       ],
@@ -1597,21 +1650,25 @@ async function openCommandMenu(
         {
           label: t("commands.copyPath"),
           glyph: "copy",
+          key: "C",
           run: () => void copyText(absolutePath(vaultId, `${note}.md`)),
         },
         {
           label: t("commands.note.copyLink"),
           glyph: "link",
+          key: "L",
           run: () => void copyText(`[[${note}]]`),
         },
         {
           label: t("commands.note.openDefault"),
           glyph: "external",
+          key: "O",
           run: () => void openExternally(note, vaultId),
         },
         {
           label: t("commands.reveal"),
           glyph: "folder",
+          key: "S",
           run: () => void revealNoteIn(note, vaultId),
         },
       ],
@@ -1622,24 +1679,20 @@ async function openCommandMenu(
           label: t("commands.note.delete"),
           glyph: "close",
           tone: "danger",
+          key: "⌫",
           run: () => void removeNote(note, vaultId),
         },
       ],
     });
   }
 
-  // Font size applies to notes only: folders and vaults have no text.
-  const scale: MenuSection[] =
-    target.kind === "note" && target.name && vaultId
-      ? [scaleSection(noteKey(vaultId, target.name))]
-      : [];
-
   openMenu(anchor, [
     ...creation,
     ...files,
     ...system,
-    ...scale,
-    { title, items },
+    // The menu opens from the row or the header, so it is clear whose
+    // commands these are: the title does not repeat the name.
+    { title: t("commands.title"), items },
     ...removal,
     editCommandsSection(),
   ]);
@@ -1665,10 +1718,13 @@ async function commandItems(target: CommandTarget): Promise<MenuItem[] | null> {
   }
 
   return commands.length > 0
-    ? commands.map((command) => ({
+    ? commands.map((command, index) => ({
         label: command.name,
         detail: command.kind,
         glyph: "terminal" as const,
+        // The first nine commands run by digit: they have no letters to
+        // spare, and their names are the user's.
+        key: index < 9 ? String(index + 1) : undefined,
         run: () => void runCommand(command, target),
       }))
     : [{ label: t("commands.none"), disabled: true, run: () => {} }];
@@ -1682,6 +1738,7 @@ function editCommandsSection(): MenuSection {
         label: t("commands.edit"),
         detail: t("commands.edit.detail"),
         glyph: "code",
+        key: "E",
         run: () => void editCommands(),
       },
     ],
@@ -1700,6 +1757,8 @@ async function runCommand(command: CommandView, target: CommandTarget): Promise<
   }
 
   await flushPendingSave();
+  localStorage.setItem(LAST_COMMAND, command.id);
+  renderNoteTools();
   setStatus(t("commands.running", { name: command.name }), "work");
 
   try {
@@ -1791,7 +1850,10 @@ async function refreshNoteCommands(): Promise<void> {
   try {
     const listed = await api.listCommands(target);
     // Another note can open during the core call; then the answer is stale.
-    if (noteCommandsFor === key) noteCommands = listed.commands;
+    if (noteCommandsFor === key) {
+      noteCommands = listed.commands;
+      renderNoteTools();
+    }
   } catch (error) {
     fail(error);
   }
@@ -1825,6 +1887,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("sidebar.vault.activate"),
           glyph: "check",
+          key: "A",
           disabled: entry.active || !entry.available,
           run: () => void switchVault(entry.id),
         },
@@ -1832,11 +1895,13 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
           label: t("sidebar.vault.rename"),
           glyph: "note",
           detail: t("sidebar.vault.rename.hint"),
+          key: "R",
           run: () => startRename(entry),
         },
         {
           label: t("sidebar.vault.newFolder"),
           glyph: "folderPlus",
+          key: "F",
           disabled: !entry.available,
           run: () =>
             void (async () => {
@@ -1847,6 +1912,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("settings.vaults.finder"),
           glyph: "folder",
+          key: "S",
           disabled: !entry.available,
           run: () => void revealVault(entry.id),
         },
@@ -1856,13 +1922,10 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
           // from the list", which must not wait for a folder busy with sync.
           label: t("commands.open"),
           glyph: "terminal",
+          key: "K",
           disabled: !entry.available,
           run: () =>
-            void openCommandMenu(
-              anchor,
-              { kind: "vault", vault: entry.id },
-              t("commands.title.vault", { name: entry.name }),
-            ),
+            void openCommandMenu(anchor, { kind: "vault", vault: entry.id }),
         },
         {
           label: t("menu.vault.settings"),
@@ -1888,6 +1951,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
           glyph: "unlink",
           tone: "danger",
           detail: t("settings.vaults.remove.detail"),
+          key: "⌫",
           run: () => void forgetVault(entry),
         },
       ],
@@ -1941,7 +2005,7 @@ function startTreeRename(target: CommandTarget): void {
 
 /**
  * Rename input in place of a tree row. Vaults, folders and notes share it:
- * their rows have the same layout, a button plus "⋯".
+ * their rows have the same layout, a button plus the row buttons.
  *
  * The input is not inside the row button (it would not get clicks there);
  * the button hides instead.
@@ -2384,7 +2448,7 @@ function fileItem(entry: FileEntry): HTMLLIElement {
 
   const row = document.createElement("div");
   row.className = "tree-row note-row";
-  row.append(button, more);
+  row.append(button, rowActions(more));
   row.oncontextmenu = (event) => {
     event.preventDefault();
     void openFileMenu(more, entry);
@@ -2409,6 +2473,7 @@ async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void
         {
           label: t("commands.reveal"),
           glyph: "folder",
+          key: "S",
           run: () =>
             void api.revealFile(entry.path).catch((error) => {
               void fileGone(entry.path).then((gone) => gone || fail(error));
@@ -2417,18 +2482,19 @@ async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void
         {
           label: t("commands.copyPath"),
           glyph: "copy",
+          key: "C",
           run: () => void copyText(entry.path),
         },
       ],
     },
-    scaleSection(`file:${entry.path}`),
-    { title: t("commands.title.note", { name: entry.name }), items },
+    { title: t("commands.title"), items },
     {
       items: [
         {
           label: t("sidebar.vault.remove"),
           glyph: "unlink",
           detail: t("sidebar.file.remove.detail"),
+          key: "⌫",
           run: () => void forgetFile(entry),
         },
       ],
@@ -2798,11 +2864,13 @@ function openChipMenu(anchor: HTMLElement): void {
         {
           label: t("statusbar.chip.resolve"),
           glyph: "search",
+          key: "R",
           run: () => void resolveConflicts(other.vault),
         },
         {
           label: t("palette.action.sync"),
           glyph: "cloud",
+          key: "S",
           run: () => void syncVault(other.vault),
         },
       ],
@@ -2885,7 +2953,7 @@ el.noteMenu.onclick = () => openNoteMenu();
 
 /**
  * Menu of the open note. It is the same as its tree row menu: commands,
- * rename, clipboard, Finder, font size. One menu for two places keeps them in
+ * rename, clipboard, Finder. One menu for two places keeps them in
  * sync. A separate file uses its row menu from the file list.
  */
 function openNoteMenu(): void {
@@ -2897,12 +2965,145 @@ function openNoteMenu(): void {
     return;
   }
   if (!vault) return;
-  void openCommandMenu(
-    el.noteMenu,
-    { kind: "note", name: current.id, vault: vault.id },
-    t("commands.title.note", { name: current.title }),
-  );
+  void openCommandMenu(el.noteMenu, { kind: "note", name: current.id, vault: vault.id });
 }
+
+/**
+ * The last command run from any menu. The run button of the note toolbar
+ * repeats it: usually one command is run again and again, for example a
+ * build or a publish.
+ */
+const LAST_COMMAND = "kknow:command:last";
+
+/** The last command, if the open note has it. */
+function lastCommand(): CommandView | null {
+  const id = localStorage.getItem(LAST_COMMAND);
+  return noteCommands.find((command) => command.id === id) ?? null;
+}
+
+/**
+ * Updates the note toolbar: it shows the state of the open note.
+ *
+ * Call it when the note, its bookmarks or its commands change.
+ */
+function renderNoteTools(): void {
+  el.noteTools.hidden = current === null;
+  if (!current) return;
+
+  // The core keeps bookmarks and links per vault: a standalone file has none.
+  el.noteBookmarks.hidden = current.file === true;
+  el.noteBacklinks.hidden = current.file === true;
+
+  const marks = editor.getBookmarks().length;
+  el.bookmarksCount.textContent = marks > 0 ? String(marks) : "";
+  el.noteBookmarks.dataset.on = String(marks > 0);
+
+  // The button stays in place with zero links: a toolbar that changes its
+  // width from note to note moves the buttons from under the cursor.
+  const links = current.backlinks.length;
+  el.backlinksCount.textContent = String(links);
+  el.noteBacklinks.disabled = links === 0;
+
+  const last = lastCommand();
+  const title = last
+    ? t("topbar.commands.run", { name: last.name })
+    : t("topbar.commands.title");
+  el.runLast.title = title;
+  el.runLast.setAttribute("aria-label", title);
+}
+
+/**
+ * Bookmarks of the open note: a jump to each, then the toggle and the list of
+ * all bookmarks. The toolbar has no line of its own, so the toggle works on
+ * the cursor line, as ⌘⇧B does.
+ */
+function openBookmarksMenu(): void {
+  if (!current || current.file) return;
+  const id = current.id;
+  const lines = editor.getBookmarks();
+  const text = editor.getText().split("\n");
+
+  const jumps: MenuItem[] =
+    lines.length > 0
+      ? lines.map((line, index) => ({
+          label: bookmarkLabel(text[line - 1] ?? ""),
+          detail: t("topbar.bookmarks.line", { line }),
+          glyph: "bookmark",
+          key: index < 9 ? String(index + 1) : undefined,
+          run: () => void openBookmark(id, line),
+        }))
+      : [{ label: t("topbar.bookmarks.none"), disabled: true, run: () => {} }];
+
+  openMenu(el.noteBookmarks, [
+    { title: t("topbar.bookmarks.here"), items: jumps },
+    {
+      items: [
+        {
+          label: t("palette.action.bookmark"),
+          glyph: "bookmark",
+          hint: "⌘⇧B",
+          run: () => toggleCurrentBookmark(),
+        },
+        {
+          label: t("topbar.bookmarks.all"),
+          glyph: "search",
+          hint: "⌘⌥B",
+          run: () => palette.open("", "bookmarks"),
+        },
+      ],
+    },
+  ]);
+}
+
+/**
+ * A bookmark line as a menu label: the text without the markdown marker and
+ * without agent notes, which are HTML comments in the text.
+ */
+function bookmarkLabel(line: string): string {
+  const text = line
+    .replace(/<!--.*?(-->|$)/g, "")
+    .replace(/^\s*(#{1,6}\s+|[-*+]\s+(\[.\]\s+)?|\d+[.)]\s+|>\s*)/, "")
+    .trim();
+  return text || t("topbar.bookmarks.blank");
+}
+
+/** Commands of the open note, the same list as in its menu. */
+async function openRunMenu(): Promise<void> {
+  const target = currentTarget();
+  if (!target) return;
+  const items = await commandItems(target);
+  if (!items) return;
+  openMenu(el.runMenu, [{ title: t("commands.title"), items }, editCommandsSection()]);
+}
+
+/** Notes that link to the open one. The panel under the preview lists them too. */
+function openBacklinksMenu(): void {
+  if (!current) return;
+  openMenu(el.noteBacklinks, [
+    {
+      title: t("panel.backlinks.title"),
+      items: current.backlinks.map((link, index) => ({
+        label: link.title,
+        detail: link.label ? `«${link.label}»` : undefined,
+        glyph: "note",
+        key: index < 9 ? String(index + 1) : undefined,
+        run: () => void openNote(link.id),
+      })),
+    },
+  ]);
+}
+
+el.noteBookmarks.onclick = () => openBookmarksMenu();
+el.runLast.onclick = () => {
+  const last = lastCommand();
+  const target = currentTarget();
+  // Nothing to repeat yet: the menu shows what can run.
+  if (last && target) void runCommand(last, target);
+  else void openRunMenu();
+};
+el.runMenu.onclick = () => void openRunMenu();
+el.noteBacklinks.onclick = () => openBacklinksMenu();
+
 el.syncHide.onclick = () => {
   el.syncPanel.hidden = true;
 };
@@ -2911,6 +3112,13 @@ el.toggleNotes.onclick = () => showNotesFloat(el.notesFloat.hidden);
 el.notesHide.onclick = () => showNotesFloat(false);
 
 el.addVault.onclick = () => void pickVault();
+
+/** Collapses every vault. Folders inside keep their state for the next expand. */
+el.collapseAll.onclick = () => {
+  expanded.clear();
+  rememberExpanded();
+  renderTree();
+};
 
 async function reloadVault(): Promise<void> {
   if (!vault) return;
@@ -2957,13 +3165,21 @@ function currentFolderPrefix(): string {
 
 el.openFile.onclick = () => void pickFile();
 
-el.newNote.onclick = () => {
-  if (el.newNoteForm.hidden) {
-    openNewNoteForm(currentFolderPrefix());
-  } else {
+/**
+ * Sidebar buttons and ⌘N. A second click on the same button hides the form.
+ * The form is in the sidebar, so a collapsed sidebar opens first.
+ */
+function toggleNewNoteForm(mode: "note" | "folder"): void {
+  if (!el.newNoteForm.hidden && newNoteMode === mode) {
     el.newNoteForm.hidden = true;
+    return;
   }
-};
+  if (sidebarHidden) setSidebarHidden(false);
+  openNewNoteForm(currentFolderPrefix(), mode);
+}
+
+el.newNote.onclick = () => toggleNewNoteForm("note");
+el.newFolder.onclick = () => toggleNewNoteForm("folder");
 
 el.newNoteForm.onsubmit = (event) => {
   event.preventDefault();
