@@ -249,6 +249,11 @@ const popupField = StateField.define<PopupState>({
 
     const popup = popupFor(tr.state);
     if (!popup) return { popup: null, form: false, tooltip: null };
+    // Tab in a table selects the next cell to overwrite it, not to ask an
+    // agent about it: the popup would cover the table at each step.
+    if (popup.kind === "add" && tr.isUserEvent("input.table")) {
+      return { popup: null, form: false, tooltip: null };
+    }
     const same = samePopup(popup, value.popup);
     // The cursor moved to other words, so the open form closes.
     if (!same) form = false;

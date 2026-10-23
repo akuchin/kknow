@@ -25,6 +25,7 @@ import {
 import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
+import { tableEditing } from "./table-editing";
 
 const theme = EditorView.theme({
   "&": {
@@ -250,6 +251,8 @@ export class Editor {
         drawSelection(),
         // Panel on top: at the bottom it covered the text being searched.
         search({ top: true }),
+        // Tab, Enter and the arrows in a table; outside a table they do nothing.
+        tableEditing(),
         EditorState.phrases.of(PHRASES),
         // Search goes first: ⌘F and ⌘G must reach it, not the editor.
         keymap.of([...searchKeymap, ...formatKeymap, ...defaultKeymap, ...historyKeymap]),

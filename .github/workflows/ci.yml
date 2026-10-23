@@ -35,6 +35,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm ui:test
       # The app embeds ui/dist, so the UI builds before cargo.
       - run: pnpm ui:build
 

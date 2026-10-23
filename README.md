@@ -280,18 +280,37 @@ kknow keeps the mode for each note. For example, you read a reference and edit a
 draft. A note without its own mode opens in the default mode from the settings
 ("Edit").
 
-A table in the editor is a real table:
+Tables work as in Obsidian. A table always looks like a table. Click a cell to
+edit its Markdown in place:
 
-- Click a cell to edit it.
+- **Tab** goes to the next cell, **⇧Tab** to the previous one. Tab in the last
+  cell adds a row.
+- **Enter** goes to the next row and adds a row at the end. Enter in an empty
+  last row removes it and leaves the table.
+- The arrows at the edge of the cell text go to the next cell.
+- **⇧Enter** adds a line break in the cell, **⌘Enter** leaves the table,
+  **Esc** closes the cell.
+- **⌘Z** undoes in the note, as everywhere.
+- kknow aligns the columns of the Markdown for you, as the Advanced Tables
+  plugin does.
+- The toolbar above the table adds and removes rows and columns, aligns a
+  column to the left, center or right, moves rows and columns, sorts by a
+  column and swaps rows and columns.
+- The `</>` button shows the Markdown of the full table. There, and in the
+  "side by side" mode, the Advanced Tables keys work: Tab, Enter, ⌘Enter, and
+  **⌥⇧ with an arrow** move a row or a column. To start a table, type
+  `| Name` and press Tab.
+
+In a drawn table:
+
 - Drag the mouse from one corner to the other to select a rectangle of cells.
   ⇧-click extends the selection.
 - The strips along the edges are row and column handles. Click a handle to
   select a full row or column. Drag along the handles to select many rows or
   columns. The corner handle clears the selection.
-- In one cell, dragging selects text, as usual.
 - ⌘C copies the selection to the clipboard as columns with tab separators.
+- The toolbar buttons work on the selected cells or on the open cell.
 - Esc clears the selection.
-- The buttons above the table add and remove the selected rows and columns.
 
 The status bar at the bottom shows the status. Its left side is about the vault:
 

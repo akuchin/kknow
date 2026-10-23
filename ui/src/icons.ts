@@ -117,6 +117,20 @@ const PATHS = {
   rowRemove: ["M3 4h18v6H3z", "M9 17h6"],
   columnAdd: ["M4 3h6v18H4z", "M17 9v6", "M14 12h6"],
   columnRemove: ["M4 3h6v18H4z", "M14 12h6"],
+  // Table column alignment: the lines line up on the left, center or right.
+  alignLeft: ["M4 6h16", "M4 10h10", "M4 14h16", "M4 18h10"],
+  alignCenter: ["M4 6h16", "M7 10h10", "M4 14h16", "M7 18h10"],
+  alignRight: ["M4 6h16", "M10 10h10", "M4 14h16", "M10 18h10"],
+  // Moving table rows and columns.
+  rowUp: ["M12 19V5", "m6 11 6-6 6 6"],
+  rowDown: ["M12 5v14", "m6 13 6 6 6-6"],
+  columnLeft: ["M19 12H5", "m11 6-6 6 6 6"],
+  columnRight: ["M5 12h14", "m13 6 6 6-6 6"],
+  // Sorting table rows: an arrow and bars that grow or shrink.
+  sortAsc: ["M7 20V4", "m3 8 4-4 4 4", "M14 6h3", "M14 12h5", "M14 18h7"],
+  sortDesc: ["M7 4v16", "m3 16 4 4 4-4", "M14 6h7", "M14 12h5", "M14 18h3"],
+  // Transpose: a square that flips over its diagonal.
+  transpose: ["M4 4h16v16H4z", "M4 4l16 16", "M9 4v5", "M15 20v-5"],
   // Agent note and its removal.
   comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],

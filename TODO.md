@@ -31,13 +31,9 @@ The plan for the redesign is closed. Its archive copy is
 - **Conflict resolution is only a list of files.** "Resolve" opens the copies
   in the palette. Add a side-by-side comparison of the two versions. Put the
   "accept" and "delete copy" buttons next to it.
-- **The table needs some small functions:**
-  - a toolbar button that changes the alignment of the selected columns;
-  - moving rows and columns;
-  - Enter in the last cell adds a row;
-  - keyboard selection with the arrows and ⇧-arrows;
-  - pasting a rectangle from the clipboard. Now you can copy a selection, but
-    you cannot paste it.
+- **Tables do not have all of Advanced Tables.** There are no formulas and
+  no CSV export. You cannot paste a rectangle from the clipboard into cells.
+  You can copy a selection, but you cannot paste one.
 - **A running command shows no progress.** The window shows "running…" in the
   status bar and waits. All the output comes at the end. For a long command,
   show the output line by line in a popup, with a "stop" button. To do this,

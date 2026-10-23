@@ -896,58 +896,105 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 
 ### Tables
 
-- The editor always draws a table as a table, and you edit it cell by cell:
-  - A click changes the cell into an input field with its markup.
-  - Enter saves, Esc cancels, Tab goes to the next cell.
-  - A drag does not open editing. It selects text or cells.
-  - The field has several lines (`textarea`) and grows with the text. On one
-    line, a long cell scrolled to the side, and you edited it without seeing it.
-  - The field does not change the width. The column stays the same. If not, the
-    table would move on each click.
-- For the editor cursor, a table is atomic (`atomicRanges`): the arrows step
-  over it. The `</>` button shows the full markup (the `sourceTable` state).
-  The mode stops when the cursor leaves the table. It starts automatically if
-  ⌘F found something in the table.
-- A selection is a rectangle of cells. Drag the mouse from one corner to the
-  other. ⇧-click extends the current selection. The selection is a rectangle,
-  not "a row or a column". People select cells for an action, but they also
-  select while they read a part of the table. The rectangle has an outline.
-  Without a frame you cannot see where the selection ends.
+- A table works as in Obsidian Live Preview (`ui/src/table-widget.ts`). It is
+  always drawn as a table. A click opens the cell in its own small CodeMirror
+  editor with the cell markup, at the place of the click. The other cells
+  stay drawn.
+- Each key in the cell goes to the note at once. The cell editor replaces the
+  full cell range (`forward`): the note keeps the cell trimmed, so offsets in
+  the cell and in the note do not match at the edges.
+- While a cell is open, the widget keeps its DOM (`updateDOM`). Each key
+  changes the note, and a new DOM would lose the cell editor and its cursor.
+  If the table shape changes (an undo brings back a row), the widget is built
+  again, and the cell opens again from `active`.
+- The note history is the only history. ⌘Z in a cell runs undo on the note,
+  and the cell editor takes the new text (`syncEditor`).
+- Keys in a cell:
+  - Tab / ⇧Tab — the next / previous cell in reading order. Tab in the last
+    cell adds a row.
+  - Enter — the same column in the next row; after the last row, a new row.
+    Enter in an empty last row removes it and leaves the table, as a list
+    ends.
+  - ⇧Enter — `<br>`: a real line break would end the table.
+  - ⌘Enter — leaves the table below it. Esc — closes the cell.
+  - Arrows at the edge of the cell text go to the next cell; up from the
+    header and down from the last row leave the table.
+- A move to another cell formats the whole table, as Advanced Tables does:
+  it pads the columns and aligns the text as the separator says. The padding
+  is not an undo step (`addToHistory: false`): ⌘Z undoes the text, not the
+  spaces. A new or removed row is a step.
+- A pipe typed or pasted into a cell becomes `\|`, a line break a space
+  (`cellInput`). The drawn cell shows `\|` as `|`.
+- A click outside the table closes the cell (blur). A click in another table
+  first closes the open cell. Its formatting can move this table, so the
+  position goes through the change map.
+- For the note cursor, a table is atomic (`atomicRanges`): the arrows step
+  over it.
+- The table and the cell editor are inside the note DOM, so the note editor
+  sees their browser selection and reads it as its own cursor. This is never
+  a note cursor: a click in a cell moved it to the table edge, and a selection
+  in the cell editor (another view) mapped to a random position. So the note
+  drops a `select` from the DOM inside `.cm-table` (`ignoreTableSelection`).
+  Also, a move to another cell rebuilds the table and removes the cell DOM with
+  the selection in it. WebKit then moves the selection to some text below the
+  table, and the cursor jumped there. So `closeCell` clears the selection
+  first. The mock in Chromium does not show this: check it in WebKit.
+- The theme of the note editor reaches the cell editor too: its selectors are
+  "descendant of the editor". So `styles.css` takes back the padding, the
+  height and the scroll for `.cm-cell-editor`. Its class comes through
+  `editorAttributes`: CodeMirror rewrites the class of its DOM itself.
+- The `</>` button shows the markup of the full table (`sourceTable`), and so
+  does a ⌘F match in it. There the Advanced Tables keys work
+  (`ui/src/table-editing.ts`), and they also work in the "side by side" mode:
+  - Tab, ⇧Tab, Enter as in a cell, but after the last column Tab goes past
+    the closing pipe; text there becomes a new column on the next Tab. After a
+    run of Tab, Enter goes back to the column where the run started.
+  - ⌘Enter leaves the table; ⌥⇧ and an arrow move the row or the column.
+  - You start a table with `| Name` and Tab. The CodeMirror parser does not
+    see a table without a separator, so the module also finds a table by its
+    text: lines that start with a pipe.
+  - The markup lines use a monospace font, so that the padding lines up the
+    columns.
+- Leaving a table always gives an empty line between the table and the
+  cursor. By the GFM rules a text line directly below a table is one more row.
+- The toolbar has the commands of Advanced Tables: add and remove rows and
+  columns, alignment, moves, sort, transpose. Above the drawn table it acts on
+  the cell selection or on the open cell; after an action the selection and
+  the open cell follow the moved cells. Above the markup it acts on the
+  cursor cell.
+- `ui/src/table.ts` has no imports. It parses a table into a model, does the
+  operations (`runCommand`) and builds the text again. Node runs its tests
+  without a build: `pnpm ui:test` (`ui/tests`).
+- Width: wide characters (CJK, emoji) count as two, combining marks as zero.
+  Without this, a table with such text does not line up.
+- Sort: numbers compare as numbers (`2` before `10`, a comma is a decimal
+  point), text by `Intl.Collator("ru")`. Empty cells go to the end in both
+  directions. The header stays first.
+- You cannot delete the header and the last column. The header does not move,
+  because a body row in its place would change the meaning of the columns.
+- A selection in the drawn table is a rectangle of cells. Drag the mouse from
+  one corner to the other. ⇧-click extends the current selection. People
+  select cells for an action, but they also select while they read a part of
+  the table. The rectangle has an outline.
 - The table edges have row and column handles.
   - A press selects the full strip. A drag or ⇧ selects several strips in a
     row. The corner handle clears the selection.
   - A full row or column is the same rectangle at full width or full height.
-    There is no separate kind of selection for them.
   - A handle lights when the selection touches its strip, and it is brighter
     when the selection covers all of the strip.
-  - The row under the mouse pointer has its own highlight.
-- In one cell, a drag selects text, as everywhere else. Until the mouse leaves
-  the cell, the widget does not catch the press. When the mouse goes into a
-  different cell, the widget takes the selection and clears the browser
+- In one cell, a drag selects text, as everywhere else. When the mouse goes
+  into a different cell, the widget takes the selection and clears the browser
   selection. It continues to clear it on `selectionchange` until the drag ends.
   `user-select: none` does not stop every selection that is already in
-  progress. A rough highlight by letters over a clean rectangle looks dirty.
-  For the same reason, a press in a cell immediately clears the previous
-  rectangle. The window always has only one highlight. CodeMirror does not
-  interfere: it ignores events and selection changes from the widget,
-  because `ignoreEvent` returned `true`.
+  progress. A press in a cell immediately clears the previous rectangle. The
+  window always has only one highlight.
 - ⌘C with a rectangle puts columns with tabs between them and rows with
   newlines between them into the clipboard. A table in a different app expects
-  this. The handler is on the document in the `capture` phase. The copy event
-  goes to the element with the focus (the editor). Without the handler,
-  CodeMirror would copy the markup of the full table. Esc clears the selection.
-- The window has one drag state, not one for each widget. A cell edit builds
-  the widget again during a press. A state in its DOM would disappear with it.
-  The `data-from` marker keeps the table where the drag started.
-- A toolbar above the table (on hover) has these actions: add and delete a row
-  and a column, show the markup.
-  - Delete removes all selected rows or columns that the rectangle touches. Add
-    puts the new row or column after the selection.
-  - `ui/src/table.ts` does the structure edits. It parses the table into a
-    model, does operations on it, and builds it again. It aligns with spaces and
-    keeps `:---:`.
-  - You cannot delete the header and the last column. If a selection includes
-    them, the toolbar makes the selection smaller and does not cancel the edit.
+  this. The handler is on the document in the `capture` phase: the copy event
+  goes to the editor, and CodeMirror would copy the markup. Esc clears the
+  selection.
+- The window has one drag state, not one for each widget. The `data-from`
+  marker keeps the table where the drag started.
 - A separate function (`inlineDom`) parses the cells. Decorations do not get
   into a widget, so the code must build the markup of a cell in the DOM by
   hand. It inserts text only as text nodes, because the text comes from a
@@ -1391,16 +1438,17 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   cursor does not stop on hidden characters. The boundaries of the element
   count as "inside". When the cursor comes near `**`, it has already revealed
   them.
-- **You edit a table in its own input fields, not as CodeMirror text.** Table
-  markup is the most difficult part of Markdown. One document line is a full
-  table row. "Reveal at the cursor", as with a code block, would break the full
-  table apart. Thus the table widget works on its own:
-  - a cell has its own `<input>` with its source;
-  - a write to the document replaces only the range of the cell;
-  - structure edits write the full table again through `table.ts`.
+- **A cell opens in its own CodeMirror editor, as in Obsidian.** There were
+  two attempts before:
+  - A `<textarea>` in each cell. The search and the undo of CodeMirror did
+    not work in a cell, and Tab and Enter did different things than in the
+    editor.
+  - The full table as Markdown text while the cursor is in it (Advanced
+    Tables in the source mode). A wide table with long cells wraps, and its
+    rows become an unreadable wall of pipes.
 
-  The disadvantage: in a cell, the CodeMirror search and undo do not work. Esc
-  only cancels the edit of the current cell.
+  A nested editor gives the editor keys and one history with the note, and
+  the table stays a table.
 - **A code block in read mode is a widget, not lines with
   `white-space: pre`.** The first attempt used lines, each with its own scroll.
   The goal was that a wide line would not make the full editor wider. That did

@@ -1632,22 +1632,6 @@ img.note-image {
   user-select: none;
 }
 
-/* A cell in edit mode: the field fills it and looks like plain text.
-   The field has no scrollbar; `openCell` sets its height to fit the text. */
-.cm-table-input {
-  display: block;
-  width: 100%;
-  font: inherit;
-  font-family: var(--font-mono);
-  color: var(--text);
-  background: transparent;
-  border: none;
-  padding: 0;
-  outline: none;
-  resize: none;
-  overflow: hidden;
-}
-
 .cm-table-tools {
   position: absolute;
   top: 0;
@@ -1655,6 +1639,77 @@ img.note-image {
   display: flex;
   gap: 4px;
   opacity: 0;
+}
+
+/* An open cell: a CodeMirror editor in it, as in Obsidian. The note editor
+   theme also reaches the nested editor (its selectors are "descendant of the
+   editor"), so the rules here undo its padding, height and scroll. */
+.cm-table td.is-editing,
+.cm-table th.is-editing {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cm-table .cm-cell-editor {
+  height: auto !important;
+  font: inherit;
+  background: transparent;
+}
+
+.cm-table .cm-cell-editor .cm-scroller {
+  overflow: visible !important;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.cm-table .cm-cell-editor .cm-content {
+  padding: 0 !important;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.cm-table .cm-cell-editor .cm-line {
+  padding: 0;
+}
+
+.cm-table .cm-cell-editor.cm-focused {
+  outline: none;
+}
+
+/* A gap between button groups: structure, alignment, moves, sort. */
+.cm-table-tools-gap {
+  width: 6px;
+}
+
+/* The table markup with the cursor in it (Advanced Tables). The font is
+   monospace: the spaces that pad the columns line them up only when every
+   letter has the same width. */
+.cm-table-line {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.cm-table-delimiter {
+  color: var(--text-muted);
+}
+
+/* The header line holds the toolbar. The toolbar stands above it and does
+   not take space: the text must not move when the cursor enters the table. */
+.cm-table-head {
+  position: relative;
+}
+
+/* It starts at the left edge, where the table is: the line is as wide as the
+   editor, and at the right edge the toolbar would be far from a narrow table. */
+.cm-table-tools.is-source {
+  top: auto;
+  bottom: 100%;
+  right: auto;
+  left: 0;
+  opacity: 1;
+  z-index: 2;
+  padding: 2px;
+  font-family: var(--font-text);
+  white-space: normal;
 }
 
 .cm-table:hover .cm-table-tools,
