@@ -32,6 +32,7 @@ import { paintBookmarks, topLine } from "./preview-lines";
 import { paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
+import { cellOf } from "./table-widget";
 import { Editor, type EditorPosition } from "./editor";
 import { icon, iconMarkup, type IconName } from "./icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
@@ -351,6 +352,20 @@ const previewNotes = new PreviewNotes(el.preview, {
 });
 
 /**
+ * Agent notes from a closed table cell in "Edit" mode. A drag there selects
+ * text for reading and does not open the cell, so the selection belongs to
+ * the browser, not to the editor: it gets the same popup as the preview.
+ */
+const tableNotes = new PreviewNotes(editor.scroller, {
+  enabled: () => mode === "edit" && current !== null,
+  scope: cellOf,
+  add: (words, index, total, text, cell) => editor.addNoteInCell(cell, words, index, total, text),
+  fail: (message) => setStatus(message, "error"),
+  bookmarkable: () => false,
+  bookmark: () => {},
+});
+
+/**
  * Updates the agent notes button and float.
  *
  * The button is visible only when notes exist: most texts have none, and an
@@ -482,6 +497,7 @@ function setMode(next: ViewMode, options: { remember?: boolean; refresh?: boolea
   const wasHidden = mode === "edit";
   mode = next;
   previewNotes.hide();
+  tableNotes.hide();
   if (options.remember !== false && current) rememberMode(positionKey(current), next);
 
   app.dataset.mode = next;
@@ -3429,7 +3445,7 @@ document.addEventListener("keydown", (event) => {
     void flushPendingSave();
   } else if (key === "KeyM" && event.shiftKey) {
     // In the editor its own keymap handles ⌘⇧M; here it is for a preview selection.
-    if (previewNotes.openForm()) event.preventDefault();
+    if (previewNotes.openForm() || tableNotes.openForm()) event.preventDefault();
   } else if (key === "KeyE") {
     event.preventDefault();
     setMode(nextMode(mode));

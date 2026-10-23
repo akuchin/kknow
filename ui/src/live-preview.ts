@@ -33,7 +33,7 @@ import {
 } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
-import { addAgentNote } from "./agent-notes";
+import { addAgentNote, noteAt } from "./agent-notes";
 import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
 import { paintCode } from "./highlight";
 import { icon } from "./icons";
@@ -722,6 +722,13 @@ function inlineDom(state: EditorState, from: number, to: number): DocumentFragme
       } else if (node.name === "Escape") {
         // `\|` is a pipe in the text, not a cell border: show only the pipe.
         hidden.push([node.from, node.from + 1]);
+      } else if (node.name === "Comment") {
+        // An agent note, as in the text: the words lit, the comment hidden.
+        const note = noteAt(state, node.from, node.to);
+        if (note) {
+          hidden.push([note.from, note.to]);
+          if (note.anchorFrom !== null) styled.push([note.anchorFrom, note.from, "cm-agent-note"]);
+        }
       }
       return true;
     },

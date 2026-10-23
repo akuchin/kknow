@@ -96,7 +96,7 @@ function anchorable(words: string): boolean {
 }
 
 /** The note for a `Comment` tree node; `null` for other comments. */
-function noteAt(state: EditorState, from: number, to: number): AgentNote | null {
+export function noteAt(state: EditorState, from: number, to: number): AgentNote | null {
   const parsed = parseNote(state.doc.sliceString(from, to));
   if (!parsed) return null;
 
@@ -472,21 +472,25 @@ function insideWikiLink(state: EditorState, pos: number): boolean {
  * matches, that is, all of them are visible. Otherwise a single match still
  * works. With several matches we must not guess, or the note would attach to
  * the wrong words. Then the result is `null`.
+ *
+ * `within` limits the search to a part of the source, such as a table cell.
  */
 export function previewAnchor(
   state: EditorState,
   words: string,
   index: number,
   total: number,
+  within = { from: 0, to: state.doc.length },
 ): number | null {
   if (!anchorable(words)) return null;
   // In "Read" mode the editor is hidden, and the tree of a long text may be
   // incomplete. Without it, comments and code look like plain text.
   const tree = ensureSyntaxTree(state, state.doc.length, 500) ?? syntaxTree(state);
-  const text = state.doc.toString();
+  const text = state.doc.sliceString(within.from, within.to);
   const found: number[] = [];
 
-  for (let from = text.indexOf(words); from !== -1; from = text.indexOf(words, from + 1)) {
+  for (let at = text.indexOf(words); at !== -1; at = text.indexOf(words, at + 1)) {
+    const from = within.from + at;
     const to = from + words.length;
     let hidden = false;
     tree.iterate({

@@ -21,8 +21,13 @@ import { lineAt } from "./preview-lines";
 export interface PreviewNotesOptions {
   /** Notes are allowed only while the preview is visible. */
   enabled: () => boolean;
-  /** Returns `false` if no single matching place exists in the source. */
-  add: (words: string, index: number, total: number, text: string) => boolean;
+  /**
+   * The element whose text the match index counts, for a selection in `node`;
+   * `null` means no popup there. Without it, the whole root counts.
+   */
+  scope?: (node: Node) => Element | null;
+  /** Returns `false` if no single matching place exists in the source. `within` is the scope. */
+  add: (words: string, index: number, total: number, text: string, within: Element) => boolean;
   /** Reports that the note was not added. */
   fail: (message: string) => void;
   /** Separate files cannot have bookmarks. */
@@ -41,6 +46,7 @@ interface PreviewWords {
 /** Selected words with their range: the popup sticks to it. */
 interface Picked extends PreviewWords {
   range: Range;
+  within: Element;
 }
 
 
@@ -144,24 +150,27 @@ export class PreviewNotes {
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
     const range = selection.getRangeAt(0);
     if (!this.root.contains(range.commonAncestorContainer)) return null;
+    const { scope } = this.options;
+    const within = scope ? scope(range.commonAncestorContainer) : this.root;
+    if (!within) return null;
 
     const words = range.toString();
     // The anchor is one line without `»`, as in the editor.
     if (words.trim() === "" || /[\n»]/.test(words)) return null;
 
-    const found = this.count(range.startContainer, range.startOffset, words);
-    return found && { ...found, range: range.cloneRange() };
+    const found = this.count(within, range.startContainer, range.startOffset, words);
+    return found && { ...found, range: range.cloneRange(), within };
   }
 
   /**
    * The index of `words` that start in `node` at `offset`, among equal matches
-   * in the visible preview text. `null` if the start or the words touch code:
-   * notes and bookmarks do not belong there.
+   * in the visible text of `within`. `null` if the start or the words touch
+   * code: notes and bookmarks do not belong there.
    */
-  private count(node: Node, offset: number, words: string): PreviewWords | null {
+  private count(within: Element, node: Node, offset: number, words: string): PreviewWords | null {
     let text = "";
     let start = -1;
-    const walker = document.createTreeWalker(this.root, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(within, NodeFilter.SHOW_TEXT);
     for (let each = walker.nextNode(); each; each = walker.nextNode()) {
       if (each.parentElement?.closest(SKIPPED)) continue;
       if (each === node) start = text.length + offset;
@@ -194,7 +203,13 @@ export class PreviewNotes {
         this.hide();
         return;
       }
-      const added = this.options.add(picked.words, picked.index, picked.total, field.value);
+      const added = this.options.add(
+        picked.words,
+        picked.index,
+        picked.total,
+        field.value,
+        picked.within,
+      );
       if (!added) {
         // Keep the form open so the typed task is not lost.
         this.options.fail(t("preview.note.ambiguous", { words: picked.words }));

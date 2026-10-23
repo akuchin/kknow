@@ -26,6 +26,7 @@ import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
 import { tableEditing } from "./table-editing";
+import { addNoteInCell } from "./table-widget";
 
 const theme = EditorView.theme({
   "&": {
@@ -309,6 +310,16 @@ export class Editor {
     if (to === null) return false;
     insertNote(this.view, to, words, text);
     return true;
+  }
+
+  /** Adds a note to words selected in a closed table cell: match `index` of `total` in the cell. */
+  addNoteInCell(cell: Element, words: string, index: number, total: number, text: string): boolean {
+    return addNoteInCell(this.view, cell, words, index, total, text);
+  }
+
+  /** The scrolling element: a popup over the text follows its scroll. */
+  get scroller(): HTMLElement {
+    return this.view.scrollDOM;
   }
 
   /** Lets the window return here when the note opens again. */

@@ -28,6 +28,7 @@ import {
 } from "@codemirror/state";
 import { EditorView, WidgetType, drawSelection, keymap } from "@codemirror/view";
 
+import { agentNotes, formatNote, previewAnchor } from "./agent-notes";
 import { highlightStyle } from "./highlight";
 import { icon, type IconName } from "./icons";
 import { t, type Key } from "./i18n";
@@ -261,6 +262,45 @@ export class TableWidget extends WidgetType {
   }
 }
 
+/**
+ * The drawn cell around a node, for the "For agent" popup over a text
+ * selection in a closed cell. An open cell has its own popup: it is an editor.
+ */
+export function cellOf(node: globalThis.Node): HTMLElement | null {
+  const element = node instanceof HTMLElement ? node : node.parentElement;
+  if (!element || element.closest(".cm-cell-editor")) return null;
+  const cell = element.closest<HTMLElement>(".cm-table [data-row]");
+  return cell?.dataset.column === undefined ? null : cell;
+}
+
+/**
+ * Adds a note to words selected in a closed cell: match `index` of `total` in
+ * the cell text. Returns `false` if no single matching place exists in the cell.
+ */
+export function addNoteInCell(
+  main: EditorView,
+  cell: Element,
+  words: string,
+  index: number,
+  total: number,
+  text: string,
+): boolean {
+  const box = cell.closest<HTMLElement>(".cm-table");
+  const model = box && models.get(box);
+  const { row, column } = (cell as HTMLElement).dataset;
+  const target = model?.rows[Number(row)]?.[Number(column)];
+  if (!target) return false;
+
+  const to = previewAnchor(main.state, words, index, total, target);
+  if (to === null) return false;
+  main.dispatch({
+    // A pipe in the instruction would split the cell, as in `cellInput`.
+    changes: { from: to, insert: formatNote(words, text).replace(/\\?\|/g, "\\|") },
+    userEvent: "input",
+  });
+  return true;
+}
+
 function inCellEditor(event: Event): boolean {
   return (event.target as HTMLElement).closest(".cm-cell-editor") !== null;
 }
@@ -308,6 +348,7 @@ function openEditor(main: EditorView, box: HTMLElement, at: At, place: Place): v
       if (trs.some((tr) => tr.docChanged && !tr.annotation(Transaction.remote))) forward(cell);
     },
   });
+  closeOnLeave(cell);
 
   editing = cell;
   editors.set(box, cell);
@@ -588,15 +629,28 @@ function cellExtensions(cell: CellEditor): Extension {
     EditorView.lineWrapping,
     markdown({ base: markdownLanguage }),
     syntaxHighlighting(highlightStyle),
-    EditorView.domEventHandlers({
-      // A click in the note or in another window closes the cell. A move to
-      // another cell closes it on purpose first, and then this does nothing.
-      blur: () => {
-        if (!cell.closing && editing === cell) closeCell(cell, null);
-        return false;
-      },
-    }),
+    // The "For agent" popup over a selection in the cell, as in the note.
+    agentNotes(),
   ];
+}
+
+/**
+ * A click in the note or in another window closes the cell. A move to another
+ * cell closes it on purpose first, and then this does nothing.
+ *
+ * The check waits for a microtask and looks at the focus itself: the note
+ * form is a tooltip inside the cell editor, and focus goes into it and back.
+ * When the form saves, its field leaves the DOM before the editor gets the
+ * focus again.
+ */
+function closeOnLeave(cell: CellEditor): void {
+  cell.view.dom.addEventListener("focusout", () => {
+    queueMicrotask(() => {
+      if (cell.closing || editing !== cell) return;
+      if (document.hasFocus() && cell.view.dom.contains(document.activeElement)) return;
+      closeCell(cell, null);
+    });
+  });
 }
 
 /**
