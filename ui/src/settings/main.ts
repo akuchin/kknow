@@ -10,6 +10,7 @@
  * in the registry. Only what is open on the screen stays here.
  */
 
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import {
@@ -109,7 +110,14 @@ function renderSections(): void {
 
   const version = document.createElement("span");
   version.className = "settings-version";
-  version.textContent = "kknow 0.1.0";
+  version.textContent = "kknow";
+  // The version comes from the app, not from a constant here: a release takes
+  // it from the git tag, and a constant would stay at the first release.
+  void getVersion()
+    .then((value) => {
+      version.textContent = `kknow ${value}`;
+    })
+    .catch(console.error);
   el.sections.append(version);
 }
 
@@ -883,6 +891,8 @@ function commandsFile(): HTMLElement {
   const path = document.createElement("span");
   path.className = "settings-path";
   path.textContent = manifest!.path;
+  // The path is cut with an ellipsis; the tooltip shows all of it.
+  path.title = manifest!.path;
 
   const finder = document.createElement("button");
   finder.className = "ghost";

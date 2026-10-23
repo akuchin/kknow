@@ -18,6 +18,7 @@ export default defineConfig({
   resolve: {
     alias: useMocks
       ? {
+          "@tauri-apps/api/app": resolvePath("./src/mock/app.ts"),
           "@tauri-apps/api/core": resolvePath("./src/mock/core.ts"),
           "@tauri-apps/api/event": resolvePath("./src/mock/event.ts"),
           "@tauri-apps/api/webview": resolvePath("./src/mock/webview.ts"),

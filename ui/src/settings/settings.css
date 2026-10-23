@@ -149,12 +149,20 @@
   color: var(--danger);
 }
 
-/* Sections with a list on the left and the selected item on the right: vaults and commands. */
+/* Sections with a list on the left and the selected item on the right: vaults and commands.
+   Each column scrolls on its own: a long command form must not take the list
+   and its "add" button out of view. */
 .settings-vaults,
 .settings-commands {
   display: grid;
   grid-template-columns: 212px 1fr;
-  min-height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+
+.settings-vaults > .settings-page,
+.settings-commands > .settings-page {
+  overflow-y: auto;
 }
 
 .settings-vault-list,
@@ -162,6 +170,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
   padding: 10px 6px;
   border-right: 1px solid var(--border);
   background: var(--bg-soft);
@@ -278,6 +287,16 @@
   background: var(--bg-raised);
   border-color: var(--accent);
   outline: none;
+}
+
+/* In the command form the label sits under a field title, like the other
+   fields. There it must look like a field, not like a heading. */
+.settings-field > .settings-name {
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-raised);
+  border-color: var(--border);
+  padding: 6px 9px;
 }
 
 .settings-path {
