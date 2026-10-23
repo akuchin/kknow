@@ -37,7 +37,7 @@ import { icon, iconMarkup, type IconName } from "./icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
-import { moveScale, scaleLabel, scaleOf, stepScale } from "./note-scale";
+import { moveScale, scaleOf, stepScale } from "./note-scale";
 import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
@@ -832,13 +832,15 @@ function applyScale(): void {
   status.setScale(current ? scale : null);
 }
 
-/** Larger, smaller or default (`steps` = 0) for the file with this key. */
+/**
+ * Larger, smaller or default (`steps` = 0) for the file with this key.
+ *
+ * No status message: the status bar control shows the value, and a message
+ * with the same number on each slider step was noise.
+ */
 function changeScale(key: string, steps: number): void {
-  const scale = stepScale(key, steps);
-  if (current && positionKey(current) === key) {
-    applyScale();
-    setStatus(t("status.scale", { scale: scaleLabel(scale) }));
-  }
+  stepScale(key, steps);
+  if (current && positionKey(current) === key) applyScale();
 }
 
 /** The same for the open file: shortcuts, the palette and the status bar. */

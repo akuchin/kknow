@@ -69,8 +69,3 @@ export function moveScale(from: string, to: string): void {
   delete scales[from];
   store();
 }
-
-/** Label, for example "120%". */
-export function scaleLabel(scale: number): string {
-  return `${Math.round(scale * 100)}%`;
-}
