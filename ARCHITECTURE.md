@@ -591,8 +591,10 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - On the left, with the width of the sidebar: the sidebar button (⌘\\) and
     history (⌘⌥← / ⌘⌥→). Thus the note name is above the editor, not above the
     tree.
-  - In the centre: the name and the location of the note (the vault label,
-    vault / folder). The tooltip shows the full path.
+  - In the centre: the file name (without `.md`) and the location of the note
+    (the vault label, vault / folder). The tooltip shows the full path. It is
+    the file name, not the title: the title is the first line of the text
+    anyway, and "Rename" in the same menu changes the file name.
   - On the right: 💬, the note toolbar, the mode and search (⌘K).
 - The note name is a button. Its menu is the same as the menu of a tree row
   (`openCommandMenu`). For a standalone file, it is the menu of the file row.
@@ -807,9 +809,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - Appearance — theme, errors in the themes of the active vault, and what
     the note tree shows. `noteLabel` in `settings.json` is `title` (the
     first-level heading, else the file name) or `file` (the file name without
-    `.md`). The tree sorts by file name in both cases. The title stays in the
-    header, the palette and the links: only the tree follows the setting,
-    because there the file name helps to find the file on disk.
+    `.md`). The tree sorts by file name in both cases. The palette and the
+    links keep the title, and the header always shows the file name.
   - Vaults.
   - Commands.
   - Keys — reference.

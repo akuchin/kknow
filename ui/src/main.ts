@@ -784,11 +784,14 @@ function scheduleWords(text: string): void {
 }
 
 /**
- * Shows what is open in the header: the note name and its location (the vault
+ * Shows what is open in the header: the file name and its location (the vault
  * with its label and the folder). A separate file shows its directory instead.
+ *
+ * The file name, not the title: the title is already the first line of the
+ * text, and "Rename" in the same menu changes the file name.
  */
 function showHeading(view: NoteView | null): void {
-  el.noteTitle.textContent = view ? view.title : t("topbar.note.empty");
+  el.noteTitle.textContent = view ? headingName(view) : t("topbar.note.empty");
   el.noteMenu.disabled = view === null;
   el.noteFolder.hidden = view === null;
   if (!view) return;
@@ -805,6 +808,14 @@ function showHeading(view: NoteView | null): void {
   el.noteVaultLabel.dataset.color = vault?.color ?? "blue";
   el.noteFolderText.textContent = [vault?.name, folder].filter(Boolean).join(" / ");
   el.noteFolder.title = vault ? `${vault.root}/${view.id}.md` : view.id;
+}
+
+/**
+ * The last id segment without `.md`. A vault note id has no extension; a
+ * standalone file id is a full path with one.
+ */
+function headingName(view: NoteView): string {
+  return view.id.slice(view.id.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 }
 
 /** Empty state after the open note is deleted: nothing is open. */
