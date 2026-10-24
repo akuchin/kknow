@@ -123,8 +123,6 @@ let statuses = new Map<string, SyncStatus>();
 /** Sidebar collapsed state; it persists between runs. */
 const SIDEBAR = "kknow:sidebar";
 let sidebarHidden = localStorage.getItem(SIDEBAR) === "hidden";
-/** App settings: shared with the settings window and stored in the core. */
-let appSettings: AppSettings | null = null;
 let previewTimer: number | undefined;
 let wordsTimer: number | undefined;
 
@@ -300,7 +298,7 @@ function setMode(next: ViewMode, options: { remember?: boolean; refresh?: boolea
 
 /** Default mode for notes that have no saved mode. */
 function defaultMode(): ViewMode {
-  return appSettings?.viewMode ?? "split";
+  return state.settings?.viewMode ?? "split";
 }
 
 /** Collapses the sidebar; the editor takes its space. */
@@ -1326,7 +1324,7 @@ function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
 
   const heading = document.createElement("span");
   heading.className = "note-title";
-  heading.textContent = appSettings?.noteLabel === "file" ? fileName(note) : note.title;
+  heading.textContent = state.settings?.noteLabel === "file" ? fileName(note) : note.title;
   button.append(heading);
 
   const target: CommandTarget = { kind: "note", name: note.id, vault: vaultId };
@@ -2991,9 +2989,9 @@ async function openSettings(section?: string): Promise<void> {
 
 /** Writes settings to the core. Both windows learn about the change from an event. */
 async function saveSettings(change: Partial<AppSettings>): Promise<void> {
-  if (!appSettings) return;
+  if (!state.settings) return;
   try {
-    appSettings = await api.setSettings({ ...appSettings, ...change });
+    state.setSettings(await api.setSettings({ ...state.settings, ...change }));
   } catch (error) {
     fail(error);
   }
@@ -3004,10 +3002,10 @@ async function saveSettings(change: Partial<AppSettings>): Promise<void> {
  * window shows the same switch, and both learn about the change the same way.
  */
 async function toggleLineNumbers(): Promise<void> {
-  if (!appSettings) return;
-  await saveSettings({ lineNumbers: !appSettings.lineNumbers });
+  if (!state.settings) return;
+  await saveSettings({ lineNumbers: !state.settings.lineNumbers });
   // The event also comes here; the button does not wait for it.
-  showLineNumbers(appSettings.lineNumbers);
+  showLineNumbers(state.settings.lineNumbers);
 }
 
 function showLineNumbers(on: boolean): void {
@@ -3018,10 +3016,10 @@ function showLineNumbers(on: boolean): void {
 /** Applies settings from the core: language, theme, preview, line numbers. */
 function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
-  const defaultChanged = incoming.viewMode !== appSettings?.viewMode;
-  const scaleChanged = incoming.noteScale !== appSettings?.noteScale;
-  const labelChanged = incoming.noteLabel !== appSettings?.noteLabel;
-  appSettings = incoming;
+  const defaultChanged = incoming.viewMode !== state.settings?.viewMode;
+  const scaleChanged = incoming.noteScale !== state.settings?.noteScale;
+  const labelChanged = incoming.noteLabel !== state.settings?.noteLabel;
+  state.setSettings(incoming);
   if (labelChanged) renderTree();
   showLineNumbers(incoming.lineNumbers);
   // A new default size affects only a file without its own size.
@@ -3462,7 +3460,7 @@ function themeList(): [string, string][] {
 
 /** Applies the theme from settings. It can be gone: the file was deleted or the vault changed. */
 function pickTheme(): void {
-  const wanted = appSettings?.theme ?? "light";
+  const wanted = state.settings?.theme ?? "light";
   const known = themeList().some(([id]) => id === wanted);
   // A missing theme falls back to light, but the choice stays saved: it applies
   // again when the vault with that theme returns.
@@ -3639,18 +3637,18 @@ async function onExternalChange(
 
 async function boot(): Promise<void> {
   try {
-    appSettings = await api.getSettings();
+    state.setSettings(await api.getSettings());
   } catch (error) {
     fail(error);
   }
 
-  if (appSettings) {
-    showLineNumbers(appSettings.lineNumbers);
-    setDefaultScale(appSettings.noteScale);
+  if (state.settings) {
+    showLineNumbers(state.settings.lineNumbers);
+    setDefaultScale(state.settings.noteScale);
     // The window language comes from settings. `i18n` reads its mirror
     // synchronously; they differ only after a manual edit of the file.
-    if (appSettings.locale !== locale) {
-      setLocale(appSettings.locale);
+    if (state.settings.locale !== locale) {
+      setLocale(state.settings.locale);
       location.reload();
       return;
     }
