@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { editorText, noteRow, openWindow, statusMessage, t } from "./window";
+import { editorText, menuItem, noteRow, openRowMenu, openWindow, statusMessage, t } from "./window";
 
 test.beforeEach(async ({ page }) => {
   await openWindow(page);
@@ -105,4 +105,23 @@ test("the font size of a note changes from the status bar", async ({ page }) => 
   // A click on the value resets it.
   await value.click();
   await expect(value).toHaveText("100%");
+});
+
+test("the palette offers the commands of the open note only", async ({ page }) => {
+  const palette = page.locator("#palette");
+  const command = palette.locator(".palette-action", { hasText: "Отправить в Confluence" });
+  await page.locator("#open-palette").click();
+  await expect(command).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // The open note is deleted: nothing is open, so no note command is left.
+  page.once("dialog", (dialog) => void dialog.accept());
+  await openRowMenu(page, noteRow(page, "Index"));
+  await menuItem(page, t("commands.note.delete")).click();
+  await expect(page.locator("#note-title")).toHaveText(t("topbar.note.empty"));
+
+  await page.locator("#open-palette").click();
+  await expect(palette).toBeVisible();
+  await expect(palette.locator(".palette-action").first()).toBeVisible();
+  await expect(command).toHaveCount(0);
 });

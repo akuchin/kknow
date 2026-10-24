@@ -517,6 +517,8 @@ function closeNote(): void {
   status.setWords(0);
   applyScale();
   markActive(null);
+  // The palette must not offer the commands of the closed note.
+  void refreshNoteCommands();
   renderNoteTools();
 }
 
@@ -2340,6 +2342,7 @@ async function forgetVault(entry: VaultView): Promise<void> {
     } else {
       state.setVault(null);
       state.setNote(null);
+      void refreshNoteCommands();
       status.setVault(null);
       showHeading(null);
       editor.setText("");
@@ -2378,6 +2381,7 @@ async function useVault(info: VaultInfo): Promise<void> {
   stashPosition();
   state.setVault(info);
   state.setNote(null);
+  void refreshNoteCommands();
   status.setVault(info.name, info.color);
 
   // Collapsed folders and recent notes are per vault: ⌘2 must return to where
