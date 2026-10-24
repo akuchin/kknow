@@ -12,7 +12,6 @@ import {
   onVaultChanged,
   onVaultOpened,
   parseLink,
-  type AppSettings,
   type BookmarkMark,
   type CommandTarget,
   type CommandView,
@@ -23,7 +22,6 @@ import {
   type SyncConflict,
   type SyncSettings,
   type SyncStatus,
-  type Theme,
   type TrashEntryView,
   type VaultInfo,
   type VaultView,
@@ -41,27 +39,35 @@ import {
   type Keymap,
 } from "./actions";
 import type { BookmarkChange } from "./bookmarks";
-import { renderDiagrams, setDiagramBase } from "./diagram";
+import { renderDiagrams } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
 import { paintBookmarks, scrollToLine, topLine } from "./preview-lines";
 import { imageLink } from "./attachment-name";
 import { isImage } from "./images";
 import { icon } from "./icons";
-import { LOCALE_NAMES, describeError, locale, locales, setLocale, t, type Key } from "./i18n";
+import { describeError, locale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
-import { MODES, modeOf, moveMode, nextMode } from "./note-mode";
-import { moveScale, setDefaultScale } from "./note-scale";
+import { MODES, moveMode, nextMode } from "./note-mode";
+import { moveScale } from "./note-scale";
 import type { Heading } from "./outline";
 import { Palette } from "./palette";
 import "./styles.css";
 import { describeReport, syncSegment, type SyncWords } from "./sync-text";
 import { buildTree, fileName, folderOf, join, leafOf, type Folder } from "./tree-model";
+import {
+  applySettings,
+  initAppearance,
+  loadSettings,
+  openMoreMenu,
+  pickTheme,
+  refreshThemes,
+  toggleLineNumbers,
+} from "./window/appearance";
 import { app, el, initDom } from "./window/dom";
 import { editor, initEditor } from "./window/editor";
 import {
   LAST_FILE,
   applyNote,
-  applyScale,
   cancelPendingSave,
   changeCurrentScale,
   closeNote,
@@ -92,6 +98,7 @@ import {
   tableNotes,
 } from "./window/notes-float";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
+import { openSettings } from "./window/util";
 import { state } from "./window/state";
 
 /** How many recently opened notes the palette remembers. */
@@ -2420,72 +2427,7 @@ async function refreshSync(): Promise<void> {
   await refreshStatuses();
 }
 
-/** The settings window is separate, so the core opens it, not this page. */
-async function openSettings(section?: string): Promise<void> {
-  try {
-    await api.openSettings(section);
-  } catch (error) {
-    fail(error);
-  }
-}
-
-/** Writes settings to the core. Both windows learn about the change from an event. */
-async function saveSettings(change: Partial<AppSettings>): Promise<void> {
-  if (!state.settings) return;
-  try {
-    state.setSettings(await api.setSettings({ ...state.settings, ...change }));
-  } catch (error) {
-    fail(error);
-  }
-}
-
-/**
- * The status bar button. It changes the setting, not the editor: the settings
- * window shows the same switch, and both learn about the change the same way.
- */
-async function toggleLineNumbers(): Promise<void> {
-  if (!state.settings) return;
-  await saveSettings({ lineNumbers: !state.settings.lineNumbers });
-  // The event also comes here; the button does not wait for it.
-  showLineNumbers(state.settings.lineNumbers);
-}
-
-function showLineNumbers(on: boolean): void {
-  editor.setLineNumbers(on);
-  status.setLineNumbers(on);
-}
-
-/** Applies settings from the core: language, theme, preview, line numbers. */
-function applySettings(incoming: AppSettings): void {
-  const localeChanged = incoming.locale !== locale;
-  const defaultChanged = incoming.viewMode !== state.settings?.viewMode;
-  const scaleChanged = incoming.noteScale !== state.settings?.noteScale;
-  const labelChanged = incoming.noteLabel !== state.settings?.noteLabel;
-  state.setSettings(incoming);
-  if (labelChanged) renderTree();
-  showLineNumbers(incoming.lineNumbers);
-  // A new default size affects only a file without its own size.
-  if (scaleChanged) {
-    setDefaultScale(incoming.noteScale);
-    applyScale();
-  }
-
-  if (incoming.theme !== currentTheme) applyTheme(incoming.theme, { remember: false });
-  // A new default affects only a note without a saved mode.
-  if (defaultChanged) {
-    setMode(state.note ? modeOf(positionKey(state.note), incoming.viewMode) : incoming.viewMode, {
-      remember: false,
-    });
-  }
-
-  // Labels are set in the markup when the window builds, so a language change
-  // needs a reload. The localStorage mirror updates before it.
-  if (localeChanged) {
-    setLocale(incoming.locale);
-    void flushPendingSave().then(() => location.reload());
-  }
-}
-
+initAppearance({ renderTree });
 initNote({
   closeTrashView,
   refreshFiles,
@@ -2808,124 +2750,6 @@ const palette = new Palette({
 
 el.openPalette.onclick = () => palette.open();
 
-/** Built-in themes. Their values are in styles.css. */
-const BUILT_IN: [string, string][] = [
-  ["light", t("theme.light")],
-  ["dark", t("theme.dark")],
-];
-
-let themes: Theme[] = [];
-/** Selected theme. The status bar menu marks it with a check. */
-let currentTheme = "light";
-/** Variables set by the previous theme. They must be removed. */
-let painted: string[] = [];
-
-/**
- * Applies a theme: `data-theme` picks the built-in base, and the manifest
- * variables go on top of it.
- *
- * The core already validated the values, so `setProperty` gets them as is.
- */
-function applyTheme(id: string, options: { remember?: boolean } = {}): void {
-  const root = document.documentElement;
-  for (const name of painted) root.style.removeProperty(name);
-  painted = [];
-
-  const theme = themes.find((candidate) => candidate.id === id);
-  const base = theme ? theme.base : id === "dark" ? "dark" : "light";
-  root.dataset.theme = base;
-
-  for (const [name, value] of Object.entries(theme?.variables ?? {})) {
-    root.style.setProperty(`--${name}`, value);
-    painted.push(`--${name}`);
-  }
-
-  // Diagram colors are a mermaid setting, not CSS, so diagrams must redraw.
-  // Preview first, then the editor: the editor redraws its diagrams and needs
-  // the new setting already applied.
-  void setDiagramBase(base, el.preview).then(() => editor.redrawDiagrams());
-
-  currentTheme = id;
-  // The theme lives in settings shared with the settings window. When the
-  // theme came from there as an event, do not write it back.
-  if (options.remember !== false) void saveSettings({ theme: id });
-
-  if (theme && theme.warnings.length > 0) {
-    setStatus(t("status.themeWarning", { name: theme.name, warning: theme.warnings[0] }), "error");
-  }
-}
-
-/** Themes live in the vault folder, so they load with it. */
-async function refreshThemes(): Promise<void> {
-  try {
-    const set = await api.listThemes();
-    themes = set.themes;
-    if (set.problems.length > 0) setStatus(set.problems[0], "error");
-  } catch (error) {
-    themes = [];
-    fail(error);
-  }
-  pickTheme();
-}
-
-/** Available themes: built-in ones and the ones in the vault folder. */
-function themeList(): [string, string][] {
-  return [...BUILT_IN, ...themes.map((theme): [string, string] => [theme.id, theme.name])];
-}
-
-/** Applies the theme from settings. It can be gone: the file was deleted or the vault changed. */
-function pickTheme(): void {
-  const wanted = state.settings?.theme ?? "light";
-  const known = themeList().some(([id]) => id === wanted);
-  // A missing theme falls back to light, but the choice stays saved: it applies
-  // again when the vault with that theme returns.
-  applyTheme(known ? wanted : "light", { remember: known });
-}
-
-/**
- * Status bar gear: theme, language and settings in one menu.
- *
- * These were three labeled segments, and together they took more space than
- * everything else. Users change them rarely, and a check marks the current
- * choice.
- */
-function openMoreMenu(anchor: HTMLElement): void {
-  openMenu(anchor, [
-    {
-      title: t("menu.theme"),
-      items: themeList().map(([id, name]) => ({
-        label: name,
-        checked: id === currentTheme,
-        run: () => applyTheme(id),
-      })),
-    },
-    {
-      title: t("menu.locale"),
-      items: locales.map((name) => ({
-        label: LOCALE_NAMES[name] ?? name,
-        checked: name === locale,
-        run: () => void switchLocale(name),
-      })),
-    },
-    {
-      items: [
-        { label: t("menu.settings"), glyph: "gear", action: "settings.open", run: () => void openSettings() },
-      ],
-    },
-  ]);
-}
-
-/** Labels are set in the markup when the window builds, so the window reloads. */
-async function switchLocale(name: string): Promise<void> {
-  if (name === locale) return;
-  await flushPendingSave();
-  // The language goes to settings. The localStorage mirror updates at once, so
-  // after the reload the labels use the new language.
-  setLocale(name);
-  await saveSettings({ locale: name });
-  location.reload();
-}
-
 /**
  * The window actions. A run that returns `false` did not take the key: the
  * event goes on as if nobody handled it.
@@ -3051,23 +2875,7 @@ async function onExternalChange(
 }
 
 async function boot(): Promise<void> {
-  try {
-    state.setSettings(await api.getSettings());
-  } catch (error) {
-    fail(error);
-  }
-
-  if (state.settings) {
-    showLineNumbers(state.settings.lineNumbers);
-    setDefaultScale(state.settings.noteScale);
-    // The window language comes from settings. `i18n` reads its mirror
-    // synchronously; they differ only after a manual edit of the file.
-    if (state.settings.locale !== locale) {
-      setLocale(state.settings.locale);
-      location.reload();
-      return;
-    }
-  }
+  if (await loadSettings()) return;
   // The window was built with the keys from the `localStorage` copy. The file
   // differs from it only after a hand edit or on the first start.
   if (await refreshKeymap()) return;
