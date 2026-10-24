@@ -137,7 +137,8 @@ pub struct TrashEntryView {
     path: String,
     /// Deletion time in Unix seconds.
     deleted: u64,
-    notes: usize,
+    /// Notes in the entry: paths from the vault root, `Folder/note.md`.
+    notes: Vec<String>,
 }
 
 /// A moved note: its new ID and the number of notes whose links changed.
@@ -874,6 +875,29 @@ pub fn restore_trash(
     })
 }
 
+/// Renders a note from the trash to read it before a restore.
+///
+/// Links resolve against the vault, as if the note were still at its path.
+/// The window shows the HTML read-only: the file is out of the vault, and an
+/// edit would have nowhere to go.
+#[tauri::command]
+pub fn trash_note(
+    state: State<'_, AppState>,
+    entry: String,
+    note: String,
+    vault: Option<String>,
+) -> Result<String> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        let content = workspace
+            .trash()
+            .read(&entry, &note)
+            .map_err(kknow_app::Error::from)?;
+        let id = NoteId::from_relative_path(Path::new(&note))
+            .ok_or_else(|| Error::NotFound(note.clone()))?;
+        Ok(workspace.render(&id, &content))
+    })
+}
+
 /// Removes one trash entry for good.
 #[tauri::command]
 pub fn delete_trash_entry(
@@ -1102,7 +1126,15 @@ mod tests {
         let listed = list_trash(app.state(), None).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].path, "Projects/kknow.md");
-        assert_eq!(listed[0].notes, 1);
+        assert_eq!(listed[0].notes, ["Projects/kknow.md"]);
+        let html = trash_note(
+            app.state(),
+            listed[0].id.clone(),
+            "Projects/kknow.md".into(),
+            None,
+        )
+        .unwrap();
+        assert!(html.contains("kknow"), "{html}");
 
         let restored = restore_trash(app.state(), listed[0].id.clone(), None).unwrap();
         assert_eq!(restored, ["Projects/kknow"]);

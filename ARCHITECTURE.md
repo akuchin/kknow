@@ -807,9 +807,22 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - The entries are the newest first: the latest delete is the one to undo.
     An entry row shows the deleted path and the age in days. The tooltip adds
     the note count and the delete time.
-  - An entry cannot open, because its file is out of the vault. So a click on
-    it opens its menu, as "⋯" and a right click do: "Восстановить" and
+  - The menu of an entry ("⋯" or a right click) has "Восстановить" and
     "Удалить навсегда". The menu of the node has "Очистить корзину".
+  - A click on a deleted note opens it read-only (`viewTrashNote`). A deleted
+    folder expands to its notes (`TrashEntry::notes`), and a click on one of
+    them does the same.
+    - The core reads the file in the entry (`Trash::read`) and renders it as
+      a note at its old path (`trash_note`), so links resolve. `Trash::read`
+      takes only a note path inside the entry: no `..`, no root.
+    - The view covers the editor and the preview, but it is not the open
+      note. The open note stays under it: no save, no history step, no
+      vault switch. Thus an edit is impossible, and Close or Esc gives back
+      the note as it was. Opening any note closes the view.
+    - The view paints code and diagrams. It does not load images: they load
+      through the open note (`setImageOwner`), and this note is not open.
+    - "Восстановить" in the view header puts back the whole entry. For a note
+      of a deleted folder, the button names the folder.
   - A restore goes through `Workspace::restore`, so the index and the graph
     follow. A single note then opens; a folder only returns to the tree. A
     taken file stops the restore, and the status shows the core error.

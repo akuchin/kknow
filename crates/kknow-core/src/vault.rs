@@ -514,7 +514,7 @@ mod tests {
         assert_eq!(ids, ["Projects/Rust/kknow"]);
         assert!(!dir.path().join("Projects").exists());
         assert!(!vault.contains(&NoteId::parse("Projects/Rust/kknow").unwrap()));
-        assert_eq!(vault.trash().entries().unwrap()[0].notes, 1);
+        assert_eq!(vault.trash().entries().unwrap()[0].notes.len(), 1);
 
         assert!(matches!(
             vault.remove_folder("Projects"),

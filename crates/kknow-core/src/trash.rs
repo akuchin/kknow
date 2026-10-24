@@ -8,7 +8,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use walkdir::WalkDir;
@@ -32,8 +32,8 @@ pub struct TrashEntry {
     /// child at each level: a deleted folder with one subfolder shows the
     /// subfolder.
     pub path: String,
-    /// Number of notes in the entry.
-    pub notes: usize,
+    /// Notes in the entry: paths from the vault root, with `/`, sorted.
+    pub notes: Vec<String>,
 }
 
 /// The trash of one vault.
@@ -84,10 +84,19 @@ impl Trash {
         let mut entries = Vec::new();
         for (id, path, deleted) in self.entry_dirs()? {
             let notes = WalkDir::new(&path)
+                .sort_by_file_name()
                 .into_iter()
                 .filter_map(|entry| entry.ok())
                 .filter(|entry| entry.file_type().is_file() && is_note(entry.path()))
-                .count();
+                .filter_map(|entry| {
+                    let relative = entry.path().strip_prefix(&path).ok()?;
+                    let parts: Vec<_> = relative
+                        .components()
+                        .map(|part| part.as_os_str().to_string_lossy())
+                        .collect();
+                    Some(parts.join("/"))
+                })
+                .collect();
             entries.push(TrashEntry {
                 path: item_path(&path),
                 deleted: UNIX_EPOCH + Duration::from_secs(deleted),
@@ -148,13 +157,30 @@ impl Trash {
             .collect())
     }
 
-    /// Removes all entries for good. Returns their number.
     /// Removes one entry for good.
     pub fn remove(&self, id: &str) -> Result<()> {
         let entry = self.entry_path(id)?;
         fs::remove_dir_all(&entry).map_err(|source| Error::io(&entry, source))
     }
 
+    /// Text of a note in the entry, to look at it before a restore.
+    ///
+    /// `note` is the path from the vault root, as in [`TrashEntry::notes`].
+    /// A path that leaves the entry or is no note is "not found".
+    pub fn read(&self, id: &str, note: &str) -> Result<String> {
+        let entry = self.entry_path(id)?;
+        let relative = Path::new(note);
+        let inside = relative
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)));
+        let path = entry.join(relative);
+        if !inside || !is_note(relative) || !path.is_file() {
+            return Err(Error::TrashEntryNotFound(format!("{id}/{note}")));
+        }
+        fs::read_to_string(&path).map_err(|source| Error::io(&path, source))
+    }
+
+    /// Removes all entries for good. Returns their number.
     pub fn empty(&self) -> Result<usize> {
         let dirs = self.entry_dirs()?;
         for (_, path, _) in &dirs {
@@ -300,7 +326,7 @@ mod tests {
         let entries = trash.entries().unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "Проекты/план.md");
-        assert_eq!(entries[0].notes, 1);
+        assert_eq!(entries[0].notes.len(), 1);
         let kept = trash.dir().join(&entries[0].id).join("Проекты/план.md");
         assert_eq!(fs::read_to_string(kept).unwrap(), "# План");
     }
@@ -396,6 +422,34 @@ mod tests {
             trash.remove(".."),
             Err(Error::TrashEntryNotFound(_))
         ));
+    }
+
+    #[test]
+    fn a_note_in_the_trash_can_be_read_but_not_outside_it() {
+        let (dir, trash) = vault_with(&[
+            ("Проекты/план.md", "# План"),
+            ("Проекты/итоги.md", "# Итоги"),
+        ]);
+        fs::write(dir.path().join("секрет.md"), "# Секрет").unwrap();
+        trash.put(Path::new("Проекты")).unwrap();
+        let entry = &trash.entries().unwrap()[0];
+        assert_eq!(entry.notes, ["Проекты/итоги.md", "Проекты/план.md"]);
+
+        assert_eq!(trash.read(&entry.id, "Проекты/план.md").unwrap(), "# План");
+        for wrong in [
+            "Проекты",
+            "Проекты/нет.md",
+            "../../../секрет.md",
+            "/etc/hosts.md",
+        ] {
+            assert!(
+                matches!(
+                    trash.read(&entry.id, wrong),
+                    Err(Error::TrashEntryNotFound(_))
+                ),
+                "{wrong}"
+            );
+        }
     }
 
     #[test]

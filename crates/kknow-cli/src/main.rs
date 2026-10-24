@@ -1095,7 +1095,7 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
                     entry.id,
                     entry.path,
                     days_ago(age),
-                    entry.notes
+                    entry.notes.len()
                 );
             }
         }

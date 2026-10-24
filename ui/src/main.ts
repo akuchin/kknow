@@ -230,6 +230,24 @@ app.innerHTML = `
     </section>
   </section>
 
+  <!-- A note from the trash, read-only. It covers the editor and the preview
+       but does not replace the open note: Close shows that note again. -->
+  <section id="trash-view" class="trash-view" aria-labelledby="trash-view-title" hidden>
+    <header class="trash-view-head">
+      ${iconMarkup("trash")}
+      <span id="trash-view-title" class="trash-view-title"></span>
+      <span class="trash-view-badge">${t("trashView.readOnly")}</span>
+      <span id="trash-view-age" class="muted"></span>
+      <span class="spacer"></span>
+      <button id="trash-view-restore" class="primary">${t("sidebar.trash.restore")}</button>
+      <button id="trash-view-close" class="ghost bare" title="${t("trashView.close")}"
+              aria-label="${t("trashView.close")}">
+        ${iconMarkup("close")}
+      </button>
+    </header>
+    <article id="trash-view-body" class="preview"></article>
+  </section>
+
   <footer class="statusbar" id="statusbar"></footer>
 
   <!-- Agent notes in the open text. A float over the editor, not a section of
@@ -289,6 +307,12 @@ const el = {
   syncList: document.querySelector<HTMLUListElement>("#sync-list")!,
   syncHide: document.querySelector<HTMLButtonElement>("#sync-hide")!,
   runFloat: document.querySelector<HTMLElement>("#run-float")!,
+  trashView: document.querySelector<HTMLElement>("#trash-view")!,
+  trashViewTitle: document.querySelector<HTMLSpanElement>("#trash-view-title")!,
+  trashViewAge: document.querySelector<HTMLSpanElement>("#trash-view-age")!,
+  trashViewRestore: document.querySelector<HTMLButtonElement>("#trash-view-restore")!,
+  trashViewClose: document.querySelector<HTMLButtonElement>("#trash-view-close")!,
+  trashViewBody: document.querySelector<HTMLElement>("#trash-view-body")!,
   runTitle: document.querySelector<HTMLSpanElement>("#run-title")!,
   runSummary: document.querySelector<HTMLParagraphElement>("#run-summary")!,
   runOutput: document.querySelector<HTMLPreElement>("#run-output")!,
@@ -828,6 +852,7 @@ function headingName(view: NoteView): string {
 
 /** Empty state after the open note is deleted: nothing is open. */
 function closeNote(): void {
+  closeTrashView();
   current = null;
   setImageOwner(null);
   showHeading(null);
@@ -846,6 +871,8 @@ function closeNote(): void {
 function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void {
   if (!options.keepEditor) {
     stashPosition();
+    // A note the user opens replaces the trash note on top of it.
+    closeTrashView();
   }
   current = view;
   // Before the editor text: its widgets request images for this note at once.
@@ -985,7 +1012,9 @@ function renderTree(): void {
   }
 
   el.noteList.append(...vaults.map(vaultItem));
-  markActive(current?.id ?? null);
+  // While a trash note covers the open note, only the trash note is marked.
+  markActive(trashViewing ? null : (current?.id ?? null));
+  markTrashViewing();
 }
 
 function emptyItem(text: string): HTMLLIElement {
@@ -1021,6 +1050,12 @@ const expanded = new Set<string>(readList("kknow:vaults:open"));
  * notes are rarely needed, and their list must not push the notes away.
  */
 const trashOpen = new Set<string>(readList("kknow:trash:open"));
+
+/** Expanded folder entries of the trash, `vault/entry`. Not saved: entries come and go. */
+const trashExpanded = new Set<string>();
+
+/** The trash note in the read-only view; null while the view is closed. */
+let trashViewing: { vault: string; entry: string; note: string } | null = null;
 
 /** Vaults that are loading now; for a large vault this is parsing and indexing. */
 const reading = new Set<string>();
@@ -1256,13 +1291,18 @@ function toggleTrash(vaultId: string): void {
 }
 
 /**
- * A deleted note or folder in the trash. It cannot open: the file is out of
- * the vault. So a click opens its menu, as "⋯" does.
+ * A deleted note or folder in the trash.
+ *
+ * A note opens read-only on click: its file is out of the vault, and an edit
+ * would have nowhere to go. A folder expands to its notes. Restore and
+ * delete for good are in the menu ("⋯" or a right click).
  */
 function trashEntryItem(trashed: TrashEntryView, owner: VaultView): HTMLLIElement {
   const item = document.createElement("li");
-  const note = trashed.path.endsWith(".md");
-  const path = note ? trashed.path.slice(0, -".md".length) : trashed.path;
+  const single = trashed.path.endsWith(".md");
+  const path = withoutExtension(trashed.path);
+  const key = `${owner.id}/${trashed.id}`;
+  const open = !single && trashExpanded.has(key);
   const days = Math.floor((Date.now() / 1000 - trashed.deleted) / (24 * 60 * 60));
   const age = days > 0 ? t("sidebar.trash.days", { count: days }) : t("sidebar.trash.today");
 
@@ -1271,13 +1311,12 @@ function trashEntryItem(trashed: TrashEntryView, owner: VaultView): HTMLLIElemen
   );
 
   const button = document.createElement("button");
-  button.className = "trash-entry";
+  button.className = single ? "trash-entry" : "trash-entry trash-folder";
   button.title = [
     trashed.path,
-    t("sidebar.trash.notes", { count: trashed.notes }),
+    t("sidebar.trash.notes", { count: trashed.notes.length }),
     new Date(trashed.deleted * 1000).toLocaleString(locale),
   ].join("\n");
-  button.onclick = () => openTrashEntryMenu(more, trashed, path, owner);
 
   const name = document.createElement("span");
   name.className = "note-title";
@@ -1285,7 +1324,22 @@ function trashEntryItem(trashed: TrashEntryView, owner: VaultView): HTMLLIElemen
   const when = document.createElement("span");
   when.className = "tree-count";
   when.textContent = age;
-  button.append(icon(note ? "note" : "folder"), name, when);
+  if (single) {
+    button.dataset.vault = owner.id;
+    button.dataset.entry = trashed.id;
+    button.dataset.note = trashed.notes[0] ?? "";
+    button.onclick = () => void viewTrashNote(owner, trashed, trashed.notes[0] ?? trashed.path);
+    button.append(icon("note"), name, when);
+  } else {
+    button.setAttribute("aria-expanded", String(open));
+    button.onclick = () => {
+      if (!trashExpanded.delete(key)) trashExpanded.add(key);
+      renderTree();
+    };
+    const arrow = icon("chevron");
+    arrow.classList.add("chevron");
+    button.append(arrow, icon("folder"), name, when);
+  }
 
   const row = document.createElement("div");
   row.className = "tree-row trash-entry-row";
@@ -1295,7 +1349,110 @@ function trashEntryItem(trashed: TrashEntryView, owner: VaultView): HTMLLIElemen
     openTrashEntryMenu(more, trashed, path, owner);
   };
   item.append(row);
+
+  if (open) {
+    const nested = document.createElement("ul");
+    nested.append(
+      ...(trashed.notes.length > 0
+        ? trashed.notes.map((note) => trashNoteItem(note, trashed, owner))
+        : [emptyItem(t("sidebar.trash.noNotes"))]),
+    );
+    item.append(nested);
+  }
   return item;
+}
+
+/** A note inside a deleted folder: it opens read-only, as a deleted note does. */
+function trashNoteItem(note: string, trashed: TrashEntryView, owner: VaultView): HTMLLIElement {
+  const item = document.createElement("li");
+  const prefix = `${trashed.path}/`;
+
+  const button = document.createElement("button");
+  button.className = "trash-entry";
+  button.dataset.vault = owner.id;
+  button.dataset.entry = trashed.id;
+  button.dataset.note = note;
+  button.title = note;
+  button.onclick = () => void viewTrashNote(owner, trashed, note);
+  const name = document.createElement("span");
+  name.className = "note-title";
+  name.textContent = withoutExtension(note.startsWith(prefix) ? note.slice(prefix.length) : note);
+  button.append(icon("note"), name);
+
+  const row = document.createElement("div");
+  row.className = "tree-row trash-entry-row";
+  row.append(button);
+  item.append(row);
+  return item;
+}
+
+function withoutExtension(path: string): string {
+  return path.replace(/\.md$/i, "");
+}
+
+/**
+ * Shows a trash note read-only over the editor and the preview.
+ *
+ * The open note stays open under the view: no save, no history step, no
+ * change of the active vault. "Restore" puts back the whole entry, so for a
+ * note of a deleted folder its button says that the folder comes back.
+ */
+async function viewTrashNote(owner: VaultView, trashed: TrashEntryView, note: string): Promise<void> {
+  let html: string;
+  try {
+    html = await api.trashNote(trashed.id, note, owner.id);
+  } catch (error) {
+    fail(error);
+    return;
+  }
+
+  trashViewing = { vault: owner.id, entry: trashed.id, note };
+  el.trashViewTitle.textContent = withoutExtension(note);
+  el.trashViewTitle.title = `${owner.name} / ${note}`;
+  el.trashViewAge.textContent = t("trashView.deleted", {
+    when: new Date(trashed.deleted * 1000).toLocaleString(locale),
+  });
+  const folder = !trashed.path.endsWith(".md");
+  el.trashViewRestore.textContent = folder
+    ? t("trashView.restoreFolder", { name: trashed.path })
+    : t("sidebar.trash.restore");
+  el.trashViewRestore.onclick = () => {
+    closeTrashView();
+    void restoreTrash(owner.id, trashed.id);
+  };
+
+  // Diagrams and code are painted as in the preview. Images are not: they
+  // load through the open note, and this note is not open.
+  el.trashViewBody.innerHTML = html;
+  el.trashViewBody.scrollTop = 0;
+  paintCodeBlocks(el.trashViewBody);
+  void renderDiagrams(el.trashViewBody);
+  el.trashView.hidden = false;
+  markActive(null);
+  markTrashViewing();
+  el.trashViewClose.focus();
+}
+
+/** Closes the trash view; the open note under it shows again. */
+function closeTrashView(): void {
+  if (el.trashView.hidden) return;
+  el.trashView.hidden = true;
+  el.trashViewBody.innerHTML = "";
+  trashViewing = null;
+  markTrashViewing();
+  markActive(current?.id ?? null);
+}
+
+/** Marks the trash note in the view, as the open note is marked. */
+function markTrashViewing(): void {
+  for (const button of el.noteList.querySelectorAll<HTMLButtonElement>("button.trash-entry")) {
+    const shown =
+      trashViewing !== null &&
+      button.dataset.vault === trashViewing.vault &&
+      button.dataset.entry === trashViewing.entry &&
+      button.dataset.note === trashViewing.note;
+    button.classList.toggle("active", shown);
+  }
 }
 
 function openTrashMenu(anchor: HTMLElement, owner: VaultView, entries: TrashEntryView[]): void {
@@ -3037,6 +3194,7 @@ async function deleteTrashEntry(vaultId: string, entry: string, path: string): P
   if (!window.confirm(t("confirm.deleteTrashEntry", { name: path }))) return;
   try {
     await api.deleteTrashEntry(entry, vaultId);
+    if (trashViewing?.vault === vaultId && trashViewing.entry === entry) closeTrashView();
     await refreshTree(vaultId);
     setStatus(t("status.trashEntryDeleted"));
   } catch (error) {
@@ -3049,6 +3207,7 @@ async function emptyTrash(target: VaultView): Promise<void> {
   if (!window.confirm(t("confirm.emptyTrash", { name: target.name }))) return;
   try {
     await api.emptyTrash(target.id);
+    if (trashViewing?.vault === target.id) closeTrashView();
     await refreshTree(target.id);
     setStatus(t("status.trashEmptied"));
   } catch (error) {
@@ -3614,6 +3773,8 @@ el.newNoteForm.onsubmit = (event) => {
   void (newNoteMode === "note" ? createNote(name) : createFolder(name));
 };
 
+el.trashViewClose.onclick = () => closeTrashView();
+
 el.newNoteName.onkeydown = (event) => {
   if (matches(event, "cancel")) {
     el.newNoteForm.hidden = true;
@@ -3879,6 +4040,11 @@ document.addEventListener("keydown", (event) => {
   if (matches(event, "cancel") && !el.notesFloat.hidden) {
     event.preventDefault();
     showNotesFloat(false);
+    return;
+  }
+  if (matches(event, "cancel") && !el.trashView.hidden) {
+    event.preventDefault();
+    closeTrashView();
     return;
   }
 

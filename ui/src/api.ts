@@ -251,7 +251,8 @@ export interface TrashEntryView {
   path: string;
   /** Deletion time in Unix seconds. */
   deleted: number;
-  notes: number;
+  /** Notes in the entry: paths from the vault root, `Folder/note.md`. */
+  notes: string[];
 }
 
 /** A task list item of a vault note: `- [ ] text`. */
@@ -494,6 +495,9 @@ export const api = {
    */
   restoreTrash: (entry: string, vault: string) =>
     invoke<string[]>("restore_trash", { entry, vault }),
+  /** HTML of a note in a trash entry, to read it before a restore. */
+  trashNote: (entry: string, note: string, vault: string) =>
+    invoke<string>("trash_note", { entry, note, vault }),
   /** Removes one trash entry for good. */
   deleteTrashEntry: (entry: string, vault: string) =>
     invoke<void>("delete_trash_entry", { entry, vault }),

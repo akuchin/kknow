@@ -245,7 +245,12 @@ function trashedNote(id: string, content: string): MockNote {
     folder: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null,
     tags: [],
     content,
-    html: `<h1>${title}</h1>`,
+    html: `<h1>${title}</h1>${content
+      .split("\n")
+      .slice(2)
+      .filter(Boolean)
+      .map((line) => `<p>${line}</p>`)
+      .join("")}`,
   };
 }
 
@@ -1097,7 +1102,7 @@ export async function invoke<T>(
           id: entry.id,
           path: entry.path,
           deleted: entry.deleted,
-          notes: entry.notes.length,
+          notes: entry.notes.map((note) => `${note.id}.md`),
         }))
         .reverse() as T;
     }
@@ -1114,6 +1119,14 @@ export async function invoke<T>(
       asked.notes.push(...entry.notes);
       asked.folders.push(...entry.folders.filter((folder) => !asked.folders.includes(folder)));
       return entry.notes.map((note) => note.id) as T;
+    }
+
+    case "trash_note": {
+      const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+      const entry = asked.trash.find((each) => each.id === args?.entry);
+      const note = entry?.notes.find((each) => `${each.id}.md` === args?.note);
+      if (!note) throw new Error(`запись корзины не найдена: ${String(args?.note)}`);
+      return note.html as T;
     }
 
     case "delete_trash_entry": {

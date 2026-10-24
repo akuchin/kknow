@@ -681,10 +681,12 @@ kknow trash empty                 # remove all entries for good
 
 In the window, each vault tree ends with the "Корзина" node. The number next
 to it is the number of entries. Expand it to see the entries, the newest
-first. A click or a right click on an entry opens its menu: "Восстановить"
-puts it back (a single note opens), "Удалить навсегда" removes it. The menu of
-the "Корзина" node has "Очистить корзину". Both removals ask for a
-confirmation.
+first. A click on a deleted note opens it read-only, over the open note:
+"Восстановить" in its header puts it back, Esc closes it. A deleted folder
+expands to its notes, and they open the same way. The menu of an entry ("⋯"
+or a right click) has "Восстановить" (a single note opens) and "Удалить
+навсегда". The menu of the "Корзина" node has "Очистить корзину". Both
+removals ask for a confirmation.
 
 A restore does not overwrite a note. If a file of the entry is taken, nothing
 moves. Sync does not copy `.kknow`, so each machine has its own trash.
