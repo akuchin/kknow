@@ -27,7 +27,6 @@ import {
   type SyncStatus,
   type Theme,
   type TrashEntryView,
-  type UpdateStatus,
   type VaultInfo,
   type VaultView,
   type ViewMode,
@@ -63,9 +62,10 @@ import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./
 import type { Heading } from "./outline";
 import { Palette } from "./palette";
 import { SaveQueue } from "./session";
-import { StatusBar, countWords } from "./statusbar";
+import { countWords } from "./statusbar";
 import "./styles.css";
 import { app, el, initDom } from "./window/dom";
+import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
 
 /**
  * Delay after the last key press before the file is written.
@@ -250,49 +250,18 @@ function showNotesFloat(show: boolean): void {
   if (show) renderNotes();
 }
 
-/**
- * Status bar: app state and quick toggles.
- *
- * Handlers get the button because the menu attaches to it, not to the window.
- */
-const status = new StatusBar(el.statusbar, {
-  vault: (anchor) => openVaultMenu(anchor),
-  sync: () => void runSync(),
-  run: () => showRunOutput(el.runFloat.hidden),
-  chip: (anchor) => openChipMenu(anchor),
-  update: () => void restartToUpdate(),
-  scale: (steps) => changeCurrentScale(steps),
-  lines: () => void toggleLineNumbers(),
-  more: (anchor) => openMoreMenu(anchor),
-});
-
-/** Window messages go to the status bar through this one entry point. */
-function setStatus(text: string, tone: "idle" | "work" | "error" = "idle"): void {
-  status.setMessage(text, tone);
-}
-
-function fail(error: unknown): void {
-  setStatus(describeError(error), "error");
-}
-
-function showUpdate(update: UpdateStatus): void {
-  status.setUpdate(update.state === "ready" ? update.version : null);
-}
-
-/**
- * "Restart" in the status bar. The note goes to disk first: the restart does
- * not wait for the autosave timer. On success the app is gone, so only a
- * failure comes back.
- */
-async function restartToUpdate(): Promise<void> {
-  await flushPendingSave();
-  setStatus(t("status.updating"), "work");
-  try {
-    await api.restartToUpdate();
-  } catch (error) {
-    fail(error);
-  }
-}
+initStatus(
+  {
+    vault: (anchor) => openVaultMenu(anchor),
+    sync: () => void runSync(),
+    run: () => showRunOutput(el.runFloat.hidden),
+    chip: (anchor) => openChipMenu(anchor),
+    scale: (steps) => changeCurrentScale(steps),
+    lines: () => void toggleLineNumbers(),
+    more: (anchor) => openMoreMenu(anchor),
+  },
+  () => flushPendingSave(),
+);
 
 function onEdit(text: string): void {
   if (!current) return;
