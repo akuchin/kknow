@@ -15,6 +15,7 @@ import type { BookmarkView, GlobalResult, NoteSummary } from "./api";
 import { iconMarkup } from "./icons";
 import { matches, shortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
+import type { Heading } from "./outline";
 
 /** Delay before a query: each keystroke would otherwise call the core. */
 const SEARCH_DELAY = 150;
@@ -74,6 +75,9 @@ export interface PaletteHost {
   create(name: string): void;
   /** Rebuilt on each open: the labels depend on the window state. */
   actions(): PaletteAction[];
+  /** Headings of the open note, with unsaved edits. */
+  headings(): Heading[];
+  goToHeading(heading: Heading): void;
 }
 
 /** A result row: recent notes have no snippet, search hits do. */
@@ -86,6 +90,8 @@ interface Row {
   vault?: { id: string; name: string; color: string };
   /** Bookmark line: the row then opens this place, not just the note. */
   line?: number;
+  /** A heading of the open note: the row goes to it. */
+  heading?: Heading;
 }
 
 /**
@@ -111,6 +117,8 @@ export class Palette {
   private readonly count: HTMLSpanElement;
 
   private scope: Scope = "all";
+  /** "Go to heading": the list is the open note outline, not the vault. */
+  private outline = false;
   private rows: Row[] = [];
   private selected = 0;
   private timer: number | undefined;
@@ -149,7 +157,7 @@ export class Palette {
         <p class="palette-section" id="palette-label"></p>
         <ul class="palette-list" id="palette-results"></ul>
         <p class="palette-message" id="palette-message" hidden></p>
-        <p class="palette-section">${t("palette.actions")}</p>
+        <p class="palette-section" id="palette-actions-label">${t("palette.actions")}</p>
         <div class="palette-actions" id="palette-actions"></div>
       </div>
       <footer class="palette-foot">
@@ -201,7 +209,9 @@ export class Palette {
    * `scope` is the initial chip, for example bookmarks.
    */
   open(query = "", scope: Scope = "all"): void {
+    this.setOutline(false);
     if (this.dialog.open) {
+      this.renderActions();
       this.input.value = query;
       this.input.select();
       this.setScope(scope, { silent: true });
@@ -221,8 +231,28 @@ export class Palette {
     void this.run();
   }
 
+  /**
+   * Opens "Go to heading": the headings of the open note. The chips and the
+   * actions are about the vault, so they hide.
+   */
+  openOutline(): void {
+    this.setOutline(true);
+    this.input.value = "";
+    if (!this.dialog.open) {
+      document.body.dataset.palette = "open";
+      this.dialog.showModal();
+    }
+    void this.run();
+  }
+
   close(): void {
     this.dialog.close();
+  }
+
+  private setOutline(on: boolean): void {
+    this.outline = on;
+    this.dialog.dataset.mode = on ? "outline" : "search";
+    this.input.placeholder = t(on ? "palette.outlinePlaceholder" : "palette.placeholder");
   }
 
   private setScope(scope: Scope, options: { silent?: boolean } = {}): void {
@@ -251,6 +281,11 @@ export class Palette {
   private async run(): Promise<void> {
     const text = this.input.value.trim();
     const ticket = ++this.issued;
+
+    if (this.outline) {
+      this.runOutline(text);
+      return;
+    }
 
     if (this.scope === "bookmarks") {
       await this.runBookmarks(text, ticket);
@@ -348,6 +383,32 @@ export class Palette {
     );
   }
 
+  /**
+   * The headings of the open note filtered by the typed text, as bookmarks
+   * are. The indent shows the level.
+   */
+  private runOutline(text: string): void {
+    const headings = this.host.headings();
+    const wanted = text.toLowerCase();
+    const rows = headings
+      .filter((heading) => heading.text.toLowerCase().includes(wanted))
+      .map<Row>((heading) => ({
+        id: heading.text,
+        title: heading.text,
+        folder: null,
+        snippet: null,
+        line: heading.line,
+        heading,
+      }));
+    this.show(
+      rows,
+      t("palette.outline"),
+      headings.length === 0 ? t("palette.noHeadings") : t("palette.emptyPlain"),
+      "outline",
+      headings.length,
+    );
+  }
+
   /** Shows that the palette is busy while the core opens vaults. */
   private showWorking(text: string): void {
     this.list.replaceChildren();
@@ -361,8 +422,15 @@ export class Palette {
    * The footer number depends on what is shown. For recent notes it is about
    * the vault ("8 of 9"); for hits it counts the hits. Search covers all
    * vaults, so a comparison with the active vault note count would be wrong.
+   * For the outline it is about the headings of the note.
    */
-  private show(rows: Row[], label: string, empty: string, kind: "recent" | "found"): void {
+  private show(
+    rows: Row[],
+    label: string,
+    empty: string,
+    kind: "recent" | "found" | "outline",
+    total = this.host.total(),
+  ): void {
     this.rows = rows;
     this.selected = 0;
     this.label.textContent = label;
@@ -371,9 +439,9 @@ export class Palette {
     this.message.textContent = empty;
     this.message.hidden = rows.length > 0;
     this.count.textContent =
-      kind === "recent"
-        ? t("palette.count", { shown: rows.length, total: this.host.total() })
-        : t("palette.found", { count: rows.length });
+      kind === "found"
+        ? t("palette.found", { count: rows.length })
+        : t("palette.count", { shown: rows.length, total });
 
     this.markSelected();
   }
@@ -396,7 +464,8 @@ export class Palette {
 
     const mark = document.createElement("span");
     mark.className = "palette-icon";
-    mark.innerHTML = iconMarkup(row.line === undefined ? "note" : "bookmark");
+    mark.innerHTML = iconMarkup(row.heading ? "heading" : row.line === undefined ? "note" : "bookmark");
+    if (row.heading) button.style.setProperty("--level", String(row.heading.level - 1));
 
     const text = document.createElement("span");
     text.className = "palette-text";
@@ -507,13 +576,17 @@ export class Palette {
     // Empty list and a valid name: Enter creates a note. A search miss usually
     // means the note does not exist yet.
     const name = this.input.value.trim();
-    if (this.scope !== "all" || !nameable(name)) return;
+    if (this.outline || this.scope !== "all" || !nameable(name)) return;
     this.close();
     this.host.create(name);
   }
 
   private pick(row: Row): void {
     this.close();
+    if (row.heading) {
+      this.host.goToHeading(row.heading);
+      return;
+    }
     if (row.line !== undefined) {
       this.host.openBookmark(row.id, row.line);
       return;

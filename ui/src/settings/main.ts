@@ -634,6 +634,7 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "file.open": "settings.keys.action.file.open",
   "note.save": "settings.keys.action.note.save",
   "note.find": "settings.keys.action.note.find",
+  "note.outline": "settings.keys.action.note.outline",
   "note.mode": "settings.keys.action.note.mode",
   "note.comment": "settings.keys.action.note.comment",
   "bookmark.toggle": "settings.keys.action.bookmark.toggle",

@@ -78,6 +78,19 @@ export function topLine(root: HTMLElement): number | null {
 }
 
 /**
+ * Scrolls the block of `line` to the top of the preview. Without a mark for
+ * the line, it takes the nearest mark above. Without marks, it does nothing.
+ */
+export function scrollToLine(root: HTMLElement, line: number): void {
+  let best: HTMLElement | null = null;
+  for (const mark of root.querySelectorAll<HTMLElement>(MARK)) {
+    if (Number(mark.dataset.line) > line) break;
+    best = mark;
+  }
+  if (best) (blockOf(best) ?? best).scrollIntoView({ block: "start" });
+}
+
+/**
  * Bookmark icons in the preview go on the mark of the bookmarked line. If there
  * is no such mark (the bookmark is inside a paragraph or code block), they go
  * on the nearest mark above.

@@ -589,6 +589,13 @@ While a search is active, live preview expands such a block. When the panel
 closes, live preview collapses the block again. Otherwise a widget would hide
 the match until the "next" button reaches it.
 
+### Headings of the open note
+
+⌘⇧O opens the palette with the headings of the open note. Subheadings have an
+indent. Type to make the list shorter, then press ↵: the cursor goes to the
+heading. In "Side by side" and "Read", the preview also scrolls to it. The list
+follows unsaved edits. A `#` line in a code block is not a heading.
+
 ## Bookmarks
 
 ⌘⇧B adds a bookmark to the line with the cursor. A ribbon appears to the left
@@ -1088,6 +1095,7 @@ event, and both windows apply it immediately.
 | Esc in the palette | close it |
 | ⌘F | search within the open note |
 | ⌘G, ⌘⇧G | next and previous match |
+| ⌘⇧O | go to a heading of the open note |
 | Esc in note search | close the search panel |
 | ⌘E | next note mode: Edit, Side by side, Read |
 | ⌘\\ | hide or show the sidebar |

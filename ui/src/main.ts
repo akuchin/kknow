@@ -46,7 +46,7 @@ import {
 import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
-import { paintBookmarks, topLine } from "./preview-lines";
+import { paintBookmarks, scrollToLine, topLine } from "./preview-lines";
 import { paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
@@ -57,6 +57,7 @@ import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
+import type { Heading } from "./outline";
 import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
@@ -1519,6 +1520,16 @@ async function openBookmark(id: string, line: number): Promise<void> {
       null,
     );
   editor.goToLine(nearest ?? line);
+}
+
+/**
+ * Goes to a heading from the outline. The editor cursor moves in each mode,
+ * and an open preview scrolls to the heading too. "Read" keeps its mode: the
+ * user reads there.
+ */
+function goToHeading(heading: Heading): void {
+  editor.goToLine(heading.line);
+  if (mode !== "edit") scrollToLine(el.preview, heading.line);
 }
 
 /**
@@ -3348,6 +3359,9 @@ const palette = new Palette({
   activeVault: () => vault?.id ?? null,
   open: (id, from) => void openFound(id, from),
   create: (name) => void createNote(name),
+  // The editor has the text of a standalone file too, so it gets the outline.
+  headings: () => editor.getHeadings(),
+  goToHeading,
   actions: () => [
     // Commands of the open note come first: the other actions are about the
     // window, and a command is about what is open in it.
@@ -3368,6 +3382,7 @@ const palette = new Palette({
     })),
     { label: t("palette.action.bookmark"), action: "bookmark.toggle", run: () => toggleCurrentBookmark() },
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
+    { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
     { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
@@ -3528,6 +3543,8 @@ const windowActions: [Action, () => boolean | void][] = [
   ["palette.open", () => palette.open()],
   // Two searches: ⌘F in the open note, ⌘K in all vaults.
   ["note.find", () => editor.openSearch()],
+  // ⌘⇧O as in VS Code: "Go to symbol" in the open file.
+  ["note.outline", () => palette.openOutline()],
   ["settings.open", () => void openSettings()],
   ["scale.larger", () => changeCurrentScale(1)],
   ["scale.smaller", () => changeCurrentScale(-1)],

@@ -33,6 +33,7 @@ import { codeLanguages, highlightStyle } from "./highlight";
 import { bindings } from "./actions";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
+import { headingsOf, type Heading } from "./outline";
 import { tableEditing } from "./table-editing";
 import { addNoteInCell } from "./table-widget";
 
@@ -394,6 +395,11 @@ export class Editor {
   goToLine(line: number): void {
     goToLine(this.view, line);
     this.view.focus();
+  }
+
+  /** The headings of the current text, also with unsaved edits. */
+  getHeadings(): Heading[] {
+    return headingsOf(this.view.state);
   }
 
   getText(): string {

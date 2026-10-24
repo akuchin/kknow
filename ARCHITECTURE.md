@@ -800,6 +800,17 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   it.
 - The number in the footer depends on the content. For recent notes it is
   about the vault ("8 of 9"). For hits, it is about the hits.
+- "Go to heading" (⌘⇧O, `note.outline`) is a palette mode, not a sidebar
+  panel. `openOutline` hides the chips and the actions. The list is the
+  headings of the open note, with an indent for each level.
+  - `ui/src/outline.ts` takes ATX and setext headings from the editor syntax
+    tree. The tree knows code blocks, so a `#` line in a block is no heading.
+    The closing `---` of frontmatter is not a setext heading.
+  - The palette filters the headings itself, as it filters bookmarks.
+  - ↵ puts the editor cursor on the heading. An open preview scrolls to the
+    heading too (`scrollToLine` finds the nearest line marker). "Read" keeps
+    its mode.
+  - A standalone file gets the outline too: it uses the same editor.
 
 ### Settings window
 
@@ -1398,6 +1409,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - ⌘S — save now.
 - ⌘K and ⌘⇧P — search palette. Esc in it closes it.
 - ⌘F — search in the open note.
+- ⌘⇧O — go to a heading of the open note, as "Go to symbol" in VS Code.
 - ⌘E — next note mode.
 - ⌘\\ — sidebar.
 - ⌘⌥← / ⌘⌥→ — back and forward.
@@ -1772,6 +1784,10 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   changes while you type. A call to Rust on each key press is not worth it. The
   word count is a regular expression over the editor text, with a debounce. In
   the terminal, `kknow stats` prints the same data, and there the core counts.
+- **The window computes the note outline, not the core.** The editor already
+  has the Markdown syntax tree, also for unsaved edits. The core would need
+  the full text on each palette open and would parse it again. The CLI has
+  no outline, so the core needs no new API.
 - **Reveal in Finder is our own command, not a plugin.** `tauri-plugin-opener`
   would add an npm package and permissions for one action. Instead,
   `reveal_note` calls the system `open -R` (and `explorer`/`xdg-open` on other

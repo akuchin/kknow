@@ -31,6 +31,7 @@ const DEFAULTS = {
   "file.open": ["Mod-o"],
   "note.save": ["Mod-s"],
   "note.find": ["Mod-f"],
+  "note.outline": ["Mod-Shift-o"],
   "note.mode": ["Mod-e"],
   "note.comment": ["Mod-Shift-m"],
   "bookmark.toggle": ["Mod-Shift-b"],
