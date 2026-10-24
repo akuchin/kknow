@@ -260,7 +260,10 @@ mod tests {
 
         assert_eq!(
             loaded.keymap,
-            keymap(&[("future.action", &["Mod-j"]), ("note.new", &["Mod-Shift-n"])]),
+            keymap(&[
+                ("future.action", &["Mod-j"]),
+                ("note.new", &["Mod-Shift-n"])
+            ]),
             "неизвестное действие остаётся: его знает новая версия"
         );
         assert_eq!(loaded.problems.len(), 3, "{:?}", loaded.problems);
@@ -287,7 +290,9 @@ mod tests {
         let path = Keymap::path(home.path());
         fs::write(&path, "{ правка на середине").unwrap();
 
-        keymap(&[("note.new", &["Mod-Shift-n"])]).save(&path).unwrap();
+        keymap(&[("note.new", &["Mod-Shift-n"])])
+            .save(&path)
+            .unwrap();
 
         let broken = home.path().join("keybindings.json.broken");
         assert_eq!(fs::read_to_string(broken).unwrap(), "{ правка на середине");
@@ -317,7 +322,13 @@ mod tests {
     #[test]
     fn wrong_keys_are_rejected() {
         for key in [
-            "", "Mod-", "Super-k", "Mod-Mod-k", "Mod-ы", "Mod-arrowLeft", "Mod-Arrow Left",
+            "",
+            "Mod-",
+            "Super-k",
+            "Mod-Mod-k",
+            "Mod-ы",
+            "Mod-arrowLeft",
+            "Mod-Arrow Left",
         ] {
             assert!(check_key(key).is_err(), "{key}");
         }

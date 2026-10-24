@@ -45,7 +45,10 @@ pub fn global_dir(config_dir: impl AsRef<Path>) -> PathBuf {
 /// the same `id` in the shared folder or in the vault replaces them.
 const BUILT_IN: &[(&str, &str)] = &[
     ("gruvbox", include_str!("../themes/gruvbox.json")),
-    ("gruvbox-light", include_str!("../themes/gruvbox-light.json")),
+    (
+        "gruvbox-light",
+        include_str!("../themes/gruvbox-light.json"),
+    ),
 ];
 
 /// Variables that the UI knows.
@@ -555,11 +558,20 @@ mod tests {
         let set = load(None, None);
 
         let ids: Vec<&str> = set.themes.iter().map(|theme| theme.id.as_str()).collect();
-        assert_eq!(ids, ["gruvbox-light", "gruvbox"], "по имени: «светлая» < «тёмная»");
+        assert_eq!(
+            ids,
+            ["gruvbox-light", "gruvbox"],
+            "по имени: «светлая» < «тёмная»"
+        );
         assert!(set.problems.is_empty(), "{:?}", set.problems);
         for theme in &set.themes {
             assert_eq!(theme.source, Source::BuiltIn);
-            assert!(theme.warnings.is_empty(), "{}: {:?}", theme.id, theme.warnings);
+            assert!(
+                theme.warnings.is_empty(),
+                "{}: {:?}",
+                theme.id,
+                theme.warnings
+            );
             assert!(!theme.variables.is_empty(), "{}", theme.id);
         }
     }

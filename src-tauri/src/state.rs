@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use kknow_app::Workspace;
 use kknow_app::files::OpenFiles;
@@ -127,19 +127,23 @@ impl VaultSlot {
 /// Vaults open lazily (on switch, search or sync) and do not close again. Each
 /// has its own search index in memory, and a rebuild on each visit costs more
 /// than keeping it.
+///
+/// Paths and the open hook are set once at start, so they are `OnceLock`, not
+/// `Mutex`: a read takes no lock, and two locks cannot meet in a wrong order.
+/// Only the data that changes while the app runs is under a `Mutex`.
 #[derive(Default)]
 pub struct AppState {
     /// Where to write the registry. `None` means nowhere (tests use this).
-    registry_file: Mutex<Option<PathBuf>>,
+    registry_file: OnceLock<Option<PathBuf>>,
     /// Where to read commands from. `None` means no commands.
     ///
     /// The caller sets the path; this code does not look it up. The real file
     /// is in the settings of the person who runs the tests, and `cargo test`
     /// must not touch it. The keyring has the same reason.
-    commands_file: Mutex<Option<PathBuf>>,
+    commands_file: OnceLock<Option<PathBuf>>,
     /// Global themes folder. `None` means no global themes; same reason as for
     /// commands.
-    themes_dir: Mutex<Option<PathBuf>>,
+    themes_dir: OnceLock<Option<PathBuf>>,
     registry: Mutex<VaultRegistry>,
     open: Mutex<HashMap<String, Arc<VaultSlot>>>,
     /// What to start for a vault that just opened.
@@ -148,9 +152,9 @@ pub struct AppState {
     /// over the runtime. Storing it in the state would make all commands
     /// generic over the runtime, so a closure goes here at start.
     #[allow(clippy::type_complexity)]
-    on_open: Mutex<Option<Box<dyn Fn(Arc<VaultSlot>) + Send + Sync>>>,
+    on_open: OnceLock<Box<dyn Fn(Arc<VaultSlot>) + Send + Sync>>,
     /// Where to write the loose files list. `None` means nowhere (tests).
-    files_file: Mutex<Option<PathBuf>>,
+    files_file: OnceLock<Option<PathBuf>>,
     /// Loose files opened without a vault.
     files: Mutex<OpenFiles>,
     /// An "open" request from outside that the window did not take yet.
@@ -166,30 +170,27 @@ impl AppState {
     /// Sets the loaded registry and the file to write it to.
     /// `None` for the file means write nothing: tests use this.
     pub fn use_registry(&self, file: Option<PathBuf>, registry: VaultRegistry) {
-        *self.registry_file.lock().expect("состояние испорчено") = file;
-        *self.registry.lock().expect("состояние испорчено") = registry;
+        set_once(&self.registry_file, file);
+        *lock(&self.registry) = registry;
     }
 
     /// Sets the commands file; `None` means the app has no commands.
     pub fn use_commands(&self, file: Option<PathBuf>) {
-        *self.commands_file.lock().expect("состояние испорчено") = file;
+        set_once(&self.commands_file, file);
     }
 
     /// Sets the global themes folder; `None` means no global themes.
     pub fn use_themes(&self, dir: Option<PathBuf>) {
-        *self.themes_dir.lock().expect("состояние испорчено") = dir;
+        set_once(&self.themes_dir, dir);
     }
 
     pub fn themes_path(&self) -> Option<PathBuf> {
-        self.themes_dir.lock().expect("состояние испорчено").clone()
+        self.themes_dir.get().cloned().flatten()
     }
 
     /// Path of the commands file, to show in the file manager.
     pub fn commands_path(&self) -> Option<PathBuf> {
-        self.commands_file
-            .lock()
-            .expect("состояние испорчено")
-            .clone()
+        self.commands_file.get().cloned().flatten()
     }
 
     /// Commands of this machine.
@@ -198,15 +199,16 @@ impl AppState {
     /// the file by hand in another window and will not restart the app for a
     /// new command. Themes are read the same way.
     pub fn commands(&self) -> Result<CommandSet> {
-        let file = self.commands_file.lock().expect("состояние испорчено");
-        let Some(path) = file.as_ref() else {
+        let Some(path) = self.commands_file.get().and_then(Option::as_ref) else {
             return Ok(CommandSet::default());
         };
         Ok(CommandSet::load(path)?)
     }
 
     pub fn on_open(&self, hook: impl Fn(Arc<VaultSlot>) + Send + Sync + 'static) {
-        *self.on_open.lock().expect("состояние испорчено") = Some(Box::new(hook));
+        if self.on_open.set(Box::new(hook)).is_err() {
+            panic!("обработчик открытия задают один раз");
+        }
     }
 
     pub fn entries(&self) -> Vec<VaultEntry> {
@@ -254,8 +256,7 @@ impl AppState {
         let removed = registry.remove(id)?;
         drop(registry);
 
-        if let Some(slot) = self.open.lock().expect("состояние испорчено").remove(id)
-        {
+        if let Some(slot) = lock(&self.open).remove(id) {
             slot.close();
         }
         self.persist();
@@ -300,7 +301,7 @@ impl AppState {
         // large vault delays commands to all other vaults.
         let fresh = Arc::new(VaultSlot::open(entry.clone())?);
 
-        let mut open = self.open.lock().expect("состояние испорчено");
+        let mut open = lock(&self.open);
         // Someone else can open the vault while we read the disk. Then their
         // slot wins: two `Workspace`s for one folder mean two watchers and two
         // inconsistent parsed copies.
@@ -310,8 +311,7 @@ impl AppState {
         open.insert(entry.id.clone(), fresh.clone());
         drop(open);
 
-        if let Some(hook) = self.on_open.lock().expect("состояние испорчено").as_ref()
-        {
+        if let Some(hook) = self.on_open.get() {
             hook(fresh.clone());
         }
         Ok(fresh)
@@ -319,11 +319,7 @@ impl AppState {
 
     /// An open vault, which we can query without a disk read.
     pub fn opened(&self, id: &str) -> Option<Arc<VaultSlot>> {
-        self.open
-            .lock()
-            .expect("состояние испорчено")
-            .get(id)
-            .cloned()
+        lock(&self.open).get(id).cloned()
     }
 
     /// Vault order for a search in all vaults: the active vault first.
@@ -341,8 +337,8 @@ impl AppState {
 
     /// Sets the loaded loose files list and the file to write it to.
     pub fn use_files(&self, file: Option<PathBuf>, files: OpenFiles) {
-        *self.files_file.lock().expect("состояние испорчено") = file;
-        *self.files.lock().expect("состояние испорчено") = files;
+        set_once(&self.files_file, file);
+        *lock(&self.files) = files;
     }
 
     /// Loose files. Files missing from disk are forgotten here.
@@ -398,23 +394,22 @@ impl AppState {
 
     /// Keeps an "open this" request until the window takes it.
     pub fn set_pending(&self, opened: Opened) {
-        *self.pending.lock().expect("состояние испорчено") = Some(opened);
+        *lock(&self.pending) = Some(opened);
     }
 
     /// Takes the pending request. A second call returns nothing.
     pub fn take_pending(&self) -> Option<Opened> {
-        self.pending.lock().expect("состояние испорчено").take()
+        lock(&self.pending).take()
     }
 
     fn files_list(&self) -> MutexGuard<'_, OpenFiles> {
-        self.files.lock().expect("состояние испорчено")
+        lock(&self.files)
     }
 
     /// Writes the loose files list. A write error goes to the log, as for the
     /// registry.
     fn persist_files(&self) {
-        let file = self.files_file.lock().expect("состояние испорчено");
-        let Some(path) = file.as_ref() else {
+        let Some(path) = self.files_file.get().and_then(Option::as_ref) else {
             return;
         };
         if let Err(error) = self.files_list().save(path) {
@@ -423,19 +418,32 @@ impl AppState {
     }
 
     fn registry(&self) -> MutexGuard<'_, VaultRegistry> {
-        self.registry.lock().expect("состояние испорчено")
+        lock(&self.registry)
     }
 
     /// Writes the registry. A write error must not fail an action that already
     /// happened in memory, so we report it to the log.
     fn persist(&self) {
-        let file = self.registry_file.lock().expect("состояние испорчено");
-        let Some(path) = file.as_ref() else {
+        let Some(path) = self.registry_file.get().and_then(Option::as_ref) else {
             return;
         };
         if let Err(error) = self.registry().save(path) {
             eprintln!("не удалось записать список хранилищ: {error}");
         }
+    }
+}
+
+/// A poisoned mutex means a panic in another command. The state is not
+/// reliable, so we must not continue with it; same rule as for a vault.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().expect("состояние испорчено")
+}
+
+/// Sets a path that is fixed for the life of the app. A second set is a bug in
+/// the start code: the first value is already in use.
+fn set_once(cell: &OnceLock<Option<PathBuf>>, value: Option<PathBuf>) {
+    if cell.set(value).is_err() {
+        panic!("путь задают один раз, при запуске");
     }
 }
 

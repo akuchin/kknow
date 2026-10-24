@@ -77,7 +77,9 @@ struct LineMap {
 
 impl LineMap {
     fn line(&self, prepared: usize) -> usize {
-        let index = self.pieces.partition_point(|piece| piece.prepared <= prepared);
+        let index = self
+            .pieces
+            .partition_point(|piece| piece.prepared <= prepared);
         let source = match index.checked_sub(1).map(|index| &self.pieces[index]) {
             Some(piece) if piece.copied => piece.source + (prepared - piece.prepared),
             Some(piece) => piece.source,
@@ -495,7 +497,10 @@ mod tests {
 
         assert!(!html.contains("секрет"), "{html}");
         // Frontmatter lines count: the heading is line 5 of the file.
-        assert!(html.contains(&format!("<h1>{}Тело</h1>", mark(5))), "{html}");
+        assert!(
+            html.contains(&format!("<h1>{}Тело</h1>", mark(5))),
+            "{html}"
+        );
     }
 
     #[test]
@@ -580,9 +585,15 @@ mod tests {
     fn markdown_formatting_still_works() {
         let html = render("# Заголовок\n\n- пункт **жирный**\n", &[]);
 
-        assert!(html.contains(&format!("<h1>{}Заголовок</h1>", mark(1))), "{html}");
         assert!(
-            html.contains(&format!("<li>{}пункт <strong>жирный</strong></li>", mark(3))),
+            html.contains(&format!("<h1>{}Заголовок</h1>", mark(1))),
+            "{html}"
+        );
+        assert!(
+            html.contains(&format!(
+                "<li>{}пункт <strong>жирный</strong></li>",
+                mark(3)
+            )),
             "{html}"
         );
     }
@@ -604,10 +615,22 @@ mod tests {
 
         assert!(html.contains(&format!("<p>{}абзац", mark(3))), "{html}");
         // `push_html` puts a newline before the block itself.
-        assert!(html.contains(&format!("{}\n<pre>", block_mark(6))), "{html}");
-        assert!(html.contains(&format!("{}\n<hr />", block_mark(10))), "{html}");
-        assert!(html.contains(&format!("{}<table>", block_mark(12))), "{html}");
-        assert!(!html.contains("data-line=\"4\""), "продолжение абзаца — тот же абзац");
+        assert!(
+            html.contains(&format!("{}\n<pre>", block_mark(6))),
+            "{html}"
+        );
+        assert!(
+            html.contains(&format!("{}\n<hr />", block_mark(10))),
+            "{html}"
+        );
+        assert!(
+            html.contains(&format!("{}<table>", block_mark(12))),
+            "{html}"
+        );
+        assert!(
+            !html.contains("data-line=\"4\""),
+            "продолжение абзаца — тот же абзац"
+        );
     }
 
     #[test]
@@ -632,7 +655,10 @@ mod tests {
     fn mermaid_diagram_keeps_its_line_mark() {
         let html = render("текст\n\n```mermaid\ngraph TD\n```\n", &[]);
 
-        assert!(html.contains(&format!("{}<pre class=\"mermaid\">", block_mark(3))), "{html}");
+        assert!(
+            html.contains(&format!("{}<pre class=\"mermaid\">", block_mark(3))),
+            "{html}"
+        );
     }
 
     #[test]

@@ -152,7 +152,11 @@ mod tests {
         app.state::<KeymapState>().use_file(Some(path.clone()));
         assert_eq!(get_keymap(app.state()).keys, Keymap::default());
 
-        std::fs::write(&path, r#"{"note.new": ["Mod-Shift-n"], "note.save": "Mod-s"}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"note.new": ["Mod-Shift-n"], "note.save": "Mod-s"}"#,
+        )
+        .unwrap();
         let read = get_keymap(app.state());
 
         assert_eq!(read.keys, keys());
