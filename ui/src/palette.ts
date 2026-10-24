@@ -11,7 +11,7 @@
  * code, plus bugs.
  */
 
-import type { BookmarkView, GlobalResult, NoteSummary, TaskView } from "./api";
+import type { BookmarkView, GlobalResult, NoteSummary, TaskView, TrashEntryView } from "./api";
 import { iconMarkup } from "./icons";
 import { matches, shortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
@@ -48,6 +48,18 @@ const SCOPES: [Scope, Key][] = [
   ["tasks", "palette.scope.tasks"],
 ];
 
+/**
+ * What the palette lists: the vault (search and its chips), the headings of
+ * the open note, or the trash of one vault.
+ */
+type Mode = "search" | "outline" | "trash";
+
+/** The vault whose trash the palette shows. */
+export interface TrashVault {
+  id: string;
+  name: string;
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -83,6 +95,12 @@ export interface PaletteHost {
   /** Headings of the open note, with unsaved edits. */
   headings(): Heading[];
   goToHeading(heading: Heading): void;
+  /** Trash entries of the vault, the newest first. */
+  trash(vault: string): Promise<TrashEntryView[]>;
+  /** Puts the entry back to its old path. */
+  restoreTrash(vault: string, entry: string): void;
+  /** Removes all entries for good, after a confirmation. */
+  emptyTrash(vault: TrashVault): void;
 }
 
 /** A result row: recent notes have no snippet, search hits do. */
@@ -99,6 +117,16 @@ interface Row {
   heading?: Heading;
   /** The row is a task, not a bookmark. */
   task?: boolean;
+  /** A trash entry: the row restores it. */
+  entry?: string;
+  /** When the trash entry was deleted: "today", "3 days ago". */
+  when?: string;
+}
+
+/** Age of a trash entry in whole days: the trash keeps entries for 30 days. */
+function deletedAgo(deleted: number): string {
+  const days = Math.floor((Date.now() / 1000 - deleted) / (24 * 60 * 60));
+  return days > 0 ? t("palette.trashDaysAgo", { count: days }) : t("palette.trashToday");
 }
 
 /**
@@ -122,10 +150,12 @@ export class Palette {
   private readonly message: HTMLParagraphElement;
   private readonly actions: HTMLDivElement;
   private readonly count: HTMLSpanElement;
+  private readonly submitHint: HTMLSpanElement;
 
   private scope: Scope = "all";
-  /** "Go to heading": the list is the open note outline, not the vault. */
-  private outline = false;
+  private mode: Mode = "search";
+  /** The vault of the trash mode. */
+  private trashVault: TrashVault | null = null;
   private rows: Row[] = [];
   private selected = 0;
   private timer: number | undefined;
@@ -169,7 +199,7 @@ export class Palette {
       </div>
       <footer class="palette-foot">
         <span>${t("palette.hint.move", { keys: shortcut("list.previous") + shortcut("list.next") })}</span>
-        <span>${t("palette.hint.open", { key: shortcut("submit") })}</span>
+        <span id="palette-hint-submit"></span>
         <span>${t("palette.hint.close", { key: shortcut("cancel") })}</span>
         <span class="spacer"></span>
         <span id="palette-count"></span>
@@ -187,6 +217,7 @@ export class Palette {
     this.message = dialog.querySelector<HTMLParagraphElement>("#palette-message")!;
     this.actions = dialog.querySelector<HTMLDivElement>("#palette-actions")!;
     this.count = dialog.querySelector<HTMLSpanElement>("#palette-count")!;
+    this.submitHint = dialog.querySelector<HTMLSpanElement>("#palette-hint-submit")!;
 
     this.input.oninput = () => this.schedule();
     this.input.onkeydown = (event) => this.onKey(event);
@@ -216,7 +247,7 @@ export class Palette {
    * `scope` is the initial chip, for example bookmarks.
    */
   open(query = "", scope: Scope = "all"): void {
-    this.setOutline(false);
+    this.setMode("search");
     if (this.dialog.open) {
       this.renderActions();
       this.input.value = query;
@@ -243,7 +274,7 @@ export class Palette {
    * actions are about the vault, so they hide.
    */
   openOutline(): void {
-    this.setOutline(true);
+    this.setMode("outline");
     this.input.value = "";
     if (!this.dialog.open) {
       document.body.dataset.palette = "open";
@@ -252,14 +283,40 @@ export class Palette {
     void this.run();
   }
 
+  /**
+   * Opens the trash of a vault: Enter restores the entry. The chips are
+   * about search, so they hide; the only action is "Empty the trash".
+   */
+  openTrash(vault: TrashVault): void {
+    this.setMode("trash");
+    this.trashVault = vault;
+    this.input.value = "";
+    if (!this.dialog.open) {
+      document.body.dataset.palette = "open";
+      this.dialog.showModal();
+    }
+    this.input.focus();
+    this.renderActions();
+    void this.run();
+  }
+
   close(): void {
     this.dialog.close();
   }
 
-  private setOutline(on: boolean): void {
-    this.outline = on;
-    this.dialog.dataset.mode = on ? "outline" : "search";
-    this.input.placeholder = t(on ? "palette.outlinePlaceholder" : "palette.placeholder");
+  private setMode(mode: Mode): void {
+    this.mode = mode;
+    this.dialog.dataset.mode = mode;
+    this.input.placeholder = t(
+      mode === "outline"
+        ? "palette.outlinePlaceholder"
+        : mode === "trash"
+          ? "palette.trashPlaceholder"
+          : "palette.placeholder",
+    );
+    this.submitHint.textContent = t(mode === "trash" ? "palette.hint.restore" : "palette.hint.open", {
+      key: shortcut("submit"),
+    });
   }
 
   private setScope(scope: Scope, options: { silent?: boolean } = {}): void {
@@ -289,8 +346,12 @@ export class Palette {
     const text = this.input.value.trim();
     const ticket = ++this.issued;
 
-    if (this.outline) {
+    if (this.mode === "outline") {
       this.runOutline(text);
+      return;
+    }
+    if (this.mode === "trash" && this.trashVault) {
+      await this.runTrash(this.trashVault, text, ticket);
       return;
     }
 
@@ -456,6 +517,39 @@ export class Palette {
     );
   }
 
+  /**
+   * Trash entries filtered by the typed text in the path. The row title is
+   * the deleted path, so a note and a folder of one name differ.
+   */
+  private async runTrash(vault: TrashVault, text: string, ticket: number): Promise<void> {
+    let entries: TrashEntryView[];
+    try {
+      entries = await this.host.trash(vault.id);
+    } catch {
+      entries = [];
+    }
+    if (ticket !== this.issued) return;
+
+    const wanted = text.toLowerCase();
+    const rows = entries
+      .filter((entry) => entry.path.toLowerCase().includes(wanted))
+      .map<Row>((entry) => ({
+        id: entry.path,
+        title: entry.path,
+        folder: null,
+        snippet: escapeHtml(t("palette.trashNotes", { count: entry.notes })),
+        entry: entry.id,
+        when: deletedAgo(entry.deleted),
+      }));
+    this.show(
+      rows,
+      t("palette.trash", { name: vault.name }),
+      entries.length === 0 ? t("palette.trashEmpty") : t("palette.emptyPlain"),
+      "trash",
+      entries.length,
+    );
+  }
+
   /** Shows that the palette is busy while the core opens vaults. */
   private showWorking(text: string): void {
     this.list.replaceChildren();
@@ -475,7 +569,7 @@ export class Palette {
     rows: Row[],
     label: string,
     empty: string,
-    kind: "recent" | "found" | "outline",
+    kind: "recent" | "found" | "outline" | "trash",
     total = this.host.total(),
   ): void {
     this.rows = rows;
@@ -512,7 +606,15 @@ export class Palette {
     const mark = document.createElement("span");
     mark.className = "palette-icon";
     mark.innerHTML = iconMarkup(
-      row.heading ? "heading" : row.task ? "task" : row.line === undefined ? "note" : "bookmark",
+      row.heading
+        ? "heading"
+        : row.task
+          ? "task"
+          : row.entry
+            ? "trash"
+            : row.line === undefined
+              ? "note"
+              : "bookmark",
     );
     if (row.heading) button.style.setProperty("--level", String(row.heading.level - 1));
 
@@ -551,11 +653,11 @@ export class Palette {
       button.append(vault);
     }
 
-    if (row.folder || row.line !== undefined) {
+    if (row.folder || row.line !== undefined || row.when) {
       const folder = document.createElement("span");
       folder.className = "palette-meta";
       const line = row.line === undefined ? "" : t("palette.line", { line: row.line });
-      folder.textContent = [row.folder, line].filter(Boolean).join(" · ");
+      folder.textContent = [row.folder, line, row.when].filter(Boolean).join(" · ");
       button.append(folder);
     }
 
@@ -564,8 +666,13 @@ export class Palette {
   }
 
   private renderActions(): void {
+    const vault = this.trashVault;
+    const actions: PaletteAction[] =
+      this.mode === "trash" && vault
+        ? [{ label: t("palette.action.emptyTrash"), run: () => this.host.emptyTrash(vault) }]
+        : this.host.actions();
     this.actions.replaceChildren(
-      ...this.host.actions().map((action) => {
+      ...actions.map((action) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "palette-action";
@@ -625,7 +732,7 @@ export class Palette {
     // Empty list and a valid name: Enter creates a note. A search miss usually
     // means the note does not exist yet.
     const name = this.input.value.trim();
-    if (this.outline || this.scope !== "all" || !nameable(name)) return;
+    if (this.mode !== "search" || this.scope !== "all" || !nameable(name)) return;
     this.close();
     this.host.create(name);
   }
@@ -634,6 +741,10 @@ export class Palette {
     this.close();
     if (row.heading) {
       this.host.goToHeading(row.heading);
+      return;
+    }
+    if (row.entry && this.trashVault) {
+      this.host.restoreTrash(this.trashVault.id, row.entry);
       return;
     }
     if (row.task && row.line !== undefined) {

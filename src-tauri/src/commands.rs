@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::UNIX_EPOCH;
 
 use kknow_app::bookmarks::Mark;
 use kknow_app::theme::{self, ThemeSet};
@@ -126,6 +127,17 @@ pub struct TaskView {
     line: usize,
     text: String,
     done: bool,
+}
+
+/// One deletion in the trash of a vault.
+#[derive(Serialize)]
+pub struct TrashEntryView {
+    /// Entry name: restore takes it.
+    id: String,
+    path: String,
+    /// Deletion time in Unix seconds.
+    deleted: u64,
+    notes: usize,
 }
 
 /// A moved note: its new ID and the number of notes whose links changed.
@@ -817,6 +829,59 @@ pub fn set_task(
     })
 }
 
+/// Trash entries from the newest to the oldest: the latest delete is the
+/// one to undo first.
+#[tauri::command]
+pub fn list_trash(
+    state: State<'_, AppState>,
+    vault: Option<String>,
+) -> Result<Vec<TrashEntryView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        let entries = workspace
+            .trash()
+            .entries()
+            .map_err(kknow_app::Error::from)?;
+        Ok(entries
+            .into_iter()
+            .rev()
+            .map(|entry| TrashEntryView {
+                deleted: entry
+                    .deleted
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |age| age.as_secs()),
+                id: entry.id,
+                path: entry.path,
+                notes: entry.notes,
+            })
+            .collect())
+    })
+}
+
+/// Puts a trash entry back and returns the restored notes. The core
+/// overwrites nothing: if a file of the entry is taken, nothing moves.
+#[tauri::command]
+pub fn restore_trash(
+    state: State<'_, AppState>,
+    entry: String,
+    vault: Option<String>,
+) -> Result<Vec<String>> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        Ok(workspace
+            .restore(&entry)?
+            .iter()
+            .map(|id| id.as_str().to_string())
+            .collect())
+    })
+}
+
+/// Removes all trash entries for good and returns their number.
+#[tauri::command]
+pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<usize> {
+    state
+        .slot(vault.as_deref())?
+        .write(|workspace| Ok(workspace.trash().empty().map_err(kknow_app::Error::from)?))
+}
+
 /// Renames or moves a note and returns its new ID and the number of notes
 /// with rewritten links.
 ///
@@ -1011,6 +1076,27 @@ mod tests {
         assert_eq!(note.content, "# Оглавление\n\n- [x] прочитать\n");
         assert!(list_tasks(app.state(), None).unwrap()[0].done);
         assert!(set_task(app.state(), "Index".into(), 1, true, None).is_err());
+    }
+
+    #[test]
+    fn a_deleted_note_comes_back_from_the_trash() {
+        let dir = vault();
+        let app = app(&[dir.path()]);
+
+        delete_note(app.state(), "Projects/kknow".into(), None).unwrap();
+        let listed = list_trash(app.state(), None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].path, "Projects/kknow.md");
+        assert_eq!(listed[0].notes, 1);
+
+        let restored = restore_trash(app.state(), listed[0].id.clone(), None).unwrap();
+        assert_eq!(restored, ["Projects/kknow"]);
+        assert!(dir.path().join("Projects/kknow.md").is_file());
+        assert!(list_trash(app.state(), None).unwrap().is_empty());
+
+        delete_note(app.state(), "Index".into(), None).unwrap();
+        assert_eq!(empty_trash(app.state(), None).unwrap(), 1);
+        assert!(list_trash(app.state(), None).unwrap().is_empty());
     }
 
     #[test]

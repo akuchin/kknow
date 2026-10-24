@@ -59,7 +59,7 @@ import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
 import type { Heading } from "./outline";
-import { Palette } from "./palette";
+import { Palette, type TrashVault } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
 
@@ -2051,6 +2051,13 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
             })(),
         },
         {
+          label: t("sidebar.vault.trash"),
+          glyph: "trash",
+          key: "T",
+          disabled: !entry.available,
+          run: () => palette.openTrash({ id: entry.id, name: entry.name }),
+        },
+        {
           label: t("settings.vaults.finder"),
           glyph: "folder",
           key: "S",
@@ -2847,6 +2854,32 @@ async function removeFolder(name: string, vaultId: string): Promise<void> {
   }
 }
 
+/**
+ * Puts a trash entry back. A single note opens: the user came for it. A
+ * folder only returns to the tree.
+ */
+async function restoreTrash(vaultId: string, entry: string): Promise<void> {
+  try {
+    const restored = await api.restoreTrash(entry, vaultId);
+    await refreshTree(vaultId);
+    if (restored.length === 1) await openFound(restored[0], vaultId);
+    setStatus(t("status.trashRestored", { count: restored.length }));
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Removes all trash entries of the vault for good, after confirmation. */
+async function emptyTrash(target: TrashVault): Promise<void> {
+  if (!window.confirm(t("confirm.emptyTrash", { name: target.name }))) return;
+  try {
+    await api.emptyTrash(target.id);
+    setStatus(t("status.trashEmptied"));
+  } catch (error) {
+    fail(error);
+  }
+}
+
 /** Shows the sync result: a summary on top, details as a list. */
 function showSyncPanel(summary: string, items: HTMLLIElement[]): void {
   // The sync result lives in the right pane, so the pane must be visible.
@@ -3456,6 +3489,9 @@ const palette = new Palette({
   openBookmark: (id, line) => void openBookmark(id, line),
   tasks: () => (vault ? api.listTasks() : Promise.resolve([])),
   openTask: (id, line) => void openTask(id, line),
+  trash: (id) => api.listTrash(id),
+  restoreTrash: (id, entry) => void restoreTrash(id, entry),
+  emptyTrash: (target) => void emptyTrash(target),
   recent: recentNotes,
   total: () => activeNotes().length,
   activeVault: () => vault?.id ?? null,
@@ -3486,6 +3522,12 @@ const palette = new Palette({
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
     { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
     { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
+    {
+      label: t("palette.action.trash"),
+      run: () => {
+        if (vault) palette.openTrash({ id: vault.id, name: vault.name });
+      },
+    },
     { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },

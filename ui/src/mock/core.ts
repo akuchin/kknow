@@ -25,6 +25,7 @@ import type {
   TargetKind,
   TaskView,
   ThemeSet,
+  TrashEntryView,
   UpdateStatus,
   VaultStats,
   VaultInfo,
@@ -223,6 +224,38 @@ interface MockVault {
   notes: MockNote[];
   /** Folders without notes: the note list cannot restore them, as in the core. */
   folders: string[];
+  /** Trash entries from the oldest to the newest, with the notes they hold. */
+  trash: MockTrashEntry[];
+}
+
+interface MockTrashEntry {
+  id: string;
+  path: string;
+  deleted: number;
+  notes: MockNote[];
+  folders: string[];
+}
+
+/** A deleted note for the mock trash. */
+function trashedNote(id: string, content: string): MockNote {
+  const title = id.split("/").pop()!;
+  return {
+    id,
+    title,
+    folder: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null,
+    tags: [],
+    content,
+    html: `<h1>${title}</h1>`,
+  };
+}
+
+/** Moves notes and folders into a new trash entry, as `Vault::remove` does. */
+function putInTrash(vault: MockVault, path: string, notes: MockNote[], folders: string[]): void {
+  const now = Math.floor(Date.now() / 1000);
+  const taken = new Set(vault.trash.map((entry) => entry.id));
+  let id = String(now);
+  for (let attempt = 2; taken.has(id); attempt++) id = `${now}-${attempt}`;
+  vault.trash.push({ id, path, deleted: now, notes, folders });
 }
 
 /**
@@ -241,6 +274,26 @@ const vaults: MockVault[] = [
     available: true,
     notes,
     folders: ["Черновики"],
+    // Two old deletions: a folder and a note, so the trash has something to show.
+    trash: [
+      {
+        id: "1760000000",
+        path: "Старое",
+        deleted: Math.floor(Date.now() / 1000) - 12 * 24 * 60 * 60,
+        notes: [
+          trashedNote("Старое/Идеи", "# Идеи\n\nСтарые идеи.\n"),
+          trashedNote("Старое/Планы", "# Планы\n\nСтарые планы.\n"),
+        ],
+        folders: ["Старое"],
+      },
+      {
+        id: "1761000000",
+        path: "Черновик.md",
+        deleted: Math.floor(Date.now() / 1000) - 60 * 60,
+        notes: [trashedNote("Черновик", "# Черновик\n\nУдалён час назад.\n")],
+        folders: [],
+      },
+    ],
   },
   {
     id: "work-asw",
@@ -267,6 +320,7 @@ const vaults: MockVault[] = [
       },
     ],
     folders: [],
+    trash: [],
   },
   {
     id: "arhiv-2024",
@@ -276,6 +330,7 @@ const vaults: MockVault[] = [
     available: false,
     notes: [],
     folders: [],
+    trash: [],
   },
 ];
 
@@ -770,6 +825,7 @@ export async function invoke<T>(
         available: true,
         notes: [],
         folders: [],
+        trash: [],
       };
       vaults.push(added);
       activeVault = added;
@@ -943,7 +999,7 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.notes.findIndex((note) => note.id === id);
       if (index < 0) throw new Error(`заметка не найдена: ${id}`);
-      asked.notes.splice(index, 1);
+      putInTrash(asked, `${id}.md`, asked.notes.splice(index, 1), []);
       return undefined as T;
     }
 
@@ -1022,11 +1078,49 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const name = args?.name as string;
       const prefix = `${name}/`;
-      asked.notes = asked.notes.filter((note) => !note.id.startsWith(prefix));
-      asked.folders = asked.folders.filter(
-        (folder) => folder !== name && !folder.startsWith(prefix),
+      const inside = (path: string) => path === name || path.startsWith(prefix);
+      putInTrash(
+        asked,
+        name,
+        asked.notes.filter((note) => inside(note.id)),
+        asked.folders.filter(inside),
       );
+      asked.notes = asked.notes.filter((note) => !inside(note.id));
+      asked.folders = asked.folders.filter((folder) => !inside(folder));
       return undefined as T;
+    }
+
+    case "list_trash": {
+      const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+      return asked.trash
+        .map<TrashEntryView>((entry) => ({
+          id: entry.id,
+          path: entry.path,
+          deleted: entry.deleted,
+          notes: entry.notes.length,
+        }))
+        .reverse() as T;
+    }
+
+    case "restore_trash": {
+      const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+      const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
+      if (index < 0) throw new Error(`запись корзины не найдена: ${String(args?.entry)}`);
+      const entry = asked.trash[index];
+      // As in the core: a taken file stops the whole restore.
+      const taken = entry.notes.find((note) => asked.notes.some((other) => other.id === note.id));
+      if (taken) throw new Error(`файл уже существует: ${taken.id}.md`);
+      asked.trash.splice(index, 1);
+      asked.notes.push(...entry.notes);
+      asked.folders.push(...entry.folders.filter((folder) => !asked.folders.includes(folder)));
+      return entry.notes.map((note) => note.id) as T;
+    }
+
+    case "empty_trash": {
+      const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+      const count = asked.trash.length;
+      asked.trash = [];
+      return count as T;
     }
 
     case "list_themes":

@@ -848,6 +848,18 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - ↵ puts the editor cursor on the heading. An open preview scrolls to the
     heading too (`scrollToLine` finds the nearest line marker). "Read" keeps
     its mode.
+- The trash is a palette mode too (`openTrash`), for one vault. The "⋯" menu
+  of a vault row and the palette action "Корзина" open it.
+  - A trash belongs to a vault, not to the window. So the vault menu opens
+    the trash of its own vault, and the commands (`list_trash`,
+    `restore_trash`, `empty_trash`) take the vault ID.
+  - The list is the newest first: the latest delete is the one to undo. The
+    row shows the deleted path, the note count and the age in days.
+  - ↵ restores the entry through `Workspace::restore`, so the index and the
+    graph follow. A single note then opens; a folder only returns to the tree.
+    A taken file stops the restore, and the status shows the core error.
+  - The chips hide. The only action is "Очистить корзину", with a
+    `confirm`: unlike a delete, it cannot be undone.
   - A standalone file gets the outline too: it uses the same editor.
 
 ### Settings window

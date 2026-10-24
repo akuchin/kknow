@@ -679,9 +679,13 @@ kknow trash restore 1761300000    # put an entry back to its old path
 kknow trash empty                 # remove all entries for good
 ```
 
+In the window, open the trash from the "⋯" menu of a vault ("Корзина") or
+from the palette actions. The list shows the newest entries first. Enter puts
+the selected entry back; a single note opens. "Очистить корзину" removes all
+entries for good, after a confirmation.
+
 A restore does not overwrite a note. If a file of the entry is taken, nothing
-moves. The window has no trash view yet. Sync does not copy `.kknow`, so each
-machine has its own trash.
+moves. Sync does not copy `.kknow`, so each machine has its own trash.
 
 ## Edits outside the app
 

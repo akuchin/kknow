@@ -66,10 +66,6 @@ The plan for the redesign is closed. Its archive copy is
   Also add a "Make it a vault" button on the file row, for a folder that needs
   it.
 
-- **The window cannot restore from the trash.** A delete moves the note to
-  `.kknow/trash`, but only `kknow trash restore` puts it back. Add a trash view
-  with "restore" and "empty" to the window.
-
 ## Larger tasks
 
 - **Git as a sync provider.** This task waits on purpose. Git has commits,

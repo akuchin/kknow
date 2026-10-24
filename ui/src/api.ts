@@ -243,6 +243,17 @@ export interface BookmarkView {
   name?: string;
 }
 
+/** One deletion in the vault trash: a note or a folder. */
+export interface TrashEntryView {
+  /** Entry name: restore takes it. */
+  id: string;
+  /** The deleted item from the vault root: `Folder/note.md` or `Folder`. */
+  path: string;
+  /** Deletion time in Unix seconds. */
+  deleted: number;
+  notes: number;
+}
+
 /** A task list item of a vault note: `- [ ] text`. */
 export interface TaskView {
   note: string;
@@ -475,6 +486,16 @@ export const api = {
   createNote: (name: string) => invoke<NoteView>("create_note", { name }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
+  /** Trash entries of the vault, the newest first. */
+  listTrash: (vault: string) => invoke<TrashEntryView[]>("list_trash", { vault }),
+  /**
+   * Puts a trash entry back and returns the restored notes. The core
+   * overwrites nothing and refuses the entry if one of its files is taken.
+   */
+  restoreTrash: (entry: string, vault: string) =>
+    invoke<string[]>("restore_trash", { entry, vault }),
+  /** Removes all trash entries for good; returns their number. */
+  emptyTrash: (vault: string) => invoke<number>("empty_trash", { vault }),
   /** Vault folders, also empty ones that no note uses. */
   listFolders: (vault?: string) =>
     invoke<string[]>("list_folders", { vault: vault ?? null }),
