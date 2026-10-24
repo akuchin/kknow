@@ -1402,6 +1402,46 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   line. Thus the jump switches to "Side by side", but the window does not keep
   that mode for the note.
 
+### Tasks
+
+- A task is a list item with a box: `- [ ] text`, `- [x] text`. The parser
+  finds tasks (`ParsedNote::tasks`) from the `TaskListMarker` event, not from
+  the raw text. Thus a `- [ ]` in a code block is not a task.
+  - A task has the text, the state, the 1-based source line and the range of
+    `[ ]`. The text ends at the end of the paragraph or at a nested list. Thus
+    a nested task does not get into the text of its parent.
+  - `Workspace::tasks` gives the tasks of all notes, sorted by note and line.
+    It uses the parse that `Workspace` already keeps, so a list needs no disk
+    reads.
+- `Workspace::set_task` marks the task on line N as done or open.
+  - It reads the note from disk and parses it again. If line N has no task, it
+    refuses with `NotATask`. The line number comes from an older parse, and the
+    file can change after it.
+  - It changes only the character between the brackets. It writes through
+    `Workspace::save`, so the parse, the search and the bookmarks follow.
+  - It sets a state, it does not flip it. A second click with the same state
+    writes nothing.
+- The list is the fifth chip of the palette (⌘⌥T), next to bookmarks. The
+  palette shows only open tasks and filters them itself, as it does for
+  bookmarks. The row title is the task text, the snippet is the note title.
+  Enter opens the note at the task line. "Read" switches to "Side by side",
+  as for a bookmark.
+- The preview of a vault note makes the task boxes clickable.
+  - pulldown-cmark renders a box as `<input disabled>`, and a disabled input
+    gets no clicks. The window removes `disabled` (`enableTaskBoxes`). A
+    standalone file has no line marks, so its boxes stay disabled.
+  - The box comes right after the line mark of its list item, so the mark
+    before the box gives the line (`markLine`).
+  - The click handler cancels the browser toggle. The window first saves the
+    pending edits (`flushPendingSave`), then calls `set_task`. The core sees
+    the text of the editor, and its save check does not see a conflict.
+  - After the call, the editor changes the same character (`Editor.setTask`,
+    `ui/src/tasks.ts`). It is a usual edit, so ⌘Z undoes it, and the cursor
+    stays. The editor text is again equal to the disk, so the next save
+    writes nothing.
+- Live preview draws lists as text, so it has no boxes to click. There you
+  edit `[ ]` as text.
+
 ### Hotkeys
 
 - ⌘N — new note.
@@ -1415,6 +1455,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - ⌘⌥← / ⌘⌥→ — back and forward.
 - ⌘⇧B — bookmark on the cursor line (⌘B in the editor is bold).
 - ⌘⌥B — palette with bookmarks.
+- ⌘⌥T — palette with open tasks.
 - ⌘= / ⌘− / ⌘0 — note font larger, smaller, normal.
 - ⌘⇧S — sync.
 - ⌘, — settings.
@@ -1489,6 +1530,8 @@ Commands:
     `«»`.
   - `bookmark … --name` names the bookmark and sets it first if it is not
     there. An empty name removes the name.
+- `tasks [--all]` prints open tasks as `note:line  text`. `--all` also
+  prints done tasks, with `[x]` or `[ ]` before the text.
 
 - `sync` takes `--dry-run`, `--on-conflict both|local|remote`, and
   `--bucket …` or `--folder …`.
@@ -1522,6 +1565,14 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
 - **kknow finds its own writes by the content hash.** If not, the watcher would
   report the write as an external change. The UI would then load the note again
   while you type.
+- **The core changes a task box, not the window.** A click in the preview
+  calls `set_task`, and the core checks the line on disk before it writes.
+  - The preview line comes from an older render. If the window changed the
+    editor text by itself, a moved line would toggle a wrong box. The core
+    sees the file as it is now and refuses a line that is not a task.
+  - The window saves its edits before the call and repeats the change in the
+    editor after it. Thus the editor stays equal to the disk, and the edit has
+    an undo step.
 - **The window saves with a check, not blindly.**
   - `save_note` gets `base`, the text at the start of the edit.
     `Workspace::save_if_unchanged` writes only if the file did not change.

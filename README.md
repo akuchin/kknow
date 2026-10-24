@@ -203,7 +203,7 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line> [--name <name>]`.
+`bookmark <note> <line> [--name <name>]`, `tasks [--all]`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
@@ -629,6 +629,25 @@ bookmark plan 12` adds or removes a bookmark. `kknow bookmark plan 12 --name
 итоги` gives the bookmark a name, and sets the bookmark if it is not there.
 `--name ""` removes the name. Sync does not copy the service folder `.kknow`, so
 bookmarks stay on one machine. Standalone files have no bookmarks.
+
+## Tasks
+
+A task is a list item with a box: `- [ ] text`. `- [x] text` is a done task.
+Nested items, numbered items and items in a quote are tasks too. A `- [ ]`
+inside a code block is an example, not a task.
+
+⌘⌥T opens the palette on the "Tasks" chip. The palette shows the open tasks of
+the vault with the note title. Type to make the list shorter: the palette
+looks in the task text, note titles and paths. Press Enter to open the note at
+the task line.
+
+A click on a box in the preview marks the task as done, or open again. kknow
+writes the file at once, and the editor gets the same change, so ⌘Z undoes it.
+If the line is no longer a task (someone changed the file), kknow refuses the
+click and changes nothing. In live preview, edit the `[ ]` as text.
+
+`kknow tasks` prints the open tasks as `note:line  text`. `kknow tasks --all`
+also prints the done ones, with `[x]` or `[ ]` before the text.
 
 ## Edits outside the app
 
@@ -1102,6 +1121,7 @@ event, and both windows apply it immediately.
 | ⌘⌥←, ⌘⌥→ | back and forward through opened notes |
 | ⌘⇧B | set or remove a bookmark on the cursor line |
 | ⌘⌥B | palette with the bookmark list |
+| ⌘⌥T | palette with the open tasks |
 | ⌘=, ⌘−, ⌘0 | open note font: larger, smaller, normal |
 | ⌘1…⌘9 | switch to a vault by its position in the list |
 | ⌘⇧S | sync the active vault |

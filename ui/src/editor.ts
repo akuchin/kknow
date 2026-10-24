@@ -35,6 +35,7 @@ import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
 import { headingsOf, type Heading } from "./outline";
 import { tableEditing } from "./table-editing";
+import { taskBox } from "./tasks";
 import { addNoteInCell } from "./table-widget";
 
 const theme = EditorView.theme({
@@ -400,6 +401,24 @@ export class Editor {
   /** The headings of the current text, also with unsaved edits. */
   getHeadings(): Heading[] {
     return headingsOf(this.view.state);
+  }
+
+  /**
+   * Sets the task box on 1-based `line` to `done`, as one undo step.
+   * Returns `false` if the line has no box: the text changed meanwhile.
+   */
+  setTask(line: number, done: boolean): boolean {
+    const doc = this.view.state.doc;
+    if (line < 1 || line > doc.lines) return false;
+    const { from, text } = doc.line(line);
+    const box = taskBox(text);
+    if (!box) return false;
+    if (box.done !== done) {
+      this.view.dispatch({
+        changes: { from: from + box.at, to: from + box.at + 1, insert: done ? "x" : " " },
+      });
+    }
+    return true;
   }
 
   getText(): string {

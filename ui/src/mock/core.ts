@@ -23,16 +23,23 @@ import type {
   SyncSettingsForm,
   SyncStatus,
   TargetKind,
+  TaskView,
   ThemeSet,
   UpdateStatus,
   VaultStats,
   VaultInfo,
   VaultView,
 } from "../api";
+import { setTaskBox, taskBox } from "../tasks";
 
 /** Source line mark, the same as the core puts into HTML. */
 function line(number: number, block = false): string {
   return `<span class="line-mark${block ? " is-block" : ""}" data-line="${number}"></span>`;
+}
+
+/** A task box, the same as the core renders it. */
+function box(done: boolean): string {
+  return `<input disabled="" type="checkbox"${done ? ' checked=""' : ""}/>\n`;
 }
 
 interface MockNote {
@@ -99,8 +106,17 @@ const notes: MockNote[] = [
     title: "Встречи",
     folder: "Работа",
     tags: [],
-    content: "# Встречи\n\nКто, когда и о чём.\n",
-    html: "<h1>Встречи</h1><p>Кто, когда и о чём.</p>",
+    // Tasks: the palette lists the open ones, and a click on a box in the
+    // preview marks it.
+    content:
+      "# Встречи\n\nКто, когда и о чём.\n\n" +
+      "- [ ] разослать итоги планёрки\n- [x] забронировать переговорку\n" +
+      "  - [ ] позвать Иру из поддержки\n",
+    html:
+      `<h1>${line(1)}Встречи</h1><p>${line(3)}Кто, когда и о чём.</p>` +
+      `<ul><li>${line(5)}${box(false)}разослать итоги планёрки</li>` +
+      `<li>${line(6)}${box(true)}забронировать переговорку<ul>` +
+      `<li>${line(7)}${box(false)}позвать Иру из поддержки</li></ul></li></ul>`,
   },
   {
     // Table with markup in cells: it shows editing and the toolbar.
@@ -769,6 +785,41 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
           ...(name ? { name } : {}),
         })),
       ) as T;
+
+    case "list_tasks":
+      return activeVault.notes.flatMap((note) =>
+        note.content.split("\n").flatMap<TaskView>((text, index) => {
+          const found = taskBox(text);
+          if (!found) return [];
+          return [
+            {
+              note: note.id,
+              title: note.title,
+              folder: note.folder,
+              line: index + 1,
+              text: text.slice(found.at + 2).trim(),
+              done: found.done,
+            },
+          ];
+        }),
+      ) as T;
+
+    case "set_task": {
+      const note = find(id);
+      const number = args?.line as number;
+      const done = args?.done as boolean;
+      const lines = note.content.split("\n");
+      const changed = setTaskBox(lines[number - 1] ?? "", done);
+      if (changed === null) throw new Error(`в ${note.id} на строке ${number} нет задачи`);
+      lines[number - 1] = changed;
+      note.content = lines.join("\n");
+      // The mock HTML is fixed, so only the box of that line changes.
+      note.html = note.html.replace(
+        new RegExp(`(data-line="${number}"></span>)<input[^>]*/>\\n`),
+        `$1${box(done)}`,
+      );
+      return view(note) as T;
+    }
 
     case "preview":
       return find(id).html as T;

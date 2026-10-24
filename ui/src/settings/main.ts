@@ -639,6 +639,7 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "note.comment": "settings.keys.action.note.comment",
   "bookmark.toggle": "settings.keys.action.bookmark.toggle",
   "bookmark.list": "settings.keys.action.bookmark.list",
+  "task.list": "settings.keys.action.task.list",
   "sidebar.toggle": "settings.keys.action.sidebar.toggle",
   "history.back": "settings.keys.action.history.back",
   "history.forward": "settings.keys.action.history.forward",

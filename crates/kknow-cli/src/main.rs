@@ -12,7 +12,7 @@ use kknow_app::bookmarks::clean_name;
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
-use kknow_index::{Edge, EdgeKind, Subpath};
+use kknow_index::{Edge, EdgeKind, Subpath, Task};
 use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
 use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings, SyncEngine};
 
@@ -75,6 +75,12 @@ enum Command {
         /// Bookmark name.
         #[arg(long)]
         name: Option<String>,
+    },
+    /// List open tasks (`- [ ]`) of all notes: `note:line  text`.
+    Tasks {
+        /// Also list done tasks, with `[x]` and `[ ]` before the text.
+        #[arg(long)]
+        all: bool,
     },
     /// Vaults that kknow knows: the same list as in the window.
     Vaults {
@@ -313,6 +319,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Bookmark { note, line, name } => {
             bookmark(&mut workspace, &note, line, name.as_deref())?
         }
+        Command::Tasks { all } => tasks(&workspace, all),
         Command::Commands {
             target,
             kind,
@@ -587,6 +594,36 @@ fn bookmarks(workspace: &Workspace) {
             None => println!("{place}  {text}"),
         }
     }
+}
+
+fn tasks(workspace: &Workspace, all: bool) {
+    let tasks: Vec<(&NoteId, &Task)> = workspace
+        .tasks()
+        .into_iter()
+        .filter(|(_, task)| all || !task.done)
+        .collect();
+    if tasks.is_empty() {
+        let empty = if all {
+            "задач нет"
+        } else {
+            "открытых задач нет"
+        };
+        println!("{empty}");
+        return;
+    }
+    for (id, task) in tasks {
+        println!("{}", task_row(id, task, all));
+    }
+}
+
+/// `note:line  text`. With `--all`, the box shows which tasks are done.
+fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
+    let place = format!("{id}:{}", task.line);
+    if !all {
+        return format!("{place}  {}", task.text);
+    }
+    let mark = if task.done { 'x' } else { ' ' };
+    format!("{place}  [{mark}] {}", task.text)
 }
 
 fn bookmark(
@@ -1052,5 +1089,15 @@ mod tests {
         assert_eq!(human_size(1536), "1.5 КБ");
         assert_eq!(human_size(12_900_000), "12.3 МБ");
         assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 ГБ");
+    }
+
+    #[test]
+    fn a_task_row_shows_the_box_only_with_all() {
+        let id = NoteId::parse("Проекты/План").unwrap();
+        let note = kknow_index::parse("# План\n\n- [x] начать\n");
+        let task = &note.tasks[0];
+
+        assert_eq!(task_row(&id, task, false), "Проекты/План:3  начать");
+        assert_eq!(task_row(&id, task, true), "Проекты/План:3  [x] начать");
     }
 }

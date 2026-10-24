@@ -67,6 +67,15 @@ export function lineAt(root: HTMLElement, node: Node, offset: number): number | 
   return line;
 }
 
+/**
+ * The line of the mark at or before `node`, without a refinement. A task box
+ * stands right after the mark of its list item, so this is the task line.
+ */
+export function markLine(root: HTMLElement, node: Node): number | null {
+  const mark = markBefore(root, node);
+  return mark ? Number(mark.dataset.line) : null;
+}
+
 /** The line of the first block still visible at the top of the preview. */
 export function topLine(root: HTMLElement): number | null {
   const pane = root.getBoundingClientRect();

@@ -2048,6 +2048,17 @@ pre.mermaid[data-error]::after {
   color: var(--text-muted);
 }
 
+/* A task box of a vault note is enabled: a click marks the task in the file. */
+.preview li input[type="checkbox"] {
+  margin: 0 6px 0 0;
+  accent-color: var(--accent);
+  vertical-align: -1px;
+}
+
+.preview li input[type="checkbox"]:enabled {
+  cursor: pointer;
+}
+
 /* A wide table scrolls on its own, like a code block: `display: block` gives it
    its own scrollbar, and `max-width` keeps it inside the preview. */
 .preview table {

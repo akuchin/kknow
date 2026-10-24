@@ -36,6 +36,7 @@ const DEFAULTS = {
   "note.comment": ["Mod-Shift-m"],
   "bookmark.toggle": ["Mod-Shift-b"],
   "bookmark.list": ["Mod-Alt-b"],
+  "task.list": ["Mod-Alt-t"],
   "sidebar.toggle": ["Mod-\\"],
   "history.back": ["Mod-Alt-ArrowLeft"],
   "history.forward": ["Mod-Alt-ArrowRight"],
