@@ -62,3 +62,29 @@ test("the gear menu changes the theme of the main window", async ({ page }) => {
   await expect(page.locator("#note-title")).toHaveText("Index");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
+
+test("a key recorded in the settings replaces the default and resets", async ({ page }) => {
+  await page.goto("/settings.html#keys");
+  const line = page.locator(".settings-row", { hasText: t("settings.keys.action.palette.open") });
+  const reset = line.getByRole("button", { name: t("settings.keys.reset") });
+  await expect(reset).toHaveCount(0);
+
+  // Esc while recording cancels the recording, not the window.
+  await line.getByRole("button", { name: t("settings.keys.change") }).click();
+  await expect(line).toContainText(t("settings.keys.record"));
+  await page.keyboard.press("Escape");
+  await expect(line.getByRole("button", { name: t("settings.keys.change") })).toBeVisible();
+
+  await line.getByRole("button", { name: t("settings.keys.change") }).click();
+  await page.keyboard.press("ControlOrMeta+Shift+KeyY");
+  await expect(line).toHaveClass(/custom/);
+  await expect(line.locator("kbd")).toHaveCount(1);
+
+  // The key is in the keys file: a reload keeps it.
+  await page.reload();
+  await expect(line).toHaveClass(/custom/);
+
+  await reset.click();
+  await expect(line).not.toHaveClass(/custom/);
+  await expect(reset).toHaveCount(0);
+});
