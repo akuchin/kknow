@@ -1059,8 +1059,8 @@ Sections:
   - scope: on what, in which vaults, for which paths, with which note fields;
   - running: the start directory, the timeout, a confirmation;
   - variables: the command variables and the shared variables of the file.
-- **Keys** — a table of shortcuts. For now it is only a reference, and you
-  cannot change the shortcuts.
+- **Keys** — the shortcuts of all actions. You can change them: see
+  "Changing the shortcuts" below.
 - **Editor** — the default note mode, the autosave delay and line numbers.
 
 kknow keeps the language, theme and editor behavior in `settings.json` next to
@@ -1094,6 +1094,40 @@ event, and both windows apply it immediately.
 
 kknow reads the keys by their position on the keyboard. Thus the shortcuts do
 not depend on the keyboard layout.
+
+### Changing the shortcuts
+
+Open "Settings → Keys", click "Change" next to an action and press the new
+combination. Esc cancels. kknow checks the combination before it saves it:
+
+- a combination needs ⌘, Ctrl or ⌥ (F1…F24 need nothing), because a plain key
+  types text;
+- the keys of the system and of a text field (⌘C, ⌘V, ⌘Z, ⌘Q, Enter, Esc and
+  others) and ⌘1…⌘9 do not change;
+- a combination of an editor command (for example ⌘D or ⌘/) does not fit:
+  in a note the editor handles it first;
+- if another action has the combination, kknow asks you. "Reassign" moves the
+  combination to the new action, and the old action loses it.
+
+"Reset" gives an action its default keys back, "Reset all" does it for all
+actions.
+
+The changed keys are in `keybindings.json` next to `settings.json`. The file
+holds only the changes, so a new version adds new keys without your help. You
+can edit it by hand:
+
+```json
+{
+  "note.new": ["Mod-Shift-n"],
+  "format.strike": []
+}
+```
+
+The key is the action ID, the value is the full list of its keys. `Mod` is ⌘
+on macOS and Ctrl on Windows and Linux. An empty list removes all keys of the
+action. kknow reads the file again when the window gets focus. A bad entry is
+skipped, and the keys page shows why. A change of keys reloads the main
+window, as a language change does: the hints are in the markup.
 
 ## Development
 

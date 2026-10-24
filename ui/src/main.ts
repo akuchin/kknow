@@ -4,6 +4,7 @@ import {
   api,
   onDragDrop,
   onFileOpened,
+  onKeymapChanged,
   onSettingsChanged,
   onSyncStatus,
   onUpdateStatus,
@@ -35,9 +36,11 @@ import {
   matches,
   matchesKey,
   shortcut,
+  useKeymap,
   vaultKey,
   withShortcut,
   type Action,
+  type Keymap,
 } from "./actions";
 import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
@@ -3551,6 +3554,28 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+/**
+ * Takes the changed keys. Hints are spread over the markup, like labels, so a
+ * change reloads the window, as a language change does. Returns `true` if the
+ * window reloads.
+ */
+async function applyKeymap(keys: Keymap): Promise<boolean> {
+  if (!useKeymap(keys)) return false;
+  await flushPendingSave();
+  location.reload();
+  return true;
+}
+
+/** Reads the keys file again: the user may have edited it by hand. */
+async function refreshKeymap(): Promise<boolean> {
+  try {
+    return await applyKeymap((await api.getKeymap()).keys);
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
 /** Switches the vault by hotkey. The core maps the number, so there is one list. */
 async function switchByHotkey(number: number): Promise<void> {
   try {
@@ -3600,6 +3625,9 @@ async function boot(): Promise<void> {
       return;
     }
   }
+  // The window was built with the keys from the `localStorage` copy. The file
+  // differs from it only after a hand edit or on the first start.
+  if (await refreshKeymap()) return;
 
   setMode(defaultMode(), { remember: false });
   setSidebarHidden(sidebarHidden);
@@ -3614,6 +3642,9 @@ async function boot(): Promise<void> {
   // The watcher can miss an edit (laptop sleep, network disk), so the note is
   // checked against the disk again when the window gets focus.
   window.addEventListener("focus", () => void syncWithDisk());
+  // A hand edit of `keybindings.json` shows when the user comes back.
+  window.addEventListener("focus", () => void refreshKeymap());
+  void onKeymapChanged(({ keys }) => void applyKeymap(keys));
   // Sync reports itself: progress, conflicts and failures come as events,
   // also from auto-sync that nobody started by hand.
   void onSyncStatus((incoming) => {

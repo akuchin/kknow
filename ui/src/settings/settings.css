@@ -379,21 +379,71 @@
 }
 
 /* Shortcut help: two columns, the shortcut and what it does. */
-.settings-keys {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 14px;
-  margin: 4px 0 12px;
-  font-size: 13px;
-}
-
-.settings-keys dt {
-  margin: 0;
-}
-
-.settings-keys dd {
-  margin: 0;
+.settings-subheading {
+  margin: 16px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+}
+
+.settings-key-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-key-combo {
+  display: flex;
+  gap: 4px;
+  min-width: 90px;
+  justify-content: flex-end;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.settings-key-combo kbd {
+  font-size: 11.5px;
+}
+
+/* A changed key stands out, so the reset button has a reason. */
+.settings-row.custom .settings-key-combo kbd {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.settings-key-combo kbd.recording {
+  color: var(--accent);
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.settings-row.has-notice .settings-row-detail {
+  color: var(--danger);
+}
+
+.settings-key-problems {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 7px;
+}
+
+.settings-key-problems p,
+.settings-key-problems ul {
+  margin: 0;
+}
+
+.settings-key-problems ul {
+  padding-left: 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.settings-key-file {
+  margin-top: 14px;
 }
 
 /* S3 fields are rarely filled in, so they fold into a compact form. */

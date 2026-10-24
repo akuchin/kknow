@@ -6,6 +6,7 @@
 pub mod bookmarks;
 pub mod commands;
 pub mod files;
+pub mod keymap;
 pub mod settings;
 pub mod theme;
 pub mod vaults;

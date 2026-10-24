@@ -1418,6 +1418,39 @@ similar key name.
 The window reads keys by `event.code`, so they do not depend on the keyboard
 layout.
 
+#### User keys
+
+The user changes keys on the keys page of the settings or in
+`keybindings.json` next to `settings.json`. The file holds only the changed
+actions: action ID → the full new list of keys; an empty list removes the
+keys. The defaults stay in `actions.ts`, so a new action or a new default key
+reaches the user without a migration.
+
+- `kknow_app::keymap` reads and writes the file. A bad entry is skipped and
+  reported, the rest works. Unknown action IDs stay in the file: a newer
+  version may know them. A file that does not parse is not moved aside on
+  read (the window reads it on each focus, and the user may be in the middle
+  of an edit); a save from the settings keeps it as `.json.broken`.
+- `get_keymap` reads the file from disk each time. So the windows ask on focus
+  and see a hand edit without a watcher. `set_keymap` writes and sends
+  `keymap-changed` to both windows.
+- `useKeymap` in `actions.ts` lays the changes over the defaults, and
+  `keysOf` gives the result to everything else. The window reads keys
+  synchronously while it builds (CodeMirror keymaps, tooltips), so the changes
+  have a copy in `localStorage`, like the language. If the file differs from
+  the copy, the main window reloads, as for a language change.
+- Some actions do not change (`FIXED`): copy, paste, list arrows, Enter, Esc.
+  The system or a text field handles them.
+
+The settings page records a key from `keydown` in the capture phase, before
+the window keys. `conflictOf` checks it: a key of another action can move
+(`bind` takes it from the old action), the keys of the system (`RESERVED`),
+⌘1…⌘9 and the editor's own commands cannot. A key of an editor command would
+work everywhere except the note, where CodeMirror handles it first. The
+default keys of the actions already win over the editor (⌘I is italic, not
+"select the parent node"), so they are not conflicts. A key needs ⌘, Ctrl or
+⌥, or it is F1…F24: a plain key types text.
+
 ## CLI
 
 Commands:
@@ -1693,6 +1726,11 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   language. `i18n` needs it synchronously, at the first moment of the load. If
   not, the window would build the labels in one language and then draw them
   again in a different one.
+- **User keys are a separate file with only the changes.** In `settings.json`
+  one bad key would make the whole file broken and reset all settings. A full
+  copy of the keys would freeze the defaults: a new action would get no key.
+  The file is global, not per vault: keys are a habit of the person, and a
+  vault from someone else must not move ⌘S.
 - **The S3 fields are in the settings with the secret.** A form in the main
   window would be a second place for the same data. The secret goes to the
   keychain, and the window never reads it again. An empty field means "keep the

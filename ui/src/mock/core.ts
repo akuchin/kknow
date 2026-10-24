@@ -11,6 +11,7 @@ import type {
   CommandSpec,
   CommandView,
   FileEntry,
+  KeymapView,
   GlobalResult,
   MarkdownAssociation,
   RunOutcome,
@@ -290,6 +291,20 @@ let remote: SyncSettings | null = null;
 
 /** Themes that "Make shared" has already copied to the shared folder. */
 const sharedThemes = new Set<string>();
+
+/**
+ * Changed keys. They are in `localStorage`, not `sessionStorage`: the settings
+ * open in another tab, and the main tab must see them when it gets focus.
+ */
+function keymapView(): KeymapView {
+  let keys: Record<string, string[]> = {};
+  try {
+    keys = JSON.parse(localStorage.getItem("kknow:mock:keymap") ?? "{}");
+  } catch {
+    // A broken copy: no changes.
+  }
+  return { keys, file: "~/Library/Application Support/dev.kknow.desktop/keybindings.json", problems: [] };
+}
 
 /**
  * App settings.
@@ -632,6 +647,17 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       sessionStorage.setItem("kknow:mock:settings", JSON.stringify(appSettings));
       return appSettings as T;
     }
+
+    case "get_keymap":
+      return keymapView() as T;
+
+    case "set_keymap":
+      localStorage.setItem("kknow:mock:keymap", JSON.stringify(args?.keys ?? {}));
+      return keymapView() as T;
+
+    case "reveal_keymap":
+      console.info("reveal_keymap: в браузере файлового менеджера нет");
+      return undefined as T;
 
     case "open_settings": {
       // The browser has no second window, so open the settings page in a new

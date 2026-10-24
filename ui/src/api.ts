@@ -137,6 +137,15 @@ export interface AppSettings {
   autoUpdate: boolean;
 }
 
+/** User keys from `keybindings.json`: action ID → its keys. */
+export interface KeymapView {
+  keys: Record<string, string[]>;
+  /** The file path; `null` if there is no settings folder. */
+  file: string | null;
+  /** Skipped entries of a hand-edited file. */
+  problems: string[];
+}
+
 /**
  * Auto-update state, the same as `UpdateStatus` in `updater.rs`.
  * `unavailable` is a developer build: it never checks.
@@ -387,6 +396,13 @@ export const api = {
   getSettings: () => invoke<AppSettings>("get_settings"),
   setSettings: (settings: AppSettings) => invoke<AppSettings>("set_settings", { settings }),
 
+  /** The changed keys. The core reads the file each time, so a hand edit shows. */
+  getKeymap: () => invoke<KeymapView>("get_keymap"),
+  setKeymap: (keys: Record<string, readonly string[]>) =>
+    invoke<KeymapView>("set_keymap", { keys }),
+  /** Shows `keybindings.json` in Finder; creates it empty if needed. */
+  revealKeymap: () => invoke<void>("reveal_keymap"),
+
   currentVault: () => invoke<VaultInfo | null>("current_vault"),
   reload: () => invoke<VaultInfo>("reload_vault"),
   /** Notes of a vault, the active one by default. This opens another vault if needed. */
@@ -555,6 +571,11 @@ export function onFileOpened(handler: () => void) {
 /** Subscribes to settings: there are two windows, and they must agree. */
 export function onSettingsChanged(handler: (settings: AppSettings) => void) {
   return listen<AppSettings>("settings-changed", (event) => handler(event.payload));
+}
+
+/** Subscribes to keys: the settings window changes them for both windows. */
+export function onKeymapChanged(handler: (keymap: KeymapView) => void) {
+  return listen<KeymapView>("keymap-changed", (event) => handler(event.payload));
 }
 
 /** The current drag and drop state. */

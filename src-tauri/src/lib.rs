@@ -1,6 +1,7 @@
 mod association;
 mod commands;
 mod files;
+mod keymap;
 mod live;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -13,6 +14,7 @@ mod sync_status;
 mod updater;
 
 use kknow_app::files::OpenFiles;
+use kknow_app::keymap::Keymap;
 use kknow_app::settings::AppSettings;
 use kknow_app::vaults::{self, VaultRegistry};
 use state::AppState;
@@ -154,6 +156,7 @@ pub fn run() {
     // wait for it.
     let state = AppState::default();
     let settings = settings::SettingsState::default();
+    let keymap = keymap::KeymapState::default();
 
     // The vault list is shared with the CLI. If the app sees it for the first
     // time, the folder saved by the previous version moves into it.
@@ -179,6 +182,8 @@ pub fn run() {
         }
         Err(error) => eprintln!("не удалось прочитать настройки: {error}"),
     }
+    // The keys too: the window reads the file itself on each focus.
+    keymap.use_file(vaults::config_dir().map(Keymap::path));
 
     // Loose files live there too: they belong to the window, not to a folder.
     // Missing files are forgotten on read, and the list is rewritten at once.
@@ -248,6 +253,7 @@ pub fn run() {
         .manage(state)
         .manage(sync_status::SyncStatuses::default())
         .manage(settings)
+        .manage(keymap)
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
@@ -329,6 +335,9 @@ pub fn run() {
             sync::sync_statuses,
             settings::get_settings,
             settings::set_settings,
+            keymap::get_keymap,
+            keymap::set_keymap,
+            keymap::reveal_keymap,
             updater::update_status,
             updater::check_update,
             updater::restart_to_update,
