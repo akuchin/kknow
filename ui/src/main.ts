@@ -64,6 +64,7 @@ import { Palette } from "./palette";
 import { SaveQueue } from "./session";
 import { countWords } from "./statusbar";
 import "./styles.css";
+import { buildTree, fileName, type Folder } from "./tree-model";
 import { app, el, initDom } from "./window/dom";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
 
@@ -687,15 +688,6 @@ function emptyItem(text: string): HTMLLIElement {
   return item;
 }
 
-/** Tree node: a folder with its subfolders and notes. */
-interface Folder {
-  /** Path from the root. It is also the key for the collapsed state. */
-  path: string;
-  name: string;
-  folders: Folder[];
-  notes: NoteSummary[];
-}
-
 /**
  * Collapsed folders, one set per vault.
  *
@@ -770,57 +762,6 @@ function rememberExpanded(): void {
 /** Tree order follows the window language rules, so accented letters sort correctly. */
 const collator = new Intl.Collator(locale);
 
-/** Walks down to the folder at the path and creates missing nodes. */
-function descend(root: Folder, folderPath: string): Folder {
-  let node = root;
-  for (const part of folderPath ? folderPath.split("/") : []) {
-    let next = node.folders.find((folder) => folder.name === part);
-    if (!next) {
-      next = {
-        path: node.path ? `${node.path}/${part}` : part,
-        name: part,
-        folders: [],
-        notes: [],
-      };
-      node.folders.push(next);
-    }
-    node = next;
-  }
-  return node;
-}
-
-/**
- * Builds the tree from note paths: `Projects/Archive/Ideas` is two folders and
- * a leaf.
- *
- * Folders also come as a separate list: notes cannot produce an empty folder,
- * but it must be visible because the user just created it to fill it.
- */
-function buildTree(items: NoteSummary[], folders: string[] = []): Folder {
-  const root: Folder = { path: "", name: "", folders: [], notes: [] };
-
-  for (const folder of folders) descend(root, folder);
-  for (const note of items) descend(root, note.folder ?? "").notes.push(note);
-
-  sortFolder(root);
-  return root;
-}
-
-/** Note file name: the last segment of the id, without folders. */
-function fileName(note: NoteSummary): string {
-  return note.id.slice(note.id.lastIndexOf("/") + 1);
-}
-
-/**
- * Folders come before notes: first the structure, then the content.
- * Notes sort by file name, not title, so the order matches the folder on disk.
- */
-function sortFolder(folder: Folder): void {
-  folder.folders.sort((a, b) => collator.compare(a.name, b.name));
-  folder.notes.sort((a, b) => collator.compare(fileName(a), fileName(b)));
-  for (const child of folder.folders) sortFolder(child);
-}
-
 /**
  * A vault as a tree root: a row with a label and an expanded or collapsed tree.
  *
@@ -885,7 +826,7 @@ function vaultItem(entry: VaultView): HTMLLIElement {
   } else if (notes.length === 0 && folders.length === 0) {
     nested.append(emptyItem(t("sidebar.empty")));
   } else {
-    nested.append(...treeItems(buildTree(notes, folders), entry.id));
+    nested.append(...treeItems(buildTree(notes, folders, collator), entry.id));
   }
   // The trash is always the last node, also in an empty vault: a deleted
   // note must stay one click away.
