@@ -890,6 +890,9 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   `ui/src/settings/`. The Vite build has several pages. The `open_settings`
   command opens it, and the section comes as an anchor in the URL. The command
   does not open a second window: it brings the open window to the front.
+- `open_settings` is `#[tauri::command(async)]`. A sync command runs on the
+  main thread. On Windows, WebView2 needs that thread to build the window. The
+  new window then stays blank and does not respond.
 - On macOS the app menu (kknow → Settings…) opens the same window
   (`src-tauri/src/menu.rs`). The menu is the system default with one more
   item, so Edit (copy, paste) and Quit stay as they were. The menu takes ⌘,

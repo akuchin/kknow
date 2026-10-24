@@ -266,7 +266,10 @@ pub fn activate_vault(state: State<'_, AppState>, id: String) -> Result<VaultInf
 /// A separate window, not a panel in the main one: the user sees settings next
 /// to what they change, and closing them moves nothing. The section comes as a
 /// URL hash, so the window does not need a separate command for it.
-#[tauri::command]
+///
+/// The command is async. On Windows a sync command runs on the main thread.
+/// WebView2 then waits for that thread, and the new window stays blank.
+#[tauri::command(async)]
 pub fn open_settings<R: Runtime>(app: AppHandle<R>, section: Option<String>) -> Result<()> {
     let section = section.unwrap_or_else(|| "general".to_string());
 
