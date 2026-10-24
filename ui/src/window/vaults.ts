@@ -1,5 +1,5 @@
-// The vaults: the vault menus, rename, colour, remove, switch, add and the
-// switch by ⌘1…⌘9.
+// The vaults: the vault menus, rename, colour, remove, switch, add, the
+// switch by ⌘1…⌘9 and edits made outside the app.
 //
 // Only this module calls `state.setVault` and `state.setVaults`. A switch
 // reloads the tree, the themes, the sync settings and the last note of the
@@ -24,6 +24,7 @@ import {
   showHeading,
   showPreview,
   stashPosition,
+  syncWithDisk,
 } from "./note";
 import { state } from "./state";
 import { fail, setStatus, status } from "./status";
@@ -352,4 +353,24 @@ export async function switchByHotkey(number: number): Promise<void> {
   } catch (error) {
     fail(error);
   }
+}
+
+/** Edits made outside the app: an external editor, git, sync. */
+export async function onExternalChange(
+  changedVault: string,
+  updated: string[],
+  removed: string[],
+): Promise<void> {
+  // Each open vault has a watcher, and the sidebar shows all vaults: an edit
+  // in another vault must show in its branch.
+  await refreshTree(changedVault);
+  if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
+
+  if (removed.includes(state.note.id)) {
+    setStatus(t("status.noteRemoved"), "error");
+    return;
+  }
+  if (!updated.includes(state.note.id)) return;
+
+  await syncWithDisk();
 }

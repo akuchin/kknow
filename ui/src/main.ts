@@ -1,3 +1,9 @@
+// The entry point of the main window: `boot` starts the zones of
+// `window/` and subscribes to the events of the core.
+//
+// The zones live in `window/`, one module each; see
+// `docs/refactor-ui-2026.md`. A lower zone reaches a higher one only through
+// a hook that `boot` passes to its `init`.
 
 import {
   api,
@@ -20,8 +26,13 @@ import {
   pickTheme,
   toggleLineNumbers,
 } from "./window/appearance";
+import { initCommands, showRunOutput } from "./window/commands";
 import { el, initDom } from "./window/dom";
+import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
 import { initEditor } from "./window/editor";
+import { initFiles, refreshFiles, savePastedImage, takeDrop, takeOpened } from "./window/files";
+import { applyKeymap, initKeys, refreshKeymap } from "./window/keys";
+import { rememberOpened, saveBookmarks } from "./window/marks";
 import {
   LAST_FILE,
   changeCurrentScale,
@@ -33,106 +44,69 @@ import {
   setMode,
   syncWithDisk,
 } from "./window/note";
-import { initCommands, showRunOutput } from "./window/commands";
-import { describeRemote, initSync, openChipMenu, runSync, takeStatus } from "./window/sync";
 import { initNotesFloat, showNotes } from "./window/notes-float";
+import { initPalette, resolveConflicts } from "./window/palette";
+import { state } from "./window/state";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
-import { initFiles, refreshFiles, savePastedImage, takeDrop, takeOpened } from "./window/files";
-import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
-import { rememberOpened, saveBookmarks } from "./window/marks";
+import { describeRemote, initSync, openChipMenu, runSync, takeStatus } from "./window/sync";
+import { initToolbar } from "./window/toolbar";
+import { initTree, refreshTree, renderTree, restoreExpanded, restoreSidebar } from "./window/tree";
 import { closeTrashView, initTrash } from "./window/trash";
 import {
   initVaults,
+  onExternalChange,
   openVaultMenu,
   openVaultRowMenu,
+  refreshVaults,
   switchVault,
   useVault,
-  refreshVaults,
 } from "./window/vaults";
-import { initPalette, resolveConflicts } from "./window/palette";
-import { initToolbar } from "./window/toolbar";
-import { applyKeymap, initKeys, refreshKeymap } from "./window/keys";
-import { initTree, refreshTree, renderTree, restoreExpanded, restoreSidebar } from "./window/tree";
-import { state } from "./window/state";
-
-// The browser uses the document language for hyphenation and word selection.
-document.documentElement.lang = locale;
-
-initDom();
-
-initEditor({
-  onChange: onEdit,
-  onNotes: showNotes,
-  onBookmark: (marks, change) => void saveBookmarks(marks, change),
-  saveImage: savePastedImage,
-});
-initNotesFloat();
-
-initStatus(
-  {
-    vault: (anchor) => openVaultMenu(anchor),
-    sync: () => void runSync(),
-    run: () => showRunOutput(el.runFloat.hidden),
-    chip: (anchor) => openChipMenu(anchor),
-    scale: (steps) => changeCurrentScale(steps),
-    lines: () => void toggleLineNumbers(),
-    more: (anchor) => openMoreMenu(anchor),
-  },
-  () => flushPendingSave(),
-);
-
-initTree({
-  openVaultMenu: openVaultRowMenu,
-  openCommandMenu,
-  switchVault,
-  openNewNoteForm,
-});
-
-initCommands();
-
-
-initFiles();
-
-initTrash({ renderTree, refreshTree });
-initNote({
-  closeTrashView,
-  refreshFiles,
-  refreshTree,
-  opened: rememberOpened,
-  switchVault,
-});
-initToolbar();
-
-initSync({ resolve: resolveConflicts });
-initVaults();
-
-initEdits({ switchVault });
-
-initPalette();
-
-initKeys();
-
-/** Edits made outside the app: an external editor, git, sync. */
-async function onExternalChange(
-  changedVault: string,
-  updated: string[],
-  removed: string[],
-): Promise<void> {
-  // Each open vault has a watcher, and the sidebar shows all vaults: an edit
-  // in another vault must show in its branch.
-  await refreshTree(changedVault);
-  if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
-
-  if (removed.includes(state.note.id)) {
-    setStatus(t("status.noteRemoved"), "error");
-    return;
-  }
-  if (!updated.includes(state.note.id)) return;
-
-  await syncWithDisk();
-}
 
 async function boot(): Promise<void> {
+  // The browser uses the document language for hyphenation and word selection.
+  document.documentElement.lang = locale;
+
+  // The zones start in the order of the old top-level code: the markup, the
+  // editor, its floats and the status bar first; the tree follows the note
+  // event before the commands; the task boxes of the preview take clicks
+  // before its links; the palette exists before the keys.
+  initDom();
+  initEditor({
+    onChange: onEdit,
+    onNotes: showNotes,
+    onBookmark: (marks, change) => void saveBookmarks(marks, change),
+    saveImage: savePastedImage,
+  });
+  initNotesFloat();
+  initStatus(
+    {
+      vault: (anchor) => openVaultMenu(anchor),
+      sync: () => void runSync(),
+      run: () => showRunOutput(el.runFloat.hidden),
+      chip: (anchor) => openChipMenu(anchor),
+      scale: (steps) => changeCurrentScale(steps),
+      lines: () => void toggleLineNumbers(),
+      more: (anchor) => openMoreMenu(anchor),
+    },
+    () => flushPendingSave(),
+  );
+  initTree({
+    openVaultMenu: openVaultRowMenu,
+    openCommandMenu,
+    switchVault,
+    openNewNoteForm,
+  });
+  initCommands();
+  initFiles();
+  initTrash({ renderTree, refreshTree });
+  initNote({ closeTrashView, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
+  initToolbar();
+  initSync({ resolve: resolveConflicts });
+  initVaults();
+  initEdits({ switchVault });
+  initPalette();
+  initKeys();
+
   if (await loadSettings()) return;
   // The window was built with the keys from the `localStorage` copy. The file
   // differs from it only after a hand edit or on the first start.
