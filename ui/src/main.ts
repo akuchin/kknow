@@ -67,6 +67,7 @@ import { describeReport, syncSegment, type SyncWords } from "./sync-text";
 import { buildTree, fileName, type Folder } from "./tree-model";
 import { app, el, initDom } from "./window/dom";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
+import { state } from "./window/state";
 
 /**
  * Delay after the last key press before the file is written.
@@ -101,7 +102,6 @@ const folderLists = new Map<string, string[]>();
 
 /** Trash entries of each loaded vault, the newest first: the last tree node. */
 const trashes = new Map<string, TrashEntryView[]>();
-let current: NoteView | null = null;
 /**
  * Reading position of each note, to continue from the same place on return.
  *
@@ -151,10 +151,10 @@ const editor = new Editor(el.editor, {
 
 /** Agent notes from the preview: in "Read" mode the editor is hidden. */
 const previewNotes = new PreviewNotes(el.preview, {
-  enabled: () => mode !== "edit" && current !== null,
+  enabled: () => mode !== "edit" && state.note !== null,
   add: (words, index, total, text) => editor.addNoteFromPreview(words, index, total, text),
   fail: (message) => setStatus(message, "error"),
-  bookmarkable: () => current !== null && !current.file,
+  bookmarkable: () => state.note !== null && !state.note.file,
   bookmark: (line) => editor.toggleBookmarkLine(line),
 });
 
@@ -164,7 +164,7 @@ const previewNotes = new PreviewNotes(el.preview, {
  * the browser, not to the editor: it gets the same popup as the preview.
  */
 const tableNotes = new PreviewNotes(editor.scroller, {
-  enabled: () => mode === "edit" && current !== null,
+  enabled: () => mode === "edit" && state.note !== null,
   scope: cellOf,
   add: (words, index, total, text, cell) => editor.addNoteInCell(cell, words, index, total, text),
   fail: (message) => setStatus(message, "error"),
@@ -265,7 +265,7 @@ initStatus(
 );
 
 function onEdit(text: string): void {
-  if (!current) return;
+  if (!state.note) return;
   setStatus(t("status.notSaved"), "work");
   scheduleWords(text);
 
@@ -295,7 +295,7 @@ function setMode(next: ViewMode, options: { remember?: boolean; refresh?: boolea
   mode = next;
   previewNotes.hide();
   tableNotes.hide();
-  if (options.remember !== false && current) rememberMode(positionKey(current), next);
+  if (options.remember !== false && state.note) rememberMode(positionKey(state.note), next);
 
   app.dataset.mode = next;
   for (const button of el.modeButtons) {
@@ -304,7 +304,7 @@ function setMode(next: ViewMode, options: { remember?: boolean; refresh?: boolea
   editor.setLive(next === "edit");
 
   // The preview did not update while hidden, so recompute it.
-  if (wasHidden && next !== "edit" && current && options.refresh !== false) {
+  if (wasHidden && next !== "edit" && state.note && options.refresh !== false) {
     void refreshPreview(editor.getText());
   }
 }
@@ -347,7 +347,7 @@ async function travel(step: -1 | 1): Promise<void> {
   await history.travel(
     step,
     (place) => (place.file ? openFileView(place.path) : openFound(place.id, place.vault)),
-    () => (current ? placeOf(current) : null),
+    () => (state.note ? placeOf(state.note) : null),
   );
   showHistory();
 }
@@ -357,16 +357,16 @@ const saves = new SaveQueue((text) => saveNow(text), SAVE_DELAY);
 
 /** True if the editor has text that is not on disk. */
 function isDirty(): boolean {
-  return current !== null && editor.getText() !== current.content;
+  return state.note !== null && editor.getText() !== state.note.content;
 }
 
 /**
  * Writes the text only if the file on disk is still the one the edit started
- * from (`current.content`). If it changed outside, the core keeps the external
+ * from (`state.note.content`). If it changed outside, the core keeps the external
  * version and puts ours next to it as a copy. Neither one is lost.
  */
 async function saveNow(text: string): Promise<void> {
-  const note = current;
+  const note = state.note;
   if (!note) return;
   // The edit was reverted to the disk content, so there is nothing to write.
   if (text === note.content) {
@@ -378,7 +378,7 @@ async function saveNow(text: string): Promise<void> {
       ? await api.saveFile(note.id, text, note.content)
       : await api.saveNote(note.id, text, note.content, editor.getBookmarkMarks());
     // The window can switch to another note during the write.
-    if (current?.id !== note.id) return;
+    if (state.note?.id !== note.id) return;
 
     if (outcome.status === "saved") {
       applyNote(outcome.note, { keepEditor: true });
@@ -412,13 +412,13 @@ async function saveNow(text: string): Promise<void> {
  */
 async function syncWithDisk(): Promise<void> {
   await flushPendingSave();
-  if (!current || isDirty()) return;
-  const id = current.id;
-  const file = current.file === true;
+  if (!state.note || isDirty()) return;
+  const id = state.note.id;
+  const file = state.note.file === true;
   try {
     const view = file ? await api.loadFile(id) : await api.loadNote(id);
     // Compare first, so the cursor and undo history do not reset for nothing.
-    if (current?.id !== id || isDirty() || view.content === current.content) return;
+    if (state.note?.id !== id || isDirty() || view.content === state.note.content) return;
     applyNote(view);
     setStatus(t("status.reloaded"));
   } catch (error) {
@@ -434,18 +434,18 @@ async function syncWithDisk(): Promise<void> {
 async function fileGone(path: string): Promise<boolean> {
   await refreshFiles();
   if (files.some((entry) => entry.path === path)) return false;
-  if (current?.id === path) closeNote();
+  if (state.note?.id === path) closeNote();
   localStorage.removeItem(LAST_FILE);
   setStatus(t("status.fileGone", { name: leafOf(path) }), "error");
   return true;
 }
 
 async function refreshPreview(text: string): Promise<void> {
-  if (!current) return;
+  if (!state.note) return;
   try {
-    const id = current.id;
+    const id = state.note.id;
     showPreview(
-      current.file ? await api.previewFile(id, text) : await api.preview(id, text),
+      state.note.file ? await api.previewFile(id, text) : await api.preview(id, text),
     );
   } catch (error) {
     fail(error);
@@ -517,7 +517,7 @@ function headingName(view: NoteView): string {
 /** Empty state after the open note is deleted: nothing is open. */
 function closeNote(): void {
   closeTrashView();
-  current = null;
+  state.setNote(null);
   setImageOwner(null);
   showHeading(null);
   editor.setText("");
@@ -538,7 +538,7 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
     // A note the user opens replaces the trash note on top of it.
     closeTrashView();
   }
-  current = view;
+  state.setNote(view);
   // Before the editor text: its widgets request images for this note at once.
   setImageOwner(
     view.file ? { file: true, path: view.id } : { file: false, vault: vault?.id ?? "", id: view.id },
@@ -577,8 +577,8 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
 
 /** Saves the reading position of the open note before it changes. */
 function stashPosition(): void {
-  if (!current) return;
-  positions.set(positionKey(current), {
+  if (!state.note) return;
+  positions.set(positionKey(state.note), {
     editor: editor.getPosition(),
     preview: el.preview.scrollTop,
   });
@@ -596,11 +596,11 @@ function noteKey(vaultId: string, id: string): string {
 
 /** Applies the font size of the open file to the editor and the preview. */
 function applyScale(): void {
-  const scale = current ? scaleOf(positionKey(current)) : defaultScale();
+  const scale = state.note ? scaleOf(positionKey(state.note)) : defaultScale();
   editor.setScale(scale);
   el.preview.style.fontSize = scale === 1 ? "" : `${scale * 100}%`;
   // Without an open file there is nothing to scale: the control hides.
-  status.setScale(current ? scale : null, defaultScale());
+  status.setScale(state.note ? scale : null, defaultScale());
 }
 
 /**
@@ -611,12 +611,12 @@ function applyScale(): void {
  */
 function changeScale(key: string, steps: number): void {
   stepScale(key, steps);
-  if (current && positionKey(current) === key) applyScale();
+  if (state.note && positionKey(state.note) === key) applyScale();
 }
 
 /** The same for the open file: shortcuts, the palette and the status bar. */
 function changeCurrentScale(steps: number): void {
-  if (current) changeScale(positionKey(current), steps);
+  if (state.note) changeScale(positionKey(state.note), steps);
 }
 
 function renderBacklinks(view: NoteView): void {
@@ -650,7 +650,7 @@ function renderBacklinks(view: NoteView): void {
 
 /** Marks the open note. Equal names can exist in different vaults. */
 function markActive(id: string | null): void {
-  const file = current?.file === true;
+  const file = state.note?.file === true;
   for (const button of el.noteList.querySelectorAll<HTMLButtonElement>("button.note")) {
     const mine = !file && button.dataset.vault === vault?.id && button.dataset.id === id;
     button.classList.toggle("active", mine);
@@ -677,7 +677,7 @@ function renderTree(): void {
 
   el.noteList.append(...vaults.map(vaultItem));
   // While a trash note covers the open note, only the trash note is marked.
-  markActive(trashViewing ? null : (current?.id ?? null));
+  markActive(trashViewing ? null : (state.note?.id ?? null));
   markTrashViewing();
 }
 
@@ -1044,7 +1044,7 @@ function closeTrashView(): void {
   el.trashViewBody.innerHTML = "";
   trashViewing = null;
   markTrashViewing();
-  markActive(current?.id ?? null);
+  markActive(state.note?.id ?? null);
 }
 
 /** Marks the trash note in the view, as the open note is marked. */
@@ -1386,8 +1386,8 @@ async function openNote(id: string): Promise<void> {
  * there is no reason to wait for a note save, and there can be no edits.
  */
 function toggleCurrentBookmark(): void {
-  if (!current) return;
-  if (current.file) {
+  if (!state.note) return;
+  if (state.note.file) {
     setStatus(t("status.bookmarkFile"), "error");
     return;
   }
@@ -1419,11 +1419,11 @@ const BOOKMARK_STATUS: Record<BookmarkChange, Key> = {
  * be no edits.
  */
 async function saveBookmarks(marks: BookmarkMark[], change: BookmarkChange): Promise<void> {
-  if (!current || current.file) return;
+  if (!state.note || state.note.file) return;
   paintBookmarks(el.preview, marks.map((mark) => mark.line));
   renderNoteTools();
   try {
-    await api.setBookmarks(current.id, marks, editor.getText());
+    await api.setBookmarks(state.note.id, marks, editor.getText());
     setStatus(t(BOOKMARK_STATUS[change]));
   } catch (error) {
     fail(error);
@@ -1436,8 +1436,8 @@ async function saveBookmarks(marks: BookmarkMark[], change: BookmarkChange): Pro
  * bookmark of the open note.
  */
 async function openBookmark(id: string, line: number): Promise<void> {
-  if (current?.id !== id || current.file) await openNote(id);
-  if (current?.id !== id) return;
+  if (state.note?.id !== id || state.note.file) await openNote(id);
+  if (state.note?.id !== id) return;
   // "Read" mode hides the editor, but the line must be visible.
   if (mode === "read") setMode("split", { remember: false });
   const nearest = editor
@@ -1452,8 +1452,8 @@ async function openBookmark(id: string, line: number): Promise<void> {
 
 /** Opens a task from the palette: the note at the task line. */
 async function openTask(id: string, line: number): Promise<void> {
-  if (current?.id !== id || current.file) await openNote(id);
-  if (current?.id !== id) return;
+  if (state.note?.id !== id || state.note.file) await openNote(id);
+  if (state.note?.id !== id) return;
   // "Read" mode hides the editor, but the line must be visible.
   if (mode === "read") setMode("split", { remember: false });
   editor.goToLine(line);
@@ -1465,7 +1465,7 @@ async function openTask(id: string, line: number): Promise<void> {
  * marks, so its boxes stay as they are.
  */
 function enableTaskBoxes(): void {
-  if (!current || current.file) return;
+  if (!state.note || state.note.file) return;
   for (const box of el.preview.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")) {
     box.disabled = false;
   }
@@ -1480,13 +1480,13 @@ function enableTaskBoxes(): void {
  * same character, and its text is again equal to the disk.
  */
 async function setTask(line: number, done: boolean): Promise<void> {
-  if (!current || current.file) return;
-  const id = current.id;
+  if (!state.note || state.note.file) return;
+  const id = state.note.id;
   await flushPendingSave();
-  if (current?.id !== id) return;
+  if (state.note?.id !== id) return;
   try {
     const view = await api.setTask(id, line, done);
-    if (current?.id !== id) return;
+    if (state.note?.id !== id) return;
     applyNote(view, { keepEditor: true });
     editor.setTask(line, done);
     setStatus(t(done ? "status.taskDone" : "status.taskOpen"));
@@ -1931,9 +1931,9 @@ async function refreshNoteCommands(): Promise<void> {
  * vault: the core gives it the commands that are not tied to a vault or a path.
  */
 function currentTarget(): CommandTarget | null {
-  if (!current) return null;
-  if (current.file) return { kind: "note", file: current.id };
-  return vault ? { kind: "note", name: current.id, vault: vault.id } : null;
+  if (!state.note) return null;
+  if (state.note.file) return { kind: "note", file: state.note.id };
+  return vault ? { kind: "note", name: state.note.id, vault: vault.id } : null;
 }
 
 /** Label colors. The theme sets the actual values (`--label-*`). */
@@ -2195,7 +2195,7 @@ async function renameNote(
   vaultId: string,
   done: "status.renamed" | "status.moved",
 ): Promise<void> {
-  const isCurrent = vaultId === vault?.id && current?.id === id;
+  const isCurrent = vaultId === vault?.id && state.note?.id === id;
   if (isCurrent) await flushPendingSave();
 
   try {
@@ -2218,7 +2218,7 @@ async function renameFolder(
   done: "status.renamed" | "status.moved",
 ): Promise<void> {
   const prefix = `${name}/`;
-  const inside = vaultId === vault?.id && current?.id.startsWith(prefix) ? current.id : null;
+  const inside = vaultId === vault?.id && state.note?.id.startsWith(prefix) ? state.note.id : null;
   if (inside) await flushPendingSave();
 
   try {
@@ -2345,7 +2345,7 @@ async function forgetVault(entry: VaultView): Promise<void> {
       await useVault(info);
     } else {
       vault = null;
-      current = null;
+      state.setNote(null);
       status.setVault(null);
       showHeading(null);
       editor.setText("");
@@ -2383,7 +2383,7 @@ async function useVault(info: VaultInfo): Promise<void> {
   // The position key includes the old vault, so save before the switch.
   stashPosition();
   vault = info;
-  current = null;
+  state.setNote(null);
   status.setVault(info.name, info.color);
 
   // Collapsed folders and recent notes are per vault: ⌘2 must return to where
@@ -2495,7 +2495,7 @@ async function refreshFiles(): Promise<void> {
  */
 function renderFiles(): void {
   el.fileList.replaceChildren(...files.map(fileItem));
-  markActive(current?.id ?? null);
+  markActive(state.note?.id ?? null);
 }
 
 function fileItem(entry: FileEntry): HTMLLIElement {
@@ -2577,7 +2577,7 @@ async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void
 
 /** Removes a file from the list. An open file closes; the file on disk stays. */
 async function forgetFile(entry: FileEntry): Promise<void> {
-  if (current?.id === entry.path) {
+  if (state.note?.id === entry.path) {
     await flushPendingSave();
     closeNote();
     localStorage.removeItem(LAST_FILE);
@@ -2674,9 +2674,9 @@ async function adoptDropped(paths: string[]): Promise<void> {
  * of the vault, or next to a standalone file. Returns the path for the link.
  */
 async function savePastedImage(name: string, bytes: Uint8Array): Promise<string | null> {
-  if (!current) return null;
+  if (!state.note) return null;
   try {
-    return await api.saveAttachment(name, bytes, current.file ? current.id : null);
+    return await api.saveAttachment(name, bytes, state.note.file ? state.note.id : null);
   } catch (error) {
     setStatus(t("image.saveFailed", { error: describeError(error) }), "error");
     return null;
@@ -2689,7 +2689,7 @@ async function savePastedImage(name: string, bytes: Uint8Array): Promise<string 
  * then the links have no place to go.
  */
 async function attachDropped(paths: string[], at: number): Promise<void> {
-  const note = current;
+  const note = state.note;
   if (!note) return;
   const saved: string[] = [];
   let problem: string | null = null;
@@ -2700,7 +2700,7 @@ async function attachDropped(paths: string[], at: number): Promise<void> {
       problem ??= describeError(error);
     }
   }
-  if (!current || positionKey(current) !== positionKey(note)) return;
+  if (!state.note || positionKey(state.note) !== positionKey(note)) return;
   editor.insertImages(saved.map(imageLink), at);
   if (problem) setStatus(t("image.saveFailed", { error: problem }), "error");
 }
@@ -2736,7 +2736,7 @@ async function removeNote(id: string, vaultId: string): Promise<void> {
 
   // Drop pending edits of the deleted note: a save after the delete would
   // create the file again.
-  const isCurrent = vaultId === vault?.id && current?.id === id;
+  const isCurrent = vaultId === vault?.id && state.note?.id === id;
   if (isCurrent) saves.cancel();
 
   try {
@@ -2754,7 +2754,7 @@ async function removeFolder(name: string, vaultId: string): Promise<void> {
   if (!window.confirm(t("confirm.deleteFolder", { name }))) return;
 
   const prefix = `${name}/`;
-  const isCurrent = vaultId === vault?.id && current?.id.startsWith(prefix);
+  const isCurrent = vaultId === vault?.id && state.note?.id.startsWith(prefix);
   if (isCurrent) saves.cancel();
 
   try {
@@ -3037,7 +3037,7 @@ function applySettings(incoming: AppSettings): void {
   if (incoming.theme !== currentTheme) applyTheme(incoming.theme, { remember: false });
   // A new default affects only a note without a saved mode.
   if (defaultChanged) {
-    setMode(current ? modeOf(positionKey(current), incoming.viewMode) : incoming.viewMode, {
+    setMode(state.note ? modeOf(positionKey(state.note), incoming.viewMode) : incoming.viewMode, {
       remember: false,
     });
   }
@@ -3064,15 +3064,15 @@ el.noteMenu.onclick = () => openNoteMenu();
  * sync. A separate file uses its row menu from the file list.
  */
 function openNoteMenu(): void {
-  if (!current) return;
-  if (current.file) {
-    const path = current.id;
+  if (!state.note) return;
+  if (state.note.file) {
+    const path = state.note.id;
     const entry = files.find((candidate) => candidate.path === path);
     if (entry) void openFileMenu(el.noteMenu, entry);
     return;
   }
   if (!vault) return;
-  void openCommandMenu(el.noteMenu, { kind: "note", name: current.id, vault: vault.id });
+  void openCommandMenu(el.noteMenu, { kind: "note", name: state.note.id, vault: vault.id });
 }
 
 /**
@@ -3094,12 +3094,12 @@ function lastCommand(): CommandView | null {
  * Call it when the note, its bookmarks or its commands change.
  */
 function renderNoteTools(): void {
-  el.noteTools.hidden = current === null;
-  if (!current) return;
+  el.noteTools.hidden = state.note === null;
+  if (!state.note) return;
 
   // The core keeps bookmarks and links per vault: a standalone file has none.
-  el.noteBookmarks.hidden = current.file === true;
-  el.noteBacklinks.hidden = current.file === true;
+  el.noteBookmarks.hidden = state.note.file === true;
+  el.noteBacklinks.hidden = state.note.file === true;
 
   const marks = editor.getBookmarks().length;
   el.bookmarksCount.textContent = marks > 0 ? String(marks) : "";
@@ -3107,7 +3107,7 @@ function renderNoteTools(): void {
 
   // The button stays in place with zero links: a toolbar that changes its
   // width from note to note moves the buttons from under the cursor.
-  const links = current.backlinks.length;
+  const links = state.note.backlinks.length;
   el.backlinksCount.textContent = String(links);
   el.noteBacklinks.disabled = links === 0;
 
@@ -3125,8 +3125,8 @@ function renderNoteTools(): void {
  * the cursor line, as ⌘⇧B does.
  */
 function openBookmarksMenu(): void {
-  if (!current || current.file) return;
-  const id = current.id;
+  if (!state.note || state.note.file) return;
+  const id = state.note.id;
   const marks = editor.getBookmarkMarks();
   const text = editor.getText().split("\n");
 
@@ -3185,11 +3185,11 @@ async function openRunMenu(): Promise<void> {
 
 /** Notes that link to the open one. The panel under the preview lists them too. */
 function openBacklinksMenu(): void {
-  if (!current) return;
+  if (!state.note) return;
   openMenu(el.noteBacklinks, [
     {
       title: t("panel.backlinks.title"),
-      items: current.backlinks.map((link, index) => ({
+      items: state.note.backlinks.map((link, index) => ({
         label: link.title,
         detail: link.label ? `«${link.label}»` : undefined,
         glyph: "note",
@@ -3234,7 +3234,7 @@ async function reloadVault(): Promise<void> {
     const info = await api.reload();
     await refreshTree(vault.id);
     setStatus(t("status.notes", { count: info.noteCount }));
-    if (current && !current.file) applyNote(await api.loadNote(current.id));
+    if (state.note && !state.note.file) applyNote(await api.loadNote(state.note.id));
   } catch (error) {
     fail(error);
   }
@@ -3264,8 +3264,8 @@ function openNewNoteForm(prefix = "", mode: "note" | "folder" = "note"): void {
 /** Folder of the open note. ⌘N creates the next note there. */
 function currentFolderPrefix(): string {
   // A separate file path is not a vault folder: the new note goes to the root.
-  if (current?.file) return "";
-  const parts = current?.id.split("/") ?? [];
+  if (state.note?.file) return "";
+  const parts = state.note?.id.split("/") ?? [];
   parts.pop();
   return parts.length > 0 ? `${parts.join("/")}/` : "";
 }
@@ -3630,13 +3630,13 @@ async function onExternalChange(
   // Each open vault has a watcher, and the sidebar shows all vaults: an edit
   // in another vault must show in its branch.
   await refreshTree(changedVault);
-  if (changedVault !== vault?.id || !current || current.file) return;
+  if (changedVault !== vault?.id || !state.note || state.note.file) return;
 
-  if (removed.includes(current.id)) {
+  if (removed.includes(state.note.id)) {
     setStatus(t("status.noteRemoved"), "error");
     return;
   }
-  if (!updated.includes(current.id)) return;
+  if (!updated.includes(state.note.id)) return;
 
   await syncWithDisk();
 }
@@ -3709,7 +3709,7 @@ async function boot(): Promise<void> {
   void onDragDrop(({ over, paths, point }) => {
     dropHint.hidden = !over;
     if (paths.length === 0) return;
-    const at = current && point ? editor.dropPosition(point.x, point.y) : null;
+    const at = state.note && point ? editor.dropPosition(point.x, point.y) : null;
     const images = at === null ? [] : paths.filter((path) => isImage(path));
     if (at !== null && images.length > 0) void attachDropped(images, at);
     const rest = paths.filter((path) => !images.includes(path));
