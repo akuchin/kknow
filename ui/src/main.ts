@@ -110,8 +110,6 @@ const trashes = new Map<string, TrashEntryView[]>();
  * different notes.
  */
 const positions = new Map<string, { editor: EditorPosition; preview: number }>();
-/** Separate files in open order. The core keeps this list. */
-let files: FileEntry[] = [];
 /**
  * Last open separate file: the window reopens it if it closed on it. The key
  * is global, not per vault, because the file belongs to no vault.
@@ -431,7 +429,7 @@ async function syncWithDisk(): Promise<void> {
 /** Checks if a separate file is gone. If so, closes it and tells the user. */
 async function fileGone(path: string): Promise<boolean> {
   await refreshFiles();
-  if (files.some((entry) => entry.path === path)) return false;
+  if (state.files.some((entry) => entry.path === path)) return false;
   if (state.note?.id === path) closeNote();
   localStorage.removeItem(LAST_FILE);
   setStatus(t("status.fileGone", { name: leafOf(path) }), "error");
@@ -2482,7 +2480,7 @@ const MARKDOWN = /\.(md|markdown|mdown)$/i;
 /** Reloads the separate file list. The core forgets missing files on the way. */
 async function refreshFiles(): Promise<void> {
   try {
-    files = await api.listFiles();
+    state.setFiles(await api.listFiles());
   } catch (error) {
     fail(error);
   }
@@ -2497,7 +2495,7 @@ async function refreshFiles(): Promise<void> {
  * line tells two `README.md` files apart.
  */
 function renderFiles(): void {
-  el.fileList.replaceChildren(...files.map(fileItem));
+  el.fileList.replaceChildren(...state.files.map(fileItem));
   markActive(state.note?.id ?? null);
 }
 
@@ -2586,7 +2584,7 @@ async function forgetFile(entry: FileEntry): Promise<void> {
     localStorage.removeItem(LAST_FILE);
   }
   try {
-    files = await api.forgetFile(entry.path);
+    state.setFiles(await api.forgetFile(entry.path));
     renderFiles();
     setStatus(t("sidebar.file.removed", { name: entry.name }));
   } catch (error) {
@@ -3070,7 +3068,7 @@ function openNoteMenu(): void {
   if (!state.note) return;
   if (state.note.file) {
     const path = state.note.id;
-    const entry = files.find((candidate) => candidate.path === path);
+    const entry = state.files.find((candidate) => candidate.path === path);
     if (entry) void openFileMenu(el.noteMenu, entry);
     return;
   }
@@ -3734,7 +3732,7 @@ async function boot(): Promise<void> {
     const info = await api.currentVault();
     if (info) {
       await useVault(info);
-    } else if (files.length === 0) {
+    } else if (state.files.length === 0) {
       setStatus(t("status.pickVault"));
     }
   } catch (error) {
@@ -3744,7 +3742,7 @@ async function boot(): Promise<void> {
   // A double click on `.md` at cold start: the request waited for the window.
   // Without one, the window returns to the separate file it closed on. The
   // core already forgot a missing file, so it is not in the list.
-  if (!(await takeOpened()) && lastFile && files.some((entry) => entry.path === lastFile)) {
+  if (!(await takeOpened()) && lastFile && state.files.some((entry) => entry.path === lastFile)) {
     await openFileView(lastFile);
   }
 
