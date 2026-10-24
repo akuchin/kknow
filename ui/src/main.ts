@@ -456,8 +456,9 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   }
   applyScale();
   renderBacklinks(view);
-  // The tree and the note commands follow the "note" event. The toolbar is
-  // drawn here: it counts the bookmarks, and the editor gets them above.
+  // The tree, the note commands and the run button follow the "note" event.
+  // The toolbar is drawn here: it counts the bookmarks, and the editor gets
+  // them above.
   renderNoteTools();
 }
 
@@ -1719,7 +1720,7 @@ async function runCommand(command: CommandView, target: CommandTarget): Promise<
 
   await flushPendingSave();
   localStorage.setItem(LAST_COMMAND, command.id);
-  renderNoteTools();
+  renderRunButton();
   setStatus(t("commands.running", { name: command.name }), "work");
 
   try {
@@ -1813,7 +1814,7 @@ async function refreshNoteCommands(): Promise<void> {
     // Another note can open during the core call; then the answer is stale.
     if (noteCommandsFor === key) {
       noteCommands = listed.commands;
-      renderNoteTools();
+      renderRunButton();
     }
   } catch (error) {
     fail(error);
@@ -1822,9 +1823,12 @@ async function refreshNoteCommands(): Promise<void> {
 
 // The palette needs the commands of the open note and collects actions
 // synchronously. The refresh drops the old list before its first await, so the
-// toolbar after it does not offer the command of the previous note, and a
+// run button after it does not offer the command of the previous note, and a
 // closed note leaves no commands.
-state.on("note", () => void refreshNoteCommands());
+state.on("note", () => {
+  void refreshNoteCommands();
+  renderRunButton();
+});
 
 /**
  * The open note as a command target. A standalone file is a note without a
@@ -2994,7 +2998,8 @@ function lastCommand(): CommandView | null {
 /**
  * Updates the note toolbar: it shows the state of the open note.
  *
- * Call it when the note, its bookmarks or its commands change.
+ * Call it when the note or its bookmarks change. The run button has its own
+ * `renderRunButton`: the commands change apart from the note.
  */
 function renderNoteTools(): void {
   el.noteTools.hidden = state.note === null;
@@ -3013,7 +3018,15 @@ function renderNoteTools(): void {
   const links = state.note.backlinks.length;
   el.backlinksCount.textContent = String(links);
   el.noteBacklinks.disabled = links === 0;
+}
 
+/**
+ * Updates the run button of the note toolbar: it names the last command.
+ *
+ * Call it when the commands of the open note or the last command change.
+ */
+function renderRunButton(): void {
+  if (!state.note) return;
   const last = lastCommand();
   const title = last
     ? t("topbar.commands.run", { name: last.name })
