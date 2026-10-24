@@ -69,7 +69,12 @@ impl SearchIndex {
         let index = Index::create_in_ram(schema.build());
         index.tokenizers().register(ANALYZER, analyzer());
 
-        let writer = index.writer(50_000_000)?;
+        // One indexing thread with the smallest arena tantivy allows. Each open
+        // vault has its own writer: the default (a thread per core, 50 MB)
+        // gave 12 vaults about 25 more threads and 15% more memory. Opening
+        // 5000 notes took the same time: parsing, not indexing, is the slow
+        // part.
+        let writer = index.writer_with_num_threads(1, 15_000_000)?;
         let reader = index.reader()?;
 
         Ok(SearchIndex {

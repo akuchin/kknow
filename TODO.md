@@ -19,8 +19,13 @@ The plan for the redesign is closed. Its archive copy is
 ## Next tasks
 
 - **The app never closes a vault.** Each open vault has its own in-memory
-  index. Measure the memory use with 12 vaults. If necessary, close the vaults
-  that nobody used for some time.
+  index. Measured on 2026-10-24 (12 generated vaults of 500 notes, 3 MB on
+  disk each, release build): about 10 MB per open vault, 130 MB for all 12,
+  after the writer went down to one thread. A 5000-note vault opens in about
+  0.55 s. This is not a problem yet, so vaults still do not close.
+  Revisit if real vaults are much larger: memory grows with the note count.
+  A vault with auto-sync must stay open for its scheduler, so closing needs
+  more than a timer.
 - **Finish live preview.** Two items are open: lists as widgets, and a click on
   a `[[link]]` in the editor. Backlinks are also a problem. They are below the
   preview, so the "Edit" mode does not show them. Move them below the text or
