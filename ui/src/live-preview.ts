@@ -34,6 +34,7 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { addAgentNote, noteAt } from "./agent-notes";
+import { addPageComment } from "./confluence";
 import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
 import { paintCode } from "./highlight";
 import { icon } from "./icons";
@@ -480,6 +481,11 @@ function build(state: EditorState): Live {
         case "Comment":
           // `<!-- @agent … -->`: the words are highlighted, the comment is hidden.
           addAgentNote(state, node.from, node.to, marks);
+          addPageComment(state, node.from, node.to, marks);
+          break;
+        case "CommentBlock":
+          // `<!-- confluence: … -->` on a line of its own: a chip.
+          addPageComment(state, node.from, node.to, marks);
           break;
       }
       return true;

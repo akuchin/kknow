@@ -142,6 +142,8 @@ const PATHS = {
   ],
   // Agent note and its removal.
   comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
+  // Confluence page of a note: two waves, as in the product logo.
+  confluence: ["M3 17c3.5-5.5 7.5-6.5 13-3l4 2.5", "M21 7c-3.5 5.5-7.5 6.5-13 3L4 7.5"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
 } satisfies Record<string, string[]>;
 

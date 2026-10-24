@@ -27,6 +27,7 @@ import {
   type BookmarkChange,
 } from "./bookmarks";
 import { editorGutter, setLineNumbers } from "./gutter";
+import { confluence } from "./confluence";
 import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { bindings } from "./actions";
@@ -273,6 +274,7 @@ export class Editor {
         markdown({ base: markdownLanguage, codeLanguages }),
         livePreview(),
         agentNotes(),
+        confluence(),
         bookmarks(),
         editorGutter(this.lineNumbers),
         editorMenu(),

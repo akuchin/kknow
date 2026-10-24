@@ -922,6 +922,11 @@ preview, on GitHub and on the published page:
 <!-- confluence: 987654321 -->
 ```
 
+You do not have to type the comment. Right-click in the text and select "Link
+to Confluence", then enter the page number or paste the page link. The editor
+shows the comment as a chip with the page number. Click the chip to change the
+number or to remove the link.
+
 The second way is frontmatter. Frontmatter is the more common convention. But
 if another program opens the file, it shows the block at the top:
 

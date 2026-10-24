@@ -1505,6 +1505,58 @@ img.note-image {
   gap: 6px;
 }
 
+/* The Confluence page of a note (`<!-- confluence: … -->`): a chip instead of
+   the comment. The accent color: it is a link to a page, not a task. */
+.cm-confluence {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 6px;
+  font-family: var(--font-text);
+  font-size: 0.85em;
+  line-height: 1.6;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: 1px;
+  user-select: none;
+}
+
+.cm-confluence:hover {
+  background: color-mix(in oklab, var(--accent) 20%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+.cm-confluence .icon,
+.cm-confluence-label .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.cm-confluence-name {
+  font-weight: 600;
+}
+
+.cm-confluence-id {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.cm-editor .cm-tooltip.cm-agent-popup.cm-confluence-form {
+  gap: 8px;
+  width: min(340px, 90vw);
+}
+
+.cm-confluence-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 /* The whole code block while the cursor is outside: the same as in the
    preview. Lines do not wrap, so ASCII diagrams stay aligned, and the block
    has a single scrollbar. */

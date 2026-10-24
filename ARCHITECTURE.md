@@ -426,6 +426,14 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the `readme.md` of a repository. A publish would copy it onto the page.
   `parse` collects both sources and gives them as `ParsedNote::fields`. The
   consumer does not need to know the source of each field.
+- **The editor shows `<!-- confluence: … -->` as a chip** with an icon and
+  the page number (`ui/src/confluence.ts`). A click on the chip opens a form
+  where you change the number or remove the comment. The editor context menu
+  has the same form: "Связать с Confluence" adds the comment on the first line
+  of the note, after the frontmatter if there is one. The form also takes a
+  page link and keeps only the number (`/pages/123/` or `pageId=123`). The
+  chip shows only for a one-line comment with this one key, and only in the
+  main editor: a table cell is not a file.
 - If two values have the same key, one rule applies to both sources: **the
   first value wins**. kknow parses the frontmatter before the body, so the
   frontmatter wins over a comment. Of two comments with the same key, the

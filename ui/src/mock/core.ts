@@ -77,7 +77,7 @@ const notes: MockNote[] = [
     folder: "Projects",
     tags: ["rust", "проекты/kknow"],
     content:
-      "# kknow\n\nПроект на [[Rust]].\n\n## Планы\n\n- этап 3: поиск\n\n" +
+      "<!-- confluence: 987654321 -->\n# kknow\n\nПроект на [[Rust]].\n\n## Планы\n\n- этап 3: поиск\n\n" +
       '```rust\n// точка входа\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}\n```\n',
     // Code block as the core returns it: pulldown-cmark sets `class="language-…"`.
     html:

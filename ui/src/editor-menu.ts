@@ -5,7 +5,8 @@
  * next to each item, so the user learns the keys from it. It has a comment
  * (an agent note), a bookmark and the clipboard. The note and the bookmark
  * work without a selection: the note then goes to the whole paragraph, the
- * bookmark to the line.
+ * bookmark to the line. The main editor also has the Confluence page of the
+ * note (`confluence.ts`).
  *
  * Note editors of table cells have it too. There bookmarks are off: a cell
  * is not a line of the note.
@@ -15,6 +16,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { noteTarget, openNoteForm, removeNote } from "./agent-notes";
+import { openPageForm, pageCommentOf, pagesEnabled, removePage } from "./confluence";
 import { bookmarksEnabled, hasBookmark, toggleBookmarkAt } from "./bookmarks";
 import { t } from "./i18n";
 import { openMenuAt, type MenuItem, type MenuSection } from "./menu";
@@ -74,6 +76,34 @@ function bookmarkItems(view: EditorView): MenuItem[] {
       glyph: "bookmark",
       action: "bookmark.toggle",
       run: () => toggleBookmarkAt(view, line),
+    },
+  ];
+}
+
+function pageItems(view: EditorView): MenuItem[] {
+  if (!pagesEnabled(view.state)) return [];
+  const page = pageCommentOf(view.state);
+  if (!page) {
+    return [
+      {
+        label: t("editor.menu.confluence.add"),
+        detail: t("editor.menu.confluence.add.detail"),
+        glyph: "confluence",
+        run: () => openPageForm(view),
+      },
+    ];
+  }
+  return [
+    {
+      label: t("editor.menu.confluence.edit"),
+      detail: page.pageId,
+      glyph: "confluence",
+      run: () => openPageForm(view),
+    },
+    {
+      label: t("editor.menu.confluence.remove"),
+      glyph: "trash",
+      run: () => removePage(view, page),
     },
   ];
 }
@@ -140,6 +170,7 @@ function open(event: MouseEvent, view: EditorView): boolean {
   event.preventDefault();
   const sections: MenuSection[] = [
     { items: [...noteItems(view), ...bookmarkItems(view)] },
+    { items: pageItems(view) },
     { items: clipboardItems(view) },
   ];
   openMenuAt(event.clientX, event.clientY, view.contentDOM, sections);
