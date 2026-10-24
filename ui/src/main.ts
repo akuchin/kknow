@@ -117,8 +117,6 @@ let files: FileEntry[] = [];
  * is global, not per vault, because the file belongs to no vault.
  */
 const LAST_FILE = "kknow:file";
-/** All vaults. This list is also the switcher menu. */
-let vaults: VaultView[] = [];
 /** Sync settings; `null` means this folder has none. */
 let remote: SyncSettings | null = null;
 let syncing = false;
@@ -672,12 +670,12 @@ function markActive(id: string | null): void {
 function renderTree(): void {
   el.noteList.replaceChildren();
 
-  if (vaults.length === 0) {
+  if (state.vaults.length === 0) {
     el.noteList.append(emptyItem(t("sidebar.vaults.empty")));
     return;
   }
 
-  el.noteList.append(...vaults.map(vaultItem));
+  el.noteList.append(...state.vaults.map(vaultItem));
   // While a trash note covers the open note, only the trash note is marked.
   markActive(trashViewing ? null : (state.note?.id ?? null));
   markTrashViewing();
@@ -1153,7 +1151,7 @@ async function toggleVault(entry: VaultView): Promise<void> {
  * This runs after the active vault loads: the user needs that tree first.
  */
 async function restoreExpanded(): Promise<void> {
-  const pending = vaults.filter(
+  const pending = state.vaults.filter(
     (entry) =>
       entry.available &&
       expanded.has(entry.id) &&
@@ -1583,7 +1581,7 @@ async function refreshTree(id: string): Promise<void> {
  * reason.
  */
 function openVaultMenu(anchor: HTMLElement): void {
-  const items: MenuItem[] = vaults.map((entry, index) => ({
+  const items: MenuItem[] = state.vaults.map((entry, index) => ({
     label: entry.name,
     detail: entry.available ? entry.path : t("menu.vault.missing"),
     color: entry.color,
@@ -2125,7 +2123,7 @@ function renameInTree(
 
 async function renameVault(id: string, name: string): Promise<void> {
   try {
-    vaults = await api.renameVault(id, name);
+    state.setVaults(await api.renameVault(id, name));
     // The status bar also shows the active vault name.
     if (state.vault?.id === id) {
       state.setVault({ ...state.vault, name });
@@ -2282,7 +2280,7 @@ function absolutePath(vaultId: string, relative: string): string | null {
   const root =
     vaultId === state.vault?.id
       ? state.vault.root
-      : vaults.find((entry) => entry.id === vaultId)?.path;
+      : state.vaults.find((entry) => entry.id === vaultId)?.path;
   return root ? `${root}/${relative}` : null;
 }
 
@@ -2317,7 +2315,7 @@ async function copyText(text: string | null): Promise<void> {
 
 async function recolorVault(id: string, color: string): Promise<void> {
   try {
-    vaults = await api.setVaultColor(id, color);
+    state.setVaults(await api.setVaultColor(id, color));
     if (state.vault?.id === id) {
       state.setVault({ ...state.vault, color });
       status.setVault(state.vault.name, color);
@@ -2331,7 +2329,7 @@ async function recolorVault(id: string, color: string): Promise<void> {
 /** Forgets a vault: the entry leaves the list, the notes stay on disk. */
 async function forgetVault(entry: VaultView): Promise<void> {
   try {
-    vaults = await api.removeVault(entry.id);
+    state.setVaults(await api.removeVault(entry.id));
   } catch (error) {
     fail(error);
     return;
@@ -2437,7 +2435,7 @@ async function switchVault(id: string): Promise<void> {
 
 async function refreshVaults(): Promise<void> {
   try {
-    vaults = await api.listVaults();
+    state.setVaults(await api.listVaults());
   } catch (error) {
     fail(error);
   }
@@ -2928,7 +2926,7 @@ function showChip(): void {
     return;
   }
 
-  const name = vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
+  const name = state.vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
   status.setChip(
     other.state === "conflict"
       ? t("statusbar.chip.conflicts", { name, count: other.conflicts })
@@ -2944,7 +2942,7 @@ function openChipMenu(anchor: HTMLElement): void {
     .find((entry) => entry.state === "conflict" || entry.state === "error");
   if (!other) return;
 
-  const name = vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
+  const name = state.vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
   openMenu(anchor, [
     {
       title: name,
