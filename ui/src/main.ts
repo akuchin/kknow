@@ -516,9 +516,6 @@ function closeNote(): void {
   el.backlinks.replaceChildren();
   status.setWords(0);
   applyScale();
-  markActive(null);
-  // The palette must not offer the commands of the closed note.
-  void refreshNoteCommands();
   renderNoteTools();
 }
 
@@ -558,13 +555,8 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   }
   applyScale();
   renderBacklinks(view);
-  // The note can be in a collapsed branch or vault; then redraw the tree.
-  if (!view.file && state.vault && reveal(state.vault.id, view.id)) renderTree();
-  markActive(view.id);
-  // The palette needs this note's commands and collects actions synchronously.
-  // The refresh drops the old list before its first await, so the toolbar
-  // after it does not offer the command of the previous note.
-  void refreshNoteCommands();
+  // The tree and the note commands follow the "note" event. The toolbar is
+  // drawn here: it counts the bookmarks, and the editor gets them above.
   renderNoteTools();
 }
 
@@ -1311,6 +1303,14 @@ function reveal(vaultId: string, id: string): boolean {
   return opened || unfolded;
 }
 
+// The tree follows the open note: it marks the note and expands the branch
+// that holds it.
+state.on("note", (note) => {
+  // The note can be in a collapsed branch or vault; then redraw the tree.
+  if (note && !note.file && state.vault && reveal(state.vault.id, note.id)) renderTree();
+  markActive(note?.id ?? null);
+});
+
 /** Note row in the tree. It also knows its vault: the sidebar has many. */
 function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
   const item = document.createElement("li");
@@ -1919,6 +1919,12 @@ async function refreshNoteCommands(): Promise<void> {
   }
 }
 
+// The palette needs the commands of the open note and collects actions
+// synchronously. The refresh drops the old list before its first await, so the
+// toolbar after it does not offer the command of the previous note, and a
+// closed note leaves no commands.
+state.on("note", () => void refreshNoteCommands());
+
 /**
  * The open note as a command target. A standalone file is a note without a
  * vault: the core gives it the commands that are not tied to a vault or a path.
@@ -2342,7 +2348,6 @@ async function forgetVault(entry: VaultView): Promise<void> {
     } else {
       state.setVault(null);
       state.setNote(null);
-      void refreshNoteCommands();
       status.setVault(null);
       showHeading(null);
       editor.setText("");
@@ -2381,7 +2386,6 @@ async function useVault(info: VaultInfo): Promise<void> {
   stashPosition();
   state.setVault(info);
   state.setNote(null);
-  void refreshNoteCommands();
   status.setVault(info.name, info.color);
 
   // Collapsed folders and recent notes are per vault: ⌘2 must return to where
