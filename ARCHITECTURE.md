@@ -2131,6 +2131,8 @@ Run everything **from the repository root**. `tauri` searches for
 pnpm install          # once; ui is included as a pnpm-workspace package
 pnpm dev              # the app in development mode
 pnpm ui:mock          # the interface in a browser without Tauri, on stubs
+pnpm ui:e2e           # smoke tests of both windows on the stubs, in Chromium
+pnpm ui:e2e:webkit    # the same in WebKit, the engine of the macOS window
 pnpm build:app        # a ready kknow.app
 pnpm install:app      # the same, installed into /Applications
 ```
@@ -2241,3 +2243,17 @@ After changes, run `cargo test --workspace` and
 `cargo clippy --workspace --all-targets -- -D warnings`. Check the UI behaviour
 in `pnpm ui:mock`. There the interface runs on stubs and does not need a built
 app.
+
+`pnpm ui:e2e` runs the smoke tests in `ui/e2e/`: Playwright starts the same
+stubs on port 1430 and walks the main user paths through the DOM (edit and
+save, history, tree edits and the trash, vaults, the palette, sync, files,
+modes, the settings window). The tests find elements by markup ids and by the
+strings of `locales/ru.json`, not by functions of `main.ts`, so they stay valid
+when the window code moves between modules. Each test gets a fresh page, and
+thus a fresh copy of the stubs.
+
+Two stub features exist for these tests. Events that the stub commands send
+(now only `settings-changed`) go to every tab through a `BroadcastChannel`, as
+`app.emit` sends them to every window: the settings window is another tab in
+the browser. And `kknow:mock:sync` in `sessionStorage` sets up sync before the
+page loads, because the settings tab has its own copy of the stubs.

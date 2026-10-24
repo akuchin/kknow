@@ -38,6 +38,10 @@ jobs:
       - run: pnpm ui:test
       # The app embeds ui/dist, so the UI builds before cargo.
       - run: pnpm ui:build
+      # Smoke tests of the window on the mock commands, in Chromium only: it
+      # is the fastest. `pnpm ui:e2e:webkit` runs them in WebKit locally.
+      - run: pnpm --filter kknow-ui exec playwright install --with-deps chromium
+      - run: pnpm ui:e2e
 
       - uses: dtolnay/rust-toolchain@stable
         with:

@@ -20,5 +20,7 @@ Rules for work in this repository:
   errors and no warnings.
 - To check UI behavior, use `pnpm ui:mock`. It runs in a browser and uses stubs
   instead of commands. You do not need a built app.
+- After a UI change, also run `pnpm ui:test` and `pnpm ui:e2e`. The second one
+  runs the smoke tests in Chromium on the same stubs.
 - Do not start the app window if the user does not ask for it. The window opens
   on the desktop of the user.
