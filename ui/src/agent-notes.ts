@@ -414,9 +414,11 @@ function fillForm(view: EditorView, dom: HTMLElement, target: NoteTarget): () =>
       : t("editor.note.placeholder", { words });
   if (target.kind === "edit") field.value = target.note.text;
 
+  // An emptied note means "remove it": the form has no other way to say so.
   const save = (): void => {
     if (field.value.trim() === "") {
-      cancel();
+      if (target.kind === "edit") removeNote(view, target.note);
+      else cancel();
       return;
     }
     if (target.kind === "add") addNote(view, target, field.value);
@@ -441,6 +443,14 @@ function fillForm(view: EditorView, dom: HTMLElement, target: NoteTarget): () =>
 
   const actions = document.createElement("div");
   actions.className = "cm-agent-popup-actions";
+  // The gutter icon, ⌘⇧M and the comments panel open this form, not the
+  // context menu, so the form must remove a note too.
+  if (target.kind === "edit") {
+    const remove = button(t("editor.note.remove"), () => removeNote(view, target.note));
+    remove.classList.add("is-remove");
+    remove.prepend(icon("trash"));
+    actions.append(remove);
+  }
   actions.append(button(t("editor.note.cancel"), cancel), button(t("editor.note.save"), save));
   actions.lastElementChild?.classList.add("is-primary");
 
@@ -489,6 +499,7 @@ export function removeNote(view: EditorView, note: AgentNote): void {
   view.dispatch({
     changes: { from: note.from, to: note.to },
     selection: note.anchorFrom === null ? undefined : { anchor: note.from },
+    effects: setForm.of(null),
     userEvent: "delete",
   });
   view.focus();

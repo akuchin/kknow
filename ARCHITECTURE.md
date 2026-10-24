@@ -1090,7 +1090,10 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   You see the instruction in the tooltip of the highlight. You edit it in a
   form above the words: "Edit comment" in the context menu or ⌘⇧M opens it
   when the cursor is in the words. The form closes on an edit or a cursor
-  move. Before, a popup opened by itself over each selection; it covered the
+  move. The form also removes the comment: the gutter icon, ⌘⇧M and the
+  comments panel open the form, not the context menu, and without a
+  "Remove" button there the user had no way to remove a comment. A comment
+  saved empty is removed too. Before, a popup opened by itself over each selection; it covered the
   text and got in the way. An instruction has one line. An empty line in the comment
   would break the paragraph. kknow replaces `-->` inside with `->`, because it
   would close the comment too early.

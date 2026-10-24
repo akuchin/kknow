@@ -1461,6 +1461,16 @@ img.note-image {
   border-color: var(--accent);
 }
 
+/* Remove sits on the left, apart from Cancel and Save. */
+.cm-agent-popup button.is-remove {
+  margin-right: auto;
+}
+
+.cm-agent-popup button.is-remove:hover {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 35%, transparent);
+}
+
 .cm-agent-popup .icon {
   width: 14px;
   height: 14px;

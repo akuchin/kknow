@@ -187,7 +187,8 @@ kknow --vault Personal stats               # work with it by name
   selection the comment goes to the whole paragraph:
   `<!-- @agent: task -->` at its end. The same menu edits or removes the
   comment under the cursor. A line with a comment has an icon on the left of
-  the text. Click the icon to open the comment. The 💬 button in the header lists all comments in
+  the text. Click the icon to open the comment. The comment form
+  has a "Remove" button, and a comment saved empty is removed too. The 💬 button in the header lists all comments in
   the text. Click one to go to its words.
 
 Short links follow the usual wiki rules. kknow tries the full path first, then
