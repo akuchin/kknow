@@ -1,5 +1,5 @@
 /**
- * Mode of the open note: "Edit", "Side by side" or "Read".
+ * Mode of the open note: "Live preview", "Side by side" or "Read".
  *
  * The mode is remembered per file, like the font size: people read a reference
  * note but edit a draft, so one shared setting would get in the way.

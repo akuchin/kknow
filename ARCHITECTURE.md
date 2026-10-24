@@ -623,7 +623,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     widget: its selection belongs to the browser, so it gets the browser
     menu.
 - There are three note modes (`data-mode` on `#app`):
-  - "Edit" — live preview, no preview pane.
+  - "Live preview" — markup renders in the text, no preview pane.
   - "Side by side" — plain Markdown and the preview.
   - "Read" — only the preview at full width, as a column in the centre.
 

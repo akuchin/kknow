@@ -322,8 +322,8 @@ let syncing = false;
 /** Sync state per vault: the active one shows in the status bar, others as a chip. */
 let statuses = new Map<string, SyncStatus>();
 /**
- * Mode of the open note: "Edit" (markup in the text, no preview), "Side by
- * side" (markdown and preview) or "Read" (full-width preview only).
+ * Mode of the open note: "Live preview" (markup in the text, no preview),
+ * "Side by side" (markdown and preview) or "Read" (full-width preview only).
  */
 let mode: ViewMode = "split";
 /** Sidebar collapsed state; it persists between runs. */
@@ -354,8 +354,8 @@ const previewNotes = new PreviewNotes(el.preview, {
 });
 
 /**
- * Agent notes from a closed table cell in "Edit" mode. A drag there selects
- * text for reading and does not open the cell, so the selection belongs to
+ * Agent notes from a closed table cell in "Live preview" mode. A drag there
+ * selects text for reading and does not open the cell, so the selection belongs to
  * the browser, not to the editor: it gets the same popup as the preview.
  */
 const tableNotes = new PreviewNotes(editor.scroller, {
@@ -488,8 +488,8 @@ function onEdit(text: string): void {
 /**
  * Sets the note mode.
  *
- * These are three ways to work with text, not one panel: "Edit" draws markup
- * in the text, "Side by side" shows plain markdown and the preview, "Read"
+ * These are three ways to work with text, not one panel: "Live preview" draws
+ * markup in the text, "Side by side" shows plain markdown and the preview, "Read"
  * shows a full-width preview. The first two never draw the same thing twice
  * side by side, and the full source is always visible somewhere.
  *
@@ -798,7 +798,7 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   showHeading(view);
   status.setWords(countWords(view.content));
   if (!options.keepEditor) {
-    // Mode before the preview: "Edit" mode does not draw the preview at all.
+    // Mode before the preview: "Live preview" mode does not draw the preview at all.
     setMode(modeOf(positionKey(view), defaultMode()), { remember: false, refresh: false });
     rememberPlace(view);
   }

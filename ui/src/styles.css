@@ -102,8 +102,8 @@ body {
     "status status status";
 }
 
-/* Note mode. "Edit": markup renders in the text itself, no preview needed.
-   "Read": the preview takes the editor's place. "Side by side": the grid above. */
+/* Note mode. "Live preview": markup renders in the text itself, no preview
+   needed. "Read": the preview takes the editor's place. "Side by side": the grid above. */
 #app[data-mode="edit"] {
   grid-template-columns: var(--sidebar) 1fr;
   grid-template-areas:
