@@ -22,7 +22,6 @@ import {
   onSettingsChanged,
   onSyncStatus,
   onUpdateStatus,
-  type AppSettings,
   type CommandManifest,
   type CommandSpec,
   type KeymapView,
@@ -31,7 +30,6 @@ import {
   type MarkdownAssociation,
   type Provider,
   type SyncSettings,
-  type SyncStatus,
   type TargetKind,
   type Theme,
   type UpdateStatus,
@@ -66,6 +64,7 @@ import { MODES } from "../note-mode";
 import "../styles.css";
 import { chips, field, heading, row, scaleControl, select, toggle } from "./controls";
 import "./settings.css";
+import { patch, state, view } from "./state";
 
 /** Window sections: URL anchor and label. */
 const SECTIONS: { id: string; label: Key }[] = [
@@ -103,9 +102,10 @@ const el = {
   body: document.querySelector<HTMLElement>("#settings-body")!,
 };
 
-let settings: AppSettings | null = null;
-let vaults: VaultView[] = [];
-let statuses = new Map<string, SyncStatus>();
+view.body = el.body;
+view.section = section;
+view.render = render;
+
 /** The vault open in the "Vaults" section. */
 let picked: string | null = null;
 /** Command manifest: the form edits all of it and writes the file on each change. */
@@ -151,23 +151,11 @@ function renderSections(): void {
   el.sections.append(version);
 }
 
-/** Writes settings to the core; both windows learn about them from an event. */
-async function patch(change: Partial<AppSettings>): Promise<void> {
-  if (!settings) return;
-  const next = { ...settings, ...change };
-  try {
-    settings = await api.setSettings(next);
-  } catch (error) {
-    console.error(error);
-  }
-  render();
-}
-
 function render(): void {
   renderSections();
   el.body.replaceChildren();
 
-  if (!settings) return;
+  if (!state.settings) return;
   switch (section()) {
     case "appearance":
       void renderAppearance();
@@ -199,7 +187,7 @@ function renderGeneral(): void {
       t("settings.general.locale"),
       select(
         locales.map((name) => ({ value: name, label: LOCALE_NAMES[name] ?? name })),
-        settings!.locale,
+        state.settings!.locale,
         (value) => void patch({ locale: value }),
       ),
       t("settings.general.locale.detail"),
@@ -209,7 +197,7 @@ function renderGeneral(): void {
   page.append(
     row(
       t("settings.general.openLast"),
-      toggle(settings!.openLastNote, (value) => void patch({ openLastNote: value })),
+      toggle(state.settings!.openLastNote, (value) => void patch({ openLastNote: value })),
       t("settings.general.openLast.detail"),
     ),
   );
@@ -219,7 +207,7 @@ function renderGeneral(): void {
   page.append(
     row(
       t("settings.general.autoUpdate"),
-      toggle(settings!.autoUpdate, (value) => void patch({ autoUpdate: value })),
+      toggle(state.settings!.autoUpdate, (value) => void patch({ autoUpdate: value })),
       t("settings.general.autoUpdate.detail"),
     ),
   );
@@ -373,7 +361,7 @@ async function renderAppearance(): Promise<void> {
   page.append(
     row(
       t("settings.appearance.theme"),
-      select(options, settings!.theme, (value) => void patch({ theme: value })),
+      select(options, state.settings!.theme, (value) => void patch({ theme: value })),
       t("settings.appearance.theme.detail"),
     ),
   );
@@ -386,7 +374,7 @@ async function renderAppearance(): Promise<void> {
           { value: "title", label: t("settings.appearance.noteLabel.title") },
           { value: "file", label: t("settings.appearance.noteLabel.file") },
         ],
-        settings!.noteLabel,
+        state.settings!.noteLabel,
         (value) => void patch({ noteLabel: value as NoteLabel }),
       ),
       t("settings.appearance.noteLabel.detail"),
@@ -784,7 +772,7 @@ function renderEditor(): void {
       t("settings.editor.mode"),
       select(
         MODES.map((mode) => ({ value: mode, label: t(`mode.${mode}`) })),
-        settings!.viewMode,
+        state.settings!.viewMode,
         (value) => void patch({ viewMode: value as ViewMode }),
       ),
       t("settings.editor.mode.detail"),
@@ -794,7 +782,7 @@ function renderEditor(): void {
   page.append(
     row(
       t("settings.editor.lineNumbers"),
-      toggle(settings!.lineNumbers, (value) => void patch({ lineNumbers: value })),
+      toggle(state.settings!.lineNumbers, (value) => void patch({ lineNumbers: value })),
       t("settings.editor.lineNumbers.detail"),
     ),
   );
@@ -802,7 +790,7 @@ function renderEditor(): void {
   page.append(
     row(
       t("settings.editor.scale"),
-      scaleControl(settings!.noteScale, (value) => void patch({ noteScale: value })),
+      scaleControl(state.settings!.noteScale, (value) => void patch({ noteScale: value })),
       t("settings.editor.scale.detail"),
     ),
   );
@@ -832,7 +820,7 @@ async function renderCommands(): Promise<void> {
   try {
     // The vault list is for the vaults field: a command can apply to some
     // vaults only, and picking them by name is easier.
-    [manifest, vaults] = await Promise.all([api.editCommands(), api.listVaults()]);
+    [manifest, state.vaults] = await Promise.all([api.editCommands(), api.listVaults()]);
   } catch (error) {
     page.append(heading(t("settings.section.commands")), problem(describeError(error)));
     el.body.replaceChildren(page);
@@ -1036,7 +1024,7 @@ function renderCommandForm(page: HTMLElement): void {
     row(
       t("settings.commands.vaults"),
       chips(
-        vaults.map((vault) => ({ value: vault.id, label: vault.name })),
+        state.vaults.map((vault) => ({ value: vault.id, label: vault.name })),
         command.vaults,
         (value, on) => {
           command.vaults = on
@@ -1446,10 +1434,10 @@ async function renderVaults(): Promise<void> {
 
   const count = document.createElement("p");
   count.className = "settings-vault-count";
-  count.textContent = t("settings.vaults.count", { count: vaults.length });
+  count.textContent = t("settings.vaults.count", { count: state.vaults.length });
   list.append(count);
 
-  for (const vault of vaults) {
+  for (const vault of state.vaults) {
     const button = document.createElement("button");
     button.className = "settings-vault";
     button.dataset.vault = vault.id;
@@ -1492,7 +1480,7 @@ async function renderVaults(): Promise<void> {
   const remove = document.createElement("button");
   remove.className = "ghost danger";
   remove.innerHTML = `${iconMarkup("unlink")}<span>${t("settings.vaults.remove")}</span>`;
-  remove.disabled = picked === null || vaults.length < 2;
+  remove.disabled = picked === null || state.vaults.length < 2;
   remove.title = t("settings.vaults.remove.detail");
   remove.onclick = () => void removeVault();
 
@@ -1504,13 +1492,13 @@ async function renderVaults(): Promise<void> {
   layout.append(list, details);
   el.body.replaceChildren(layout);
 
-  const vault = vaults.find((entry) => entry.id === picked);
+  const vault = state.vaults.find((entry) => entry.id === picked);
   if (vault) await renderVaultDetails(details, vault);
 }
 
 /** Updates in place what depends on the sync state. */
 function repaintVaults(): void {
-  for (const vault of vaults) {
+  for (const vault of state.vaults) {
     const button = el.body.querySelector<HTMLElement>(
       `.settings-vault[data-vault="${CSS.escape(vault.id)}"]`,
     );
@@ -1526,7 +1514,7 @@ function repaintVaults(): void {
 
 function describeVault(vault: VaultView): string {
   if (!vault.available) return t("menu.vault.missing");
-  const status = statuses.get(vault.id);
+  const status = state.statuses.get(vault.id);
   if (!status || status.state === "off") return t("statusbar.sync.off");
   if (status.state === "conflict") {
     return t("settings.vaults.conflicts", { count: status.conflicts });
@@ -1537,7 +1525,7 @@ function describeVault(vault: VaultView): string {
 
 function toneOf(vault: VaultView): string {
   if (!vault.available) return "off";
-  const status = statuses.get(vault.id);
+  const status = state.statuses.get(vault.id);
   if (!status) return "off";
   if (status.state === "error") return "error";
   if (status.state === "conflict") return "conflict";
@@ -1670,7 +1658,7 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
 
 /** When the vault last synced. */
 function describeLastSync(id: string | null): string {
-  const at = id ? statuses.get(id)?.at : undefined;
+  const at = id ? state.statuses.get(id)?.at : undefined;
   return at ? new Date(at).toLocaleString(locale) : t("settings.vaults.lastSync.never");
 }
 
@@ -1689,7 +1677,7 @@ async function renderVaultStats(page: HTMLElement, vault: VaultView): Promise<vo
 
   try {
     const stats: VaultStats = await api.vaultStats(vault.id);
-    const hotkey = vaults.findIndex((entry) => entry.id === vault.id) + 1;
+    const hotkey = state.vaults.findIndex((entry) => entry.id === vault.id) + 1;
     line.textContent = [
       t("status.notes", { count: stats.notes }),
       t("settings.vaults.folders", { count: stats.folders }),
@@ -1712,15 +1700,15 @@ function formatSize(bytes: number): string {
 
 async function refreshVaults(): Promise<void> {
   try {
-    vaults = await api.listVaults();
+    state.vaults = await api.listVaults();
     const all = await api.syncStatuses();
-    statuses = new Map(all.map((entry) => [entry.vault, entry]));
+    state.statuses = new Map(all.map((entry) => [entry.vault, entry]));
   } catch (error) {
     console.error(error);
   }
 
-  if (!vaults.some((entry) => entry.id === picked)) {
-    picked = vaults.find((entry) => entry.active)?.id ?? vaults[0]?.id ?? null;
+  if (!state.vaults.some((entry) => entry.id === picked)) {
+    picked = state.vaults.find((entry) => entry.active)?.id ?? state.vaults[0]?.id ?? null;
   }
 }
 
@@ -1919,15 +1907,15 @@ document.addEventListener("keydown", (event) => {
 
 async function boot(): Promise<void> {
   try {
-    settings = await api.getSettings();
+    state.settings = await api.getSettings();
   } catch (error) {
     console.error(error);
   }
 
   // The window language comes from settings, which the main window shares.
   // `i18n` reads its copy in `localStorage` synchronously on load.
-  if (settings && settings.locale !== locale) {
-    setLocale(settings.locale);
+  if (state.settings && state.settings.locale !== locale) {
+    setLocale(state.settings.locale);
     location.reload();
     return;
   }
@@ -1944,8 +1932,8 @@ async function boot(): Promise<void> {
   window.addEventListener("focus", () => void api.getKeymap().then(takeKeymap, console.error));
 
   void onSettingsChanged((incoming) => {
-    const languageChanged = settings?.locale !== incoming.locale;
-    settings = incoming;
+    const languageChanged = state.settings?.locale !== incoming.locale;
+    state.settings = incoming;
     if (languageChanged) {
       setLocale(incoming.locale);
       location.reload();
@@ -1956,7 +1944,7 @@ async function boot(): Promise<void> {
 
   // Sync runs without this window too; its state comes as an event.
   void onSyncStatus((incoming) => {
-    statuses.set(incoming.vault, incoming);
+    state.statuses.set(incoming.vault, incoming);
     if (section() === "vaults") repaintVaults();
   });
 
