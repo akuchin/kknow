@@ -102,7 +102,8 @@ import {
   tableNotes,
 } from "./window/notes-float";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
-import { openSettings } from "./window/util";
+import { emptyItem, markActive, rowActions, rowMenu } from "./window/rows";
+import { copyText, openSettings } from "./window/util";
 import { state } from "./window/state";
 
 /** How many recently opened notes the palette remembers. */
@@ -165,18 +166,6 @@ function setSidebarHidden(hidden: boolean): void {
   el.toggleSidebar.setAttribute("aria-label", label);
 }
 
-/** Marks the open note. Equal names can exist in different vaults. */
-function markActive(id: string | null): void {
-  const file = state.note?.file === true;
-  for (const button of el.noteList.querySelectorAll<HTMLButtonElement>("button.note")) {
-    const mine = !file && button.dataset.vault === state.vault?.id && button.dataset.id === id;
-    button.classList.toggle("active", mine);
-  }
-  for (const button of el.fileList.querySelectorAll<HTMLButtonElement>("button.note")) {
-    button.classList.toggle("active", file && button.dataset.path === id);
-  }
-}
-
 /**
  * The sidebar is a workspace: the tree roots are vaults, not folders of one
  * directory.
@@ -196,13 +185,6 @@ function renderTree(): void {
   // While a trash note covers the open note, only the trash note is marked.
   markActive(trashViewing ? null : (state.note?.id ?? null));
   markTrashViewing();
-}
-
-function emptyItem(text: string): HTMLLIElement {
-  const item = document.createElement("li");
-  item.className = "empty";
-  item.textContent = text;
-  return item;
 }
 
 /**
@@ -706,24 +688,6 @@ function treeItems(folder: Folder, vaultId: string): HTMLLIElement[] {
 }
 
 /**
- * The "⋯" button of a tree row.
- *
- * All three row kinds (vault, folder, note) use it: the menus differ, the
- * button is the same. It appears on hover; a permanent column of dots in the
- * tree is noise.
- */
-function rowMenu(title: string, open: (anchor: HTMLElement) => void): HTMLButtonElement {
-  const more = document.createElement("button");
-  more.className = "row-menu";
-  more.title = title;
-  more.setAttribute("aria-label", title);
-  more.setAttribute("aria-haspopup", "menu");
-  more.append(icon("dots"));
-  more.onclick = () => open(more);
-  return more;
-}
-
-/**
  * The "+" button of a vault or folder row: a new note inside it.
  *
  * Creation is the most frequent action on a folder, so it gets a button of
@@ -741,17 +705,6 @@ function rowPlus(title: string, vaultId: string, folder: string): HTMLButtonElem
     openNewNoteForm(folder ? `${folder}/` : "", "note");
   };
   return plus;
-}
-
-/**
- * The row buttons on the right. They take no width until hover or keyboard
- * focus, so the name gets the whole row.
- */
-function rowActions(...buttons: HTMLButtonElement[]): HTMLSpanElement {
-  const actions = document.createElement("span");
-  actions.className = "row-actions";
-  actions.append(...buttons);
-  return actions;
 }
 
 function folderItem(folder: Folder, vaultId: string): HTMLLIElement {
@@ -1556,35 +1509,6 @@ function absolutePath(vaultId: string, relative: string): string | null {
       ? state.vault.root
       : state.vaults.find((entry) => entry.id === vaultId)?.path;
   return root ? `${root}/${relative}` : null;
-}
-
-/**
- * Puts text on the clipboard.
- *
- * First try `navigator.clipboard`. If the webview blocks it (no permission or
- * an insecure context), fall back to the old `execCommand("copy")` with a
- * hidden field: it works with any user gesture, and a menu click is one.
- */
-async function copyText(text: string | null): Promise<void> {
-  if (text === null) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus(t("status.copied"));
-    return;
-  } catch {
-    // Fall back below.
-  }
-
-  const field = document.createElement("textarea");
-  field.value = text;
-  field.setAttribute("readonly", "");
-  field.style.position = "fixed";
-  field.style.opacity = "0";
-  document.body.append(field);
-  field.select();
-  const copied = document.execCommand("copy");
-  field.remove();
-  setStatus(t(copied ? "status.copied" : "status.copyFailed"), copied ? "idle" : "error");
 }
 
 async function recolorVault(id: string, color: string): Promise<void> {
