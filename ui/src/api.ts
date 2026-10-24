@@ -237,6 +237,17 @@ export interface BookmarkView {
   name?: string;
 }
 
+/** A task list item of a vault note: `- [ ] text`. */
+export interface TaskView {
+  note: string;
+  title: string;
+  folder: string | null;
+  /** Line number, starting at 1. */
+  line: number;
+  text: string;
+  done: boolean;
+}
+
 /** A standalone file in the sidebar: markdown opened without a vault. */
 export interface FileEntry {
   path: string;
@@ -427,6 +438,14 @@ export const api = {
     invoke<BookmarkMark[]>("set_bookmarks", { id, lines, content }),
   /** Bookmarks of the active vault, in the order they were set. */
   listBookmarks: () => invoke<BookmarkView[]>("list_bookmarks"),
+  /** Tasks of the active vault, sorted by note and line. */
+  listTasks: () => invoke<TaskView[]>("list_tasks"),
+  /**
+   * Marks the task on a note line as done or open. The core writes the file
+   * and refuses a line that is no longer a task.
+   */
+  setTask: (id: string, line: number, done: boolean) =>
+    invoke<NoteView>("set_task", { id, line, done }),
   preview: (id: string, content: string) =>
     invoke<string>("preview", { id, content }),
   /** Bytes of an image that the note links to. The core resolves the path. */

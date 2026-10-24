@@ -315,6 +315,8 @@ pub fn run() {
             commands::rename_note,
             commands::set_bookmarks,
             commands::list_bookmarks,
+            commands::list_tasks,
+            commands::set_task,
             commands::duplicate_note,
             commands::rename_folder,
             commands::search,

@@ -11,7 +11,7 @@
  * code, plus bugs.
  */
 
-import type { BookmarkView, GlobalResult, NoteSummary } from "./api";
+import type { BookmarkView, GlobalResult, NoteSummary, TaskView } from "./api";
 import { iconMarkup } from "./icons";
 import { matches, shortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
@@ -32,17 +32,19 @@ const RECENT_LIMIT = 8;
  * one type, the note, so there is nothing to split. But the search index has
  * fields, and the chips narrow the query to one of them: `title:(…)`, `tag:(…)`.
  */
-type Scope = "all" | "title" | "tag" | "bookmarks";
+type Scope = "all" | "title" | "tag" | "bookmarks" | "tasks";
 
 /**
- * "Bookmarks" is not an index field but a separate list. The palette gets the
- * whole list from the core and filters it itself: there are few bookmarks.
+ * "Bookmarks" and "Tasks" are not index fields but separate lists. The
+ * palette gets the whole list from the core and filters it itself: a vault
+ * has few of them.
  */
 const SCOPES: [Scope, Key][] = [
   ["all", "palette.scope.all"],
   ["title", "palette.scope.title"],
   ["tag", "palette.scope.tag"],
   ["bookmarks", "palette.scope.bookmarks"],
+  ["tasks", "palette.scope.tasks"],
 ];
 
 function escapeHtml(text: string): string {
@@ -71,6 +73,9 @@ export interface PaletteHost {
   bookmarks(): Promise<BookmarkView[]>;
   /** Opens the note at the bookmark line. */
   openBookmark(id: string, line: number): void;
+  tasks(): Promise<TaskView[]>;
+  /** Opens the note at the task line. */
+  openTask(id: string, line: number): void;
   create(name: string): void;
   /** Rebuilt on each open: the labels depend on the window state. */
   actions(): PaletteAction[];
@@ -84,8 +89,10 @@ interface Row {
   snippet: string | null;
   /** The vault of the hit; notes of the active vault get no label. */
   vault?: { id: string; name: string; color: string };
-  /** Bookmark line: the row then opens this place, not just the note. */
+  /** Bookmark or task line: the row then opens this place, not just the note. */
   line?: number;
+  /** The row is a task, not a bookmark. */
+  task?: boolean;
 }
 
 /**
@@ -256,6 +263,10 @@ export class Palette {
       await this.runBookmarks(text, ticket);
       return;
     }
+    if (this.scope === "tasks") {
+      await this.runTasks(text, ticket);
+      return;
+    }
 
     // The first search opens vaults that were not opened yet. Reading and
     // parsing them takes noticeable time. A silent palette looks broken then,
@@ -348,6 +359,42 @@ export class Palette {
     );
   }
 
+  /**
+   * Open tasks filtered by the typed text: task text, note title and path.
+   * The task text is the row title, and the note title is the snippet.
+   */
+  private async runTasks(text: string, ticket: number): Promise<void> {
+    let tasks: TaskView[];
+    try {
+      tasks = (await this.host.tasks()).filter((task) => !task.done);
+    } catch {
+      tasks = [];
+    }
+    if (ticket !== this.issued) return;
+
+    const wanted = text.toLowerCase();
+    const rows = tasks
+      .filter(
+        (task) =>
+          !wanted ||
+          [task.text, task.title, task.note].some((field) => field.toLowerCase().includes(wanted)),
+      )
+      .map<Row>((task) => ({
+        id: task.note,
+        title: task.text,
+        folder: task.folder,
+        snippet: escapeHtml(task.title),
+        line: task.line,
+        task: true,
+      }));
+    this.show(
+      rows,
+      t("palette.tasks"),
+      tasks.length === 0 ? t("palette.noTasks") : t("palette.emptyPlain"),
+      "found",
+    );
+  }
+
   /** Shows that the palette is busy while the core opens vaults. */
   private showWorking(text: string): void {
     this.list.replaceChildren();
@@ -396,7 +443,7 @@ export class Palette {
 
     const mark = document.createElement("span");
     mark.className = "palette-icon";
-    mark.innerHTML = iconMarkup(row.line === undefined ? "note" : "bookmark");
+    mark.innerHTML = iconMarkup(row.task ? "task" : row.line === undefined ? "note" : "bookmark");
 
     const text = document.createElement("span");
     text.className = "palette-text";
@@ -514,6 +561,10 @@ export class Palette {
 
   private pick(row: Row): void {
     this.close();
+    if (row.task && row.line !== undefined) {
+      this.host.openTask(row.id, row.line);
+      return;
+    }
     if (row.line !== undefined) {
       this.host.openBookmark(row.id, row.line);
       return;

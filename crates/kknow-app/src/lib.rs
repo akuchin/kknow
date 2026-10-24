@@ -17,7 +17,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use kknow_core::{Note, NoteId, Vault};
-use kknow_index::{Edge, LinkGraph, ParsedNote, Resolver, SearchHit, SearchIndex};
+use kknow_index::{Edge, LinkGraph, ParsedNote, Resolver, SearchHit, SearchIndex, Task};
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Plan as SyncPlan, Report as SyncReport, Staged, SyncEngine,
     SyncProvider,
@@ -51,6 +51,9 @@ pub enum Error {
 
     #[error("заметка уже существует: {0}")]
     AlreadyExists(NoteId),
+
+    #[error("в {0} на строке {1} нет задачи: заметка изменилась")]
+    NotATask(NoteId, usize),
 
     #[error("хранилище не найдено: {0}")]
     UnknownVault(String),
@@ -532,6 +535,30 @@ impl Workspace {
         }
     }
 
+    /// Tasks of all notes, sorted by note and then by line.
+    pub fn tasks(&self) -> Vec<(&NoteId, &Task)> {
+        self.parsed
+            .iter()
+            .flat_map(|(id, note)| note.tasks.iter().map(move |task| (id, task)))
+            .collect()
+    }
+
+    /// Marks the task on line `line` of the note as done or open and returns
+    /// the new text.
+    ///
+    /// The line number comes from an older parse, and the file can change
+    /// since then. So the text comes from disk, and a line without a task is
+    /// an error, not a guess. The same state again writes nothing.
+    pub fn set_task(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
+        let content = self.read(id)?;
+        let changed = kknow_index::parse::set_task(&content, line, done)
+            .ok_or_else(|| Error::NotATask(id.clone(), line))?;
+        if changed != content {
+            self.save(id, &changed)?;
+        }
+        Ok(changed)
+    }
+
     /// Creates an empty note with a heading from its name.
     pub fn create(&mut self, raw_name: &str) -> Result<NoteId> {
         let id = NoteId::parse(raw_name).ok_or_else(|| Error::InvalidName(raw_name.to_string()))?;
@@ -748,6 +775,63 @@ mod tests {
             .into_iter()
             .map(|bookmark| (bookmark.note.clone(), bookmark.line))
             .collect()
+    }
+
+    #[test]
+    fn tasks_come_from_all_notes_in_order() {
+        let (dir, mut workspace) = workspace();
+        let plan = NoteId::parse("План").unwrap();
+        workspace
+            .save(&plan, "# План\n\n- [x] начать\n- [ ] закончить\n")
+            .unwrap();
+        fs::write(
+            dir.path().join("Index.md"),
+            "# Оглавление\n\n- [ ] прочитать\n",
+        )
+        .unwrap();
+        workspace.reload().unwrap();
+
+        let tasks: Vec<(&str, usize, bool)> = workspace
+            .tasks()
+            .into_iter()
+            .map(|(id, task)| (id.as_str(), task.line, task.done))
+            .collect();
+        assert_eq!(
+            tasks,
+            [("Index", 3, false), ("План", 3, true), ("План", 4, false)]
+        );
+    }
+
+    #[test]
+    fn set_task_writes_the_file_and_refuses_a_stale_line() {
+        let (dir, mut workspace) = workspace();
+        let plan = NoteId::parse("План").unwrap();
+        workspace.save(&plan, "# План\n\n- [ ] начать\n").unwrap();
+
+        let content = workspace.set_task(&plan, 3, true).unwrap();
+        assert_eq!(content, "# План\n\n- [x] начать\n");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("План.md")).unwrap(),
+            content
+        );
+        assert!(
+            workspace.tasks()[0].1.done,
+            "разбор обновился вместе с файлом"
+        );
+
+        // Someone added a line above: line 3 is now plain text.
+        fs::write(
+            dir.path().join("План.md"),
+            "# План\n\nвступление\n- [x] начать\n",
+        )
+        .unwrap();
+        let error = workspace.set_task(&plan, 3, false).unwrap_err();
+        assert!(matches!(error, Error::NotATask(_, 3)), "{error}");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("План.md")).unwrap(),
+            "# План\n\nвступление\n- [x] начать\n",
+            "файл не тронут"
+        );
     }
 
     #[test]

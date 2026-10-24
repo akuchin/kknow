@@ -116,6 +116,17 @@ pub struct BookmarkView {
     name: Option<String>,
 }
 
+/// A task in the palette list.
+#[derive(Serialize)]
+pub struct TaskView {
+    note: String,
+    title: String,
+    folder: Option<String>,
+    line: usize,
+    text: String,
+    done: bool,
+}
+
 fn info(entry: &VaultEntry, workspace: &Workspace) -> VaultInfo {
     VaultInfo {
         id: entry.id.clone(),
@@ -703,6 +714,44 @@ pub fn list_bookmarks(
     })
 }
 
+/// Tasks of all vault notes, sorted by note and line.
+#[tauri::command]
+pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<TaskView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        Ok(workspace
+            .tasks()
+            .into_iter()
+            .map(|(id, task)| TaskView {
+                note: id.as_str().to_string(),
+                title: title_of(workspace, id),
+                folder: id.folder().map(str::to_string),
+                line: task.line,
+                text: task.text.clone(),
+                done: task.done,
+            })
+            .collect())
+    })
+}
+
+/// Marks the task on a note line as done or open and returns the note.
+///
+/// The core reads the line from disk and refuses it if it is no longer a
+/// task. The window saves its edits before the call, so the disk is current.
+#[tauri::command]
+pub fn set_task(
+    state: State<'_, AppState>,
+    id: String,
+    line: usize,
+    done: bool,
+    vault: Option<String>,
+) -> Result<NoteView> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        let id = note_id(workspace, &id)?;
+        let content = workspace.set_task(&id, line, done)?;
+        Ok(note_view(workspace, &id, content))
+    })
+}
+
 /// Renames or moves a note and returns its new ID.
 ///
 /// The new name is the full path from the root, `Folder/Name`. For the core,
@@ -870,6 +919,28 @@ mod tests {
         assert_eq!(listed[0].line, 4);
         assert_eq!(listed[0].text, "[[Projects/kknow|мой проект]]");
         assert_eq!(listed[0].name.as_deref(), Some("проект"));
+    }
+
+    #[test]
+    fn tasks_are_listed_and_set_through_the_note() {
+        let dir = vault();
+        fs::write(
+            dir.path().join("Index.md"),
+            "# Оглавление\n\n- [ ] прочитать\n",
+        )
+        .unwrap();
+        let app = app(&[dir.path()]);
+
+        let listed = list_tasks(app.state(), None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "Оглавление");
+        assert_eq!((listed[0].line, listed[0].done), (3, false));
+        assert_eq!(listed[0].text, "прочитать");
+
+        let note = set_task(app.state(), "Index".into(), 3, true, None).unwrap();
+        assert_eq!(note.content, "# Оглавление\n\n- [x] прочитать\n");
+        assert!(list_tasks(app.state(), None).unwrap()[0].done);
+        assert!(set_task(app.state(), "Index".into(), 1, true, None).is_err());
     }
 
     #[test]

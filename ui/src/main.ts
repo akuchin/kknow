@@ -46,7 +46,7 @@ import {
 import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
-import { paintBookmarks, topLine } from "./preview-lines";
+import { markLine, paintBookmarks, topLine } from "./preview-lines";
 import { paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
@@ -765,6 +765,7 @@ async function refreshPreview(text: string): Promise<void> {
 function showPreview(html: string): void {
   if (mode === "edit") return;
   el.preview.innerHTML = html;
+  enableTaskBoxes();
   paintBookmarks(el.preview, editor.getBookmarks());
   paintCodeBlocks(el.preview);
   paintImages(el.preview);
@@ -1519,6 +1520,51 @@ async function openBookmark(id: string, line: number): Promise<void> {
       null,
     );
   editor.goToLine(nearest ?? line);
+}
+
+/** Opens a task from the palette: the note at the task line. */
+async function openTask(id: string, line: number): Promise<void> {
+  if (current?.id !== id || current.file) await openNote(id);
+  if (current?.id !== id) return;
+  // "Read" mode hides the editor, but the line must be visible.
+  if (mode === "read") setMode("split", { remember: false });
+  editor.goToLine(line);
+}
+
+/**
+ * The core renders task boxes as disabled inputs, and a disabled input gets
+ * no clicks. A vault note makes them clickable; a separate file has no line
+ * marks, so its boxes stay as they are.
+ */
+function enableTaskBoxes(): void {
+  if (!current || current.file) return;
+  for (const box of el.preview.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")) {
+    box.disabled = false;
+  }
+}
+
+/**
+ * A click on a task box in the preview.
+ *
+ * The core changes the file, not the window: it checks that the line is still
+ * a task and writes through the usual save. The pending edits go to disk
+ * first, so the core sees the text of the editor. Then the editor changes the
+ * same character, and its text is again equal to the disk.
+ */
+async function setTask(line: number, done: boolean): Promise<void> {
+  if (!current || current.file) return;
+  const id = current.id;
+  await flushPendingSave();
+  if (current?.id !== id) return;
+  try {
+    const view = await api.setTask(id, line, done);
+    if (current?.id !== id) return;
+    applyNote(view, { keepEditor: true });
+    editor.setTask(line, done);
+    setStatus(t(done ? "status.taskDone" : "status.taskOpen"));
+  } catch (error) {
+    fail(error);
+  }
 }
 
 /**
@@ -3312,6 +3358,17 @@ el.newNoteName.onkeydown = (event) => {
   }
 };
 
+// A task box in the preview changes the file, not only the picture. The
+// browser already flipped the box, so `checked` is the wanted state; the
+// redraw from the core shows the real one.
+el.preview.addEventListener("click", (event) => {
+  const box = event.target;
+  if (!(box instanceof HTMLInputElement) || box.type !== "checkbox") return;
+  event.preventDefault();
+  const line = markLine(el.preview, box);
+  if (line !== null) void setTask(line, box.checked);
+});
+
 // Links in the preview navigate inside the vault, not to the outside.
 el.preview.addEventListener("click", (event) => {
   const anchor = (event.target as HTMLElement).closest("a");
@@ -3343,6 +3400,8 @@ const palette = new Palette({
   search: (query) => api.searchAll(query),
   bookmarks: () => (vault ? api.listBookmarks() : Promise.resolve([])),
   openBookmark: (id, line) => void openBookmark(id, line),
+  tasks: () => (vault ? api.listTasks() : Promise.resolve([])),
+  openTask: (id, line) => void openTask(id, line),
   recent: recentNotes,
   total: () => activeNotes().length,
   activeVault: () => vault?.id ?? null,
@@ -3368,6 +3427,7 @@ const palette = new Palette({
     })),
     { label: t("palette.action.bookmark"), action: "bookmark.toggle", run: () => toggleCurrentBookmark() },
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
+    { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
     { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
@@ -3519,6 +3579,7 @@ const windowActions: [Action, () => boolean | void][] = [
   // ⌘B is bold in the editor, so the bookmark uses Shift.
   ["bookmark.toggle", () => toggleCurrentBookmark()],
   ["bookmark.list", () => palette.open("", "bookmarks")],
+  ["task.list", () => palette.open("", "tasks")],
   ["sidebar.toggle", () => setSidebarHidden(!sidebarHidden)],
   // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
   ["history.back", () => void travel(-1)],
