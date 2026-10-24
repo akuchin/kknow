@@ -19,9 +19,6 @@ import {
   type NoteSummary,
   type Opened,
   type RunOutcome,
-  type SyncConflict,
-  type SyncSettings,
-  type SyncStatus,
   type TrashEntryView,
   type VaultInfo,
   type VaultView,
@@ -31,7 +28,6 @@ import {
   formatKey,
   matches,
   matchesKey,
-  shortcut,
   useKeymap,
   vaultKey,
   withShortcut,
@@ -52,7 +48,6 @@ import { moveScale } from "./note-scale";
 import type { Heading } from "./outline";
 import { Palette } from "./palette";
 import "./styles.css";
-import { describeReport, syncSegment, type SyncWords } from "./sync-text";
 import { buildTree, fileName, folderOf, join, leafOf, type Folder } from "./tree-model";
 import {
   applySettings,
@@ -90,6 +85,7 @@ import {
   syncWithDisk,
   travel,
 } from "./window/note";
+import { describeRemote, initSync, openChipMenu, refreshSync, runSync, takeStatus } from "./window/sync";
 import {
   initNotesFloat,
   previewNotes,
@@ -123,11 +119,6 @@ const folderLists = new Map<string, string[]>();
 
 /** Trash entries of each loaded vault, the newest first: the last tree node. */
 const trashes = new Map<string, TrashEntryView[]>();
-/** Sync settings; `null` means this folder has none. */
-let remote: SyncSettings | null = null;
-let syncing = false;
-/** Sync state per vault: the active one shows in the status bar, others as a chip. */
-let statuses = new Map<string, SyncStatus>();
 /** Sidebar collapsed state; it persists between runs. */
 const SIDEBAR = "kknow:sidebar";
 let sidebarHidden = localStorage.getItem(SIDEBAR) === "hidden";
@@ -2251,159 +2242,6 @@ async function emptyTrash(target: VaultView): Promise<void> {
   }
 }
 
-/** Shows the sync result: a summary on top, details as a list. */
-function showSyncPanel(summary: string, items: HTMLLIElement[]): void {
-  // The sync result lives in the right pane, so the pane must be visible.
-  // The mode is not saved for the note: the user did not pick it.
-  if (state.mode === "edit") setMode("split", { remember: false });
-  el.syncSummary.textContent = summary;
-  el.syncList.replaceChildren(...items);
-  el.syncPanel.hidden = false;
-}
-
-/** Conflicts: the local version stays in place, the remote one is a copy next to it. */
-function conflictItems(conflicts: SyncConflict[]): HTMLLIElement[] {
-  return conflicts.map((conflict) => {
-    const item = document.createElement("li");
-
-    const mine = document.createElement("button");
-    mine.className = "link";
-    mine.textContent = conflict.id;
-    mine.onclick = () => void openNote(conflict.id);
-
-    const arrow = document.createElement("span");
-    arrow.className = "muted";
-    arrow.textContent = t("sync.conflict.arrow");
-
-    const theirs = document.createElement("button");
-    theirs.className = "link";
-    theirs.textContent = conflict.copy;
-    theirs.onclick = () => void openNote(conflict.copy);
-
-    item.append(mine, arrow, theirs);
-    return item;
-  });
-}
-
-async function runSync(): Promise<void> {
-  // A vault without sync settings cannot sync: open the settings section that
-  // configures it.
-  if (!remote) {
-    void openSettings("vaults");
-    return;
-  }
-  if (syncing) return;
-
-  syncing = true;
-  setStatus(t("status.syncing"), "work");
-  // Save pending edits now, else they would sync only next time.
-  await flushPendingSave();
-
-  try {
-    const report = await api.syncNow();
-    showSyncPanel(describeReport(report, syncWords), conflictItems(report.conflicts));
-    setStatus(
-      report.conflicts.length > 0
-        ? t("status.conflicts", { count: report.conflicts.length })
-        : t("status.synced"),
-    );
-  } catch (error) {
-    // The core already set the segment state to error; only the report is left.
-    showSyncPanel(describeError(error), []);
-    fail(error);
-  } finally {
-    syncing = false;
-    await refreshStatuses();
-  }
-}
-
-/** Syncs an inactive vault from the chip. The active vault does not change. */
-async function syncVault(id: string): Promise<void> {
-  try {
-    await api.syncNow(id);
-  } catch (error) {
-    fail(error);
-  }
-  await refreshStatuses();
-}
-
-/** Sync states of all open vaults. The chip shows them too. */
-async function refreshStatuses(): Promise<void> {
-  try {
-    const all = await api.syncStatuses();
-    statuses = new Map(all.map((entry) => [entry.vault, entry]));
-  } catch (error) {
-    fail(error);
-  }
-  describeRemote();
-}
-
-/** Sync texts get the window language and keys through this object. */
-const syncWords: SyncWords = { t, shortcut, withShortcut, describeError };
-
-/** Shows the sync state of the active vault in the status bar and the chip. */
-function describeRemote(): void {
-  const own = state.vault ? statuses.get(state.vault.id) : undefined;
-  showChip();
-  const segment = syncSegment(own, syncWords);
-  status.setSync(segment.text, segment.tone, segment.title);
-}
-
-/**
- * Chip about a problem elsewhere: a conflict or a sync failure in an inactive
- * vault.
- *
- * The active vault uses the sync segment, so the chip shows only other vaults,
- * and only one of them.
- */
-function showChip(): void {
-  const other = [...statuses.values()]
-    .filter((entry) => entry.vault !== state.vault?.id)
-    .find((entry) => entry.state === "conflict" || entry.state === "error");
-
-  if (!other) {
-    status.setChip(null);
-    return;
-  }
-
-  const name = state.vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
-  status.setChip(
-    other.state === "conflict"
-      ? t("statusbar.chip.conflicts", { name, count: other.conflicts })
-      : t("statusbar.chip.error", { name }),
-    other.state === "conflict" ? "warning" : "danger",
-  );
-}
-
-/** Chip menu: go to the vault with the problem and resolve it. */
-function openChipMenu(anchor: HTMLElement): void {
-  const other = [...statuses.values()]
-    .filter((entry) => entry.vault !== state.vault?.id)
-    .find((entry) => entry.state === "conflict" || entry.state === "error");
-  if (!other) return;
-
-  const name = state.vaults.find((entry) => entry.id === other.vault)?.name ?? other.vault;
-  openMenu(anchor, [
-    {
-      title: name,
-      items: [
-        {
-          label: t("statusbar.chip.resolve"),
-          glyph: "search",
-          key: "R",
-          run: () => void resolveConflicts(other.vault),
-        },
-        {
-          label: t("palette.action.sync"),
-          glyph: "cloud",
-          key: "S",
-          run: () => void syncVault(other.vault),
-        },
-      ],
-    },
-  ]);
-}
-
 /**
  * "Resolve": switch to the vault and show the conflict copies.
  *
@@ -2413,18 +2251,6 @@ function openChipMenu(anchor: HTMLElement): void {
 async function resolveConflicts(id: string): Promise<void> {
   await switchVault(id);
   palette.open(t("statusbar.chip.query"));
-}
-
-/** Sync settings belong to the vault folder, so they load with it. */
-async function refreshSync(): Promise<void> {
-  el.syncPanel.hidden = true;
-  try {
-    remote = await api.syncSettings();
-  } catch (error) {
-    remote = null;
-    fail(error);
-  }
-  await refreshStatuses();
 }
 
 initAppearance({ renderTree });
@@ -2575,9 +2401,7 @@ el.runLast.onclick = () => {
 el.runMenu.onclick = () => void openRunMenu();
 el.noteBacklinks.onclick = () => openBacklinksMenu();
 
-el.syncHide.onclick = () => {
-  el.syncPanel.hidden = true;
-};
+initSync({ resolve: resolveConflicts });
 el.runHide.onclick = () => showRunOutput(false);
 
 el.addVault.onclick = () => void pickVault();
@@ -2904,10 +2728,7 @@ async function boot(): Promise<void> {
   void onKeymapChanged(({ keys }) => void applyKeymap(keys));
   // Sync reports itself: progress, conflicts and failures come as events,
   // also from auto-sync that nobody started by hand.
-  void onSyncStatus((incoming) => {
-    statuses.set(incoming.vault, incoming);
-    describeRemote();
-  });
+  void onSyncStatus(takeStatus);
   // The update downloads in the background. The window asks once, because
   // the download can finish before the window loads, and then follows events.
   void api.updateStatus().then(showUpdate, console.error);
