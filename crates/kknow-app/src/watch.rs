@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use kknow_core::{NoteId, is_markdown_extension};
 use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
+use notify_debouncer_full::{DebounceEventResult, Debouncer, NoCache, new_debouncer_opt};
 
 /// Time to merge events: one Cmd+S in an editor gives several file system
 /// events.
@@ -27,7 +27,7 @@ pub enum VaultEvent {
 
 pub struct VaultWatcher {
     // The watcher stops when the debouncer is dropped.
-    _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
+    _debouncer: Debouncer<RecommendedWatcher, NoCache>,
     events: Receiver<DebounceEventResult>,
     root: PathBuf,
 }
@@ -40,7 +40,19 @@ impl VaultWatcher {
         let root = root.canonicalize()?;
 
         let (sender, events) = channel();
-        let mut debouncer = new_debouncer(DEBOUNCE, None, sender)?;
+        // No file id cache: with it, the debouncer joins the two halves of a
+        // rename. If the old path looks freshly created (FSEvents on macOS
+        // keeps that flag for a while), it then reports only a creation at the
+        // new path. A move into the hidden trash loses its removal that way.
+        // `classify` checks each path on its own, so we need no joined renames.
+        // Linux already uses no cache.
+        let mut debouncer = new_debouncer_opt::<_, RecommendedWatcher, _>(
+            DEBOUNCE,
+            None,
+            sender,
+            NoCache,
+            notify::Config::default(),
+        )?;
         debouncer.watch(&root, RecursiveMode::Recursive)?;
 
         Ok(VaultWatcher {
