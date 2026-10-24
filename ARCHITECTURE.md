@@ -795,6 +795,27 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   changed links. The status bar shows it after "renamed": "переименовано ·
   обновлены ссылки в 3 заметках". A duplicate goes next to the original:
   `Name copy`, `Name copy 2`, the first free name.
+- Each vault tree ends with the trash node, "Корзина" (`trashItem`).
+  - `loadNotes` reads the trash entries (`list_trash`) with the notes and the
+    folders. Thus each reload of a tree updates the trash: after a delete,
+    a restore and an edit in a different vault. A broken trash folder gives
+    an empty list and does not hide the notes.
+  - The node is the last one also in an empty vault: a deleted note must stay
+    one click away. It starts collapsed, because deleted notes are rarely
+    needed. The window keeps the expanded ones in `kknow:trash:open`. The
+    number on the right is the entry count.
+  - The entries are the newest first: the latest delete is the one to undo.
+    An entry row shows the deleted path and the age in days. The tooltip adds
+    the note count and the delete time.
+  - An entry cannot open, because its file is out of the vault. So a click on
+    it opens its menu, as "⋯" and a right click do: "Восстановить" and
+    "Удалить навсегда". The menu of the node has "Очистить корзину".
+  - A restore goes through `Workspace::restore`, so the index and the graph
+    follow. A single note then opens; a folder only returns to the tree. A
+    taken file stops the restore, and the status shows the core error.
+  - The two removals (`delete_trash_entry`, `empty_trash`) ask for a
+    `confirm`: unlike a delete, they cannot be undone.
+  - A trash belongs to a vault, so all trash commands take the vault ID.
 - You can see edits in a different vault. `onExternalChange` reads again the
   tree of the vault that sent the event.
 - There are three ways to add a vault, and all of them meet in `adoptVaults`:
@@ -848,18 +869,6 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - ↵ puts the editor cursor on the heading. An open preview scrolls to the
     heading too (`scrollToLine` finds the nearest line marker). "Read" keeps
     its mode.
-- The trash is a palette mode too (`openTrash`), for one vault. The "⋯" menu
-  of a vault row and the palette action "Корзина" open it.
-  - A trash belongs to a vault, not to the window. So the vault menu opens
-    the trash of its own vault, and the commands (`list_trash`,
-    `restore_trash`, `empty_trash`) take the vault ID.
-  - The list is the newest first: the latest delete is the one to undo. The
-    row shows the deleted path, the note count and the age in days.
-  - ↵ restores the entry through `Workspace::restore`, so the index and the
-    graph follow. A single note then opens; a folder only returns to the tree.
-    A taken file stops the restore, and the status shows the core error.
-  - The chips hide. The only action is "Очистить корзину", with a
-    `confirm`: unlike a delete, it cannot be undone.
   - A standalone file gets the outline too: it uses the same editor.
 
 ### Settings window

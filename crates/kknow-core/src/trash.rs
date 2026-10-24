@@ -149,6 +149,12 @@ impl Trash {
     }
 
     /// Removes all entries for good. Returns their number.
+    /// Removes one entry for good.
+    pub fn remove(&self, id: &str) -> Result<()> {
+        let entry = self.entry_path(id)?;
+        fs::remove_dir_all(&entry).map_err(|source| Error::io(&entry, source))
+    }
+
     pub fn empty(&self) -> Result<usize> {
         let dirs = self.entry_dirs()?;
         for (_, path, _) in &dirs {
@@ -369,6 +375,27 @@ mod tests {
         assert_eq!(trash.empty().unwrap(), 2);
         assert!(trash.entries().unwrap().is_empty());
         assert_eq!(trash.empty().unwrap(), 0);
+    }
+
+    #[test]
+    fn remove_drops_one_entry_and_keeps_the_others() {
+        let (_dir, trash) = vault_with(&[("а.md", "а"), ("б.md", "б")]);
+        trash.put(Path::new("а.md")).unwrap();
+        trash.put(Path::new("б.md")).unwrap();
+        let first = trash.entries().unwrap()[0].id.clone();
+
+        trash.remove(&first).unwrap();
+        let left = trash.entries().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].path, "б.md");
+        assert!(matches!(
+            trash.remove(&first),
+            Err(Error::TrashEntryNotFound(_))
+        ));
+        assert!(matches!(
+            trash.remove(".."),
+            Err(Error::TrashEntryNotFound(_))
+        ));
     }
 
     #[test]

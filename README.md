@@ -679,10 +679,12 @@ kknow trash restore 1761300000    # put an entry back to its old path
 kknow trash empty                 # remove all entries for good
 ```
 
-In the window, open the trash from the "⋯" menu of a vault ("Корзина") or
-from the palette actions. The list shows the newest entries first. Enter puts
-the selected entry back; a single note opens. "Очистить корзину" removes all
-entries for good, after a confirmation.
+In the window, each vault tree ends with the "Корзина" node. The number next
+to it is the number of entries. Expand it to see the entries, the newest
+first. A click or a right click on an entry opens its menu: "Восстановить"
+puts it back (a single note opens), "Удалить навсегда" removes it. The menu of
+the "Корзина" node has "Очистить корзину". Both removals ask for a
+confirmation.
 
 A restore does not overwrite a note. If a file of the entry is taken, nothing
 moves. Sync does not copy `.kknow`, so each machine has its own trash.

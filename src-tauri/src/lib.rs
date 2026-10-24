@@ -313,6 +313,7 @@ pub fn run() {
             commands::delete_folder,
             commands::list_trash,
             commands::restore_trash,
+            commands::delete_trash_entry,
             commands::empty_trash,
             commands::reveal_note,
             commands::reveal_folder,

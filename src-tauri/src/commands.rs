@@ -874,6 +874,21 @@ pub fn restore_trash(
     })
 }
 
+/// Removes one trash entry for good.
+#[tauri::command]
+pub fn delete_trash_entry(
+    state: State<'_, AppState>,
+    entry: String,
+    vault: Option<String>,
+) -> Result<()> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        Ok(workspace
+            .trash()
+            .remove(&entry)
+            .map_err(kknow_app::Error::from)?)
+    })
+}
+
 /// Removes all trash entries for good and returns their number.
 #[tauri::command]
 pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<usize> {
@@ -1095,6 +1110,11 @@ mod tests {
         assert!(list_trash(app.state(), None).unwrap().is_empty());
 
         delete_note(app.state(), "Index".into(), None).unwrap();
+        let entry = list_trash(app.state(), None).unwrap()[0].id.clone();
+        delete_trash_entry(app.state(), entry, None).unwrap();
+        assert!(list_trash(app.state(), None).unwrap().is_empty());
+
+        delete_note(app.state(), "Projects/kknow".into(), None).unwrap();
         assert_eq!(empty_trash(app.state(), None).unwrap(), 1);
         assert!(list_trash(app.state(), None).unwrap().is_empty());
     }

@@ -494,6 +494,9 @@ export const api = {
    */
   restoreTrash: (entry: string, vault: string) =>
     invoke<string[]>("restore_trash", { entry, vault }),
+  /** Removes one trash entry for good. */
+  deleteTrashEntry: (entry: string, vault: string) =>
+    invoke<void>("delete_trash_entry", { entry, vault }),
   /** Removes all trash entries for good; returns their number. */
   emptyTrash: (vault: string) => invoke<number>("empty_trash", { vault }),
   /** Vault folders, also empty ones that no note uses. */

@@ -26,6 +26,7 @@ import {
   type SyncSettings,
   type SyncStatus,
   type Theme,
+  type TrashEntryView,
   type UpdateStatus,
   type VaultInfo,
   type VaultView,
@@ -59,7 +60,7 @@ import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
 import type { Heading } from "./outline";
-import { Palette, type TrashVault } from "./palette";
+import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
 
@@ -319,6 +320,9 @@ const trees = new Map<string, NoteSummary[]>();
 
 /** Vault folders, separate from notes: empty folders are not in the note list. */
 const folderLists = new Map<string, string[]>();
+
+/** Trash entries of each loaded vault, the newest first: the last tree node. */
+const trashes = new Map<string, TrashEntryView[]>();
 let current: NoteView | null = null;
 /**
  * Reading position of each note, to continue from the same place on return.
@@ -1012,6 +1016,12 @@ const collapsed = new Map<string, Set<string>>();
 /** Expanded vaults: only their trees are visible and loaded from disk. */
 const expanded = new Set<string>(readList("kknow:vaults:open"));
 
+/**
+ * Vaults with an expanded trash node. The node starts collapsed: deleted
+ * notes are rarely needed, and their list must not push the notes away.
+ */
+const trashOpen = new Set<string>(readList("kknow:trash:open"));
+
 /** Vaults that are loading now; for a large vault this is parsing and indexing. */
 const reading = new Set<string>();
 
@@ -1179,8 +1189,162 @@ function vaultItem(entry: VaultView): HTMLLIElement {
   } else {
     nested.append(...treeItems(buildTree(notes, folders), entry.id));
   }
+  // The trash is always the last node, also in an empty vault: a deleted
+  // note must stay one click away.
+  if (notes) nested.append(trashItem(entry));
   item.append(nested);
   return item;
+}
+
+/**
+ * The trash node of a vault: a row with the entry count, and the entries
+ * under it. Its menu empties the trash; the menu of an entry restores it or
+ * removes it for good.
+ */
+function trashItem(entry: VaultView): HTMLLIElement {
+  const item = document.createElement("li");
+  const entries = trashes.get(entry.id) ?? [];
+  const open = trashOpen.has(entry.id);
+  const label = t("sidebar.trash");
+
+  const button = document.createElement("button");
+  button.className = "trash";
+  button.setAttribute("aria-expanded", String(open));
+  button.title = t(open ? "sidebar.folder.collapse" : "sidebar.folder.expand", { name: label });
+  button.onclick = () => toggleTrash(entry.id);
+
+  const arrow = icon("chevron");
+  arrow.classList.add("chevron");
+  const name = document.createElement("span");
+  name.className = "note-title";
+  name.textContent = label;
+  button.append(arrow, icon("trash"), name);
+  if (entries.length > 0) {
+    const count = document.createElement("span");
+    count.className = "tree-count";
+    count.textContent = String(entries.length);
+    button.append(count);
+  }
+
+  const more = rowMenu(t("sidebar.trash.menu"), (anchor) => openTrashMenu(anchor, entry, entries));
+  const row = document.createElement("div");
+  row.className = "tree-row trash-row";
+  row.dataset.vault = entry.id;
+  row.append(button, rowActions(more));
+  row.oncontextmenu = (event) => {
+    event.preventDefault();
+    openTrashMenu(more, entry, entries);
+  };
+  item.append(row);
+
+  if (open) {
+    const nested = document.createElement("ul");
+    nested.append(
+      ...(entries.length > 0
+        ? entries.map((trashed) => trashEntryItem(trashed, entry))
+        : [emptyItem(t("sidebar.trash.empty"))]),
+    );
+    item.append(nested);
+  }
+  return item;
+}
+
+function toggleTrash(vaultId: string): void {
+  if (!trashOpen.delete(vaultId)) trashOpen.add(vaultId);
+  localStorage.setItem("kknow:trash:open", JSON.stringify([...trashOpen]));
+  renderTree();
+}
+
+/**
+ * A deleted note or folder in the trash. It cannot open: the file is out of
+ * the vault. So a click opens its menu, as "⋯" does.
+ */
+function trashEntryItem(trashed: TrashEntryView, owner: VaultView): HTMLLIElement {
+  const item = document.createElement("li");
+  const note = trashed.path.endsWith(".md");
+  const path = note ? trashed.path.slice(0, -".md".length) : trashed.path;
+  const days = Math.floor((Date.now() / 1000 - trashed.deleted) / (24 * 60 * 60));
+  const age = days > 0 ? t("sidebar.trash.days", { count: days }) : t("sidebar.trash.today");
+
+  const more = rowMenu(t("sidebar.trash.entry.menu", { name: path }), (anchor) =>
+    openTrashEntryMenu(anchor, trashed, path, owner),
+  );
+
+  const button = document.createElement("button");
+  button.className = "trash-entry";
+  button.title = [
+    trashed.path,
+    t("sidebar.trash.notes", { count: trashed.notes }),
+    new Date(trashed.deleted * 1000).toLocaleString(locale),
+  ].join("\n");
+  button.onclick = () => openTrashEntryMenu(more, trashed, path, owner);
+
+  const name = document.createElement("span");
+  name.className = "note-title";
+  name.textContent = path;
+  const when = document.createElement("span");
+  when.className = "tree-count";
+  when.textContent = age;
+  button.append(icon(note ? "note" : "folder"), name, when);
+
+  const row = document.createElement("div");
+  row.className = "tree-row trash-entry-row";
+  row.append(button, rowActions(more));
+  row.oncontextmenu = (event) => {
+    event.preventDefault();
+    openTrashEntryMenu(more, trashed, path, owner);
+  };
+  item.append(row);
+  return item;
+}
+
+function openTrashMenu(anchor: HTMLElement, owner: VaultView, entries: TrashEntryView[]): void {
+  openMenu(anchor, [
+    {
+      title: t("sidebar.trash"),
+      items: [
+        {
+          label: t("sidebar.trash.clear"),
+          glyph: "trash",
+          tone: "danger",
+          disabled: entries.length === 0,
+          run: () => void emptyTrash(owner),
+        },
+      ],
+    },
+  ]);
+}
+
+function openTrashEntryMenu(
+  anchor: HTMLElement,
+  trashed: TrashEntryView,
+  path: string,
+  owner: VaultView,
+): void {
+  openMenu(anchor, [
+    {
+      title: path,
+      items: [
+        {
+          label: t("sidebar.trash.restore"),
+          glyph: "refresh",
+          key: "R",
+          run: () => void restoreTrash(owner.id, trashed.id),
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          label: t("sidebar.trash.delete"),
+          glyph: "trash",
+          tone: "danger",
+          key: "⌫",
+          run: () => void deleteTrashEntry(owner.id, trashed.id, path),
+        },
+      ],
+    },
+  ]);
 }
 
 /** Expands or collapses a vault. On first expand it loads from disk. */
@@ -1630,9 +1794,15 @@ async function flushPendingSave(): Promise<void> {
  * index. So call this only for the active vault and expanded vaults.
  */
 async function loadNotes(id: string): Promise<NoteSummary[]> {
-  const [notes, folders] = await Promise.all([api.listNotes(id), api.listFolders(id)]);
+  const [notes, folders, trash] = await Promise.all([
+    api.listNotes(id),
+    api.listFolders(id),
+    // A broken trash folder must not hide the notes.
+    api.listTrash(id).catch(() => []),
+  ]);
   trees.set(id, notes);
   folderLists.set(id, folders);
+  trashes.set(id, trash);
   return notes;
 }
 
@@ -2049,13 +2219,6 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
               if (entry.id !== vault?.id) await switchVault(entry.id);
               openNewNoteForm("", "folder");
             })(),
-        },
-        {
-          label: t("sidebar.vault.trash"),
-          glyph: "trash",
-          key: "T",
-          disabled: !entry.available,
-          run: () => palette.openTrash({ id: entry.id, name: entry.name }),
         },
         {
           label: t("settings.vaults.finder"),
@@ -2869,11 +3032,24 @@ async function restoreTrash(vaultId: string, entry: string): Promise<void> {
   }
 }
 
+/** Removes one trash entry for good, after confirmation. */
+async function deleteTrashEntry(vaultId: string, entry: string, path: string): Promise<void> {
+  if (!window.confirm(t("confirm.deleteTrashEntry", { name: path }))) return;
+  try {
+    await api.deleteTrashEntry(entry, vaultId);
+    await refreshTree(vaultId);
+    setStatus(t("status.trashEntryDeleted"));
+  } catch (error) {
+    fail(error);
+  }
+}
+
 /** Removes all trash entries of the vault for good, after confirmation. */
-async function emptyTrash(target: TrashVault): Promise<void> {
+async function emptyTrash(target: VaultView): Promise<void> {
   if (!window.confirm(t("confirm.emptyTrash", { name: target.name }))) return;
   try {
     await api.emptyTrash(target.id);
+    await refreshTree(target.id);
     setStatus(t("status.trashEmptied"));
   } catch (error) {
     fail(error);
@@ -3489,9 +3665,6 @@ const palette = new Palette({
   openBookmark: (id, line) => void openBookmark(id, line),
   tasks: () => (vault ? api.listTasks() : Promise.resolve([])),
   openTask: (id, line) => void openTask(id, line),
-  trash: (id) => api.listTrash(id),
-  restoreTrash: (id, entry) => void restoreTrash(id, entry),
-  emptyTrash: (target) => void emptyTrash(target),
   recent: recentNotes,
   total: () => activeNotes().length,
   activeVault: () => vault?.id ?? null,
@@ -3522,12 +3695,6 @@ const palette = new Palette({
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
     { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
     { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
-    {
-      label: t("palette.action.trash"),
-      run: () => {
-        if (vault) palette.openTrash({ id: vault.id, name: vault.name });
-      },
-    },
     { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },

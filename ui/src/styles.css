@@ -1201,6 +1201,31 @@ kbd {
   border-radius: 6px;
 }
 
+/* The trash: the last node of each vault tree. Muted, because it holds what
+   the user threw away; the count on the right tells it is not empty. */
+.note-list button.trash,
+.note-list button.trash-entry {
+  color: var(--text-muted);
+}
+
+.note-list button.trash .icon,
+.note-list button.trash-entry .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.note-list button.trash[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+.tree-count {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* A rotated arrow marks an open folder, not a second icon. */
 .note-list .chevron {
   transition: transform 120ms ease;
@@ -2762,11 +2787,6 @@ body[data-palette="open"] #app {
 
 .palette[data-mode="outline"] .palette-row {
   padding-left: calc(16px + var(--level, 0) * 18px);
-}
-
-/* The trash lists the entries of one vault: search chips do not apply. */
-.palette[data-mode="trash"] .palette-chips {
-  display: none;
 }
 
 .palette-message {

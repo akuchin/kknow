@@ -1116,6 +1116,14 @@ export async function invoke<T>(
       return entry.notes.map((note) => note.id) as T;
     }
 
+    case "delete_trash_entry": {
+      const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+      const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
+      if (index < 0) throw new Error(`запись корзины не найдена: ${String(args?.entry)}`);
+      asked.trash.splice(index, 1);
+      return undefined as T;
+    }
+
     case "empty_trash": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const count = asked.trash.length;
