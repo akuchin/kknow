@@ -9,6 +9,13 @@
 # and uploads them to the GitHub Release for the tag. The app is not signed.
 # The README "Installation" section tells how to open it on macOS. At the end,
 # the Homebrew cask gets the new version and checksum.
+#
+# Auto-update: the build signs the update archives with the
+# TAURI_SIGNING_PRIVATE_KEY secret (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD),
+# and `tauri-action` adds `latest.json`. The installed apps read that file from
+# the latest release. Thus the release stays a draft until all platforms are
+# built: a published release without `latest.json` gives the apps a 404, and
+# a half-built one offers an update only to some platforms.
 name: Release
 
 on:
@@ -40,21 +47,48 @@ jobs:
             exit 1
           fi
 
+      # Without the key, the apps of this release could not check the
+      # signature of the next one. Stop before the release exists.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Update signing is set up
+        env:
+          SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$SIGNING_KEY" ]]; then
+            echo "::error::no TAURI_SIGNING_PRIVATE_KEY secret"
+            exit 1
+          fi
+          pubkey="$(jq -r .plugins.updater.pubkey src-tauri/tauri.conf.json)"
+          if [[ -z "$pubkey" || "$pubkey" == "null" ]]; then
+            echo "::error::plugins.updater.pubkey in tauri.conf.json is empty"
+            exit 1
+          fi
+
   create-release:
     needs: check-tag
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
+      # A draft. The API "release by tag" does not see drafts, so the id comes
+      # from the list. A second run (workflow_dispatch) reuses the release.
       - name: Create release
         id: create
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-                 --title "kknow $TAG" --generate-notes
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)
+          find_id() {
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n 1
+          }
+          id="$(find_id)"
+          if [[ -z "$id" ]]; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --verify-tag --title "kknow $TAG" --generate-notes
+            id="$(find_id)"
+          fi
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   app:
@@ -109,13 +143,18 @@ jobs:
           fi
           cargo set-version --workspace "${TAG#v}"
 
+      # `tauri.release.conf.json` turns on the update archives. They are not in
+      # the main config: a local `pnpm build:app` has no private key, and the
+      # build would fail.
       - name: Build and upload app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
 
       - name: Build CLI
         run: cargo build --release -p kknow-cli --target ${{ matrix.target }}
@@ -136,11 +175,22 @@ jobs:
           fi
           gh release upload "$TAG" "$file" --repo "$GITHUB_REPOSITORY" --clobber
 
+  # All platforms are on the release: now the apps can see it.
+  publish:
+    needs: app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
   # Updates the cask in akuchin/homebrew-kknow. The workflow token cannot write
   # to another repository, so this needs the HOMEBREW_TAP_TOKEN secret: a
   # fine-grained token with "Contents: read and write" on that repository only.
   update-tap:
-    needs: app
+    needs: publish
     runs-on: ubuntu-latest
     env:
       TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

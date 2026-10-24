@@ -536,6 +536,50 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   cleared `targets`) like any other command. Such a command is a reason for an
   error message, not a reason to stop the window from closing.
 
+## Auto-update
+
+- The model is Zed, not Sublime. The app checks and downloads a new version
+  without a dialog. The status bar then shows **Restart to update**. The user
+  selects the time of the restart, so an update never stops typing. Sublime
+  asks in a dialog each time, and the window has a rule: no modals for state.
+- The work is `tauri-plugin-updater`, in `src-tauri/src/updater.rs`. All of
+  it runs in Rust, as sync does. The windows use three commands
+  (`update_status`, `check_update`, `restart_to_update`) and the
+  `update-status` event. Thus the mock replaces three commands, and the
+  windows need no plugin permissions.
+- The setting `autoUpdate` is in the core settings. The core does not know how
+  to update: that needs Tauri. The setting controls only the background
+  checks. **Check now** and the menu item work also when it is off.
+- **A developer build is version 0.0.0.** `Cargo.toml` keeps `0.0.0`, and only
+  the release workflow writes the tag version. A check by `debug_assertions`
+  alone is not enough. `pnpm install:app` makes a release build, and it would
+  see each published version as an update.
+- The scheduler is a thread that looks at the wall clock each 10 minutes. A
+  sleep of 6 hours would not work: the monotonic clock stops while the laptop
+  sleeps. A laptop that sleeps each night would almost never check.
+- The status bar shows only a downloaded version. A failed check goes only to
+  the settings. A laptop without network would otherwise show an error each 6
+  hours.
+- The restart comes from the main window. It saves the open note first, then
+  the core runs the last sync, as on close. The settings window has no restart
+  button, because it cannot save the note of the main window.
+- If the user quits without the button, `RunEvent::Exit` installs the
+  downloaded version. Windows is the exception: there the update is an
+  installer with its own window. A window after "Quit" is a surprise.
+- The release is a draft until all platforms are built. The apps read
+  `latest.json` from the latest published release. A published release without
+  that file gives the apps a 404.
+- The update archives are on only in CI, through `tauri.release.conf.json`. A
+  local `pnpm build:app` has no private key, and with the archives on, the
+  build fails.
+- `requireSignedVersion` is off for now. It also checks that the signed
+  version is the announced version, and it stops a downgrade attack. Turn it
+  on when all releases that users can update from carry the signed version.
+- The Homebrew cask has `auto_updates true`, so `brew upgrade` does not fight
+  the app over the version. Add it only after a release with the updater is
+  out. Before that, `brew upgrade` is the only way for an old app to get the
+  updater.
+
 ## Window
 
 ### Layout

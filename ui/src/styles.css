@@ -578,6 +578,11 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--accent);
 }
 
+#status-update {
+  color: var(--accent);
+  font-weight: 500;
+}
+
 #status-scale-slider {
   width: 72px;
   height: 14px;

@@ -6,6 +6,7 @@ import {
   onFileOpened,
   onSettingsChanged,
   onSyncStatus,
+  onUpdateStatus,
   onVaultChanged,
   onVaultOpened,
   parseLink,
@@ -23,6 +24,7 @@ import {
   type SyncSettings,
   type SyncStatus,
   type Theme,
+  type UpdateStatus,
   type VaultInfo,
   type VaultView,
   type ViewMode,
@@ -456,6 +458,7 @@ const status = new StatusBar(el.statusbar, {
   sync: () => void runSync(),
   run: () => showRunOutput(el.runFloat.hidden),
   chip: (anchor) => openChipMenu(anchor),
+  update: () => void restartToUpdate(),
   scale: (steps) => changeCurrentScale(steps),
   lines: () => void toggleLineNumbers(),
   more: (anchor) => openMoreMenu(anchor),
@@ -468,6 +471,25 @@ function setStatus(text: string, tone: "idle" | "work" | "error" = "idle"): void
 
 function fail(error: unknown): void {
   setStatus(String(error), "error");
+}
+
+function showUpdate(update: UpdateStatus): void {
+  status.setUpdate(update.state === "ready" ? update.version : null);
+}
+
+/**
+ * "Restart" in the status bar. The note goes to disk first: the restart does
+ * not wait for the autosave timer. On success the app is gone, so only a
+ * failure comes back.
+ */
+async function restartToUpdate(): Promise<void> {
+  await flushPendingSave();
+  setStatus(t("status.updating"), "work");
+  try {
+    await api.restartToUpdate();
+  } catch (error) {
+    fail(error);
+  }
 }
 
 function onEdit(text: string): void {
@@ -3590,6 +3612,10 @@ async function boot(): Promise<void> {
     statuses.set(incoming.vault, incoming);
     describeRemote();
   });
+  // The update downloads in the background. The window asks once, because
+  // the download can finish before the window loads, and then follows events.
+  void api.updateStatus().then(showUpdate, console.error);
+  void onUpdateStatus(showUpdate);
   // Settings are shared with the settings window: language, theme and editor
   // behavior change there and arrive here as events.
   void onSettingsChanged(applySettings);

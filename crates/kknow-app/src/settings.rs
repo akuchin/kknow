@@ -77,6 +77,9 @@ pub struct AppSettings {
     pub open_last_note: bool,
     /// Line numbers in the editor gutter.
     pub line_numbers: bool,
+    /// Check for a new version in the background and download it. The new
+    /// version starts after a restart. A developer build never checks.
+    pub auto_update: bool,
 }
 
 /// Defaults are written by hand: `#[derive(Default)]` gives an empty language,
@@ -91,6 +94,7 @@ impl Default for AppSettings {
             autosave_ms: DEFAULT_AUTOSAVE_MS,
             open_last_note: true,
             line_numbers: true,
+            auto_update: true,
         }
     }
 }
@@ -217,6 +221,7 @@ mod tests {
         assert_eq!(settings.autosave_ms, 600);
         assert!(settings.open_last_note);
         assert!(settings.line_numbers);
+        assert!(settings.auto_update);
     }
 
     #[test]
@@ -230,6 +235,7 @@ mod tests {
             autosave_ms: 1200,
             open_last_note: false,
             line_numbers: false,
+            auto_update: false,
         };
 
         settings.save(&path).unwrap();
@@ -243,6 +249,7 @@ mod tests {
         assert!(written.contains(r#""autosaveMs": 1200"#), "{written}");
         assert!(written.contains(r#""viewMode": "read""#), "{written}");
         assert!(written.contains(r#""lineNumbers": false"#), "{written}");
+        assert!(written.contains(r#""autoUpdate": false"#), "{written}");
     }
 
     #[test]
@@ -284,10 +291,18 @@ mod tests {
         assert_eq!(loaded.settings.locale, "ru");
         assert_eq!(loaded.settings.theme, "light");
         assert_eq!(loaded.settings.autosave_ms, 100, "меньше границы");
-        assert_eq!(loaded.settings.view_mode, ViewMode::Edit, "это выбор человека");
+        assert_eq!(
+            loaded.settings.view_mode,
+            ViewMode::Edit,
+            "это выбор человека"
+        );
         assert!(
             loaded.settings.open_last_note,
             "пропущенное поле берёт умолчание, а не `false`"
+        );
+        assert!(
+            loaded.settings.auto_update,
+            "старый файл без поля не выключает обновления"
         );
     }
 

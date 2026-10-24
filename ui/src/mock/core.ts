@@ -23,6 +23,7 @@ import type {
   SyncStatus,
   TargetKind,
   ThemeSet,
+  UpdateStatus,
   VaultStats,
   VaultInfo,
   VaultView,
@@ -306,6 +307,7 @@ function readSettings(): AppSettings {
     autosaveMs: 600,
     openLastNote: true,
     lineNumbers: true,
+    autoUpdate: true,
   };
 
   try {
@@ -600,6 +602,15 @@ function fileView(path: string): NoteView {
     file: true,
   };
 }
+
+/**
+ * The mock starts with a downloaded version, so the status bar shows the
+ * "Restart" button. After the "restart" the page reloads on the new version:
+ * the flag in `sessionStorage` survives the reload.
+ */
+let update: UpdateStatus = sessionStorage.getItem("kknow:mock:updated")
+  ? { state: "idle" }
+  : { state: "ready", version: "0.2.0" };
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const id = args?.id as string;
@@ -1104,6 +1115,18 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
 
     case "markdown_association":
       return association as T;
+
+    case "update_status":
+      return update as T;
+
+    case "check_update":
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return update as T;
+
+    case "restart_to_update":
+      sessionStorage.setItem("kknow:mock:updated", "1");
+      setTimeout(() => location.reload(), 300);
+      return undefined as T;
 
     case "claim_markdown":
       association = { supported: true, current: "dev.kknow.desktop", ours: true };

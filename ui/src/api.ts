@@ -131,7 +131,21 @@ export interface AppSettings {
   openLastNote: boolean;
   /** Line numbers in the editor gutter. */
   lineNumbers: boolean;
+  /** Check for a new version in the background and download it. */
+  autoUpdate: boolean;
 }
+
+/**
+ * Auto-update state, the same as `UpdateStatus` in `updater.rs`.
+ * `unavailable` is a developer build: it never checks.
+ */
+export type UpdateStatus =
+  | { state: "unavailable" }
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "downloading"; version: string }
+  | { state: "ready"; version: string }
+  | { state: "failed"; message: string };
 
 /** Vault totals for the settings window. */
 export interface VaultStats {
@@ -496,6 +510,12 @@ export const api = {
   syncStatus: () => invoke<SyncStatus>("sync_status"),
   /** Sync states of all open vaults: the chip also shows conflicts in other vaults. */
   syncStatuses: () => invoke<SyncStatus[]>("sync_statuses"),
+
+  updateStatus: () => invoke<UpdateStatus>("update_status"),
+  /** Checks now and downloads a new version; resolves with the final state. */
+  checkUpdate: () => invoke<UpdateStatus>("check_update"),
+  /** Installs the downloaded version and restarts. Save the open note first. */
+  restartToUpdate: () => invoke<void>("restart_to_update"),
 };
 
 /** What the form knows about sync: everything except the secret. */
@@ -566,6 +586,11 @@ export function onDragDrop(handler: (state: DragDrop) => void) {
 /** Subscribes to sync state: progress, conflicts, errors. */
 export function onSyncStatus(handler: (status: SyncStatus) => void) {
   return listen<SyncStatus>("sync-status", (event) => handler(event.payload));
+}
+
+/** Auto-update progress: from the timer, the settings button and the menu. */
+export function onUpdateStatus(handler: (status: UpdateStatus) => void) {
+  return listen<UpdateStatus>("update-status", (event) => handler(event.payload));
 }
 
 /** Parses a `kknow://note/<id>` link made by the renderer. */

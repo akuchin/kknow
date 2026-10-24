@@ -24,6 +24,9 @@ kknow-run.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
+# `generate_context!` writes the plugin settings from `tauri.conf.json` as
+# `serde_json` values, so the crate must be a direct dependency.
+serde_json.workspace = true
 thiserror.workspace = true
 # OS keyring: macOS Keychain, Windows Credential Manager, Secret Service.
 keyring = { version = "3", features = [
@@ -32,6 +35,7 @@ keyring = { version = "3", features = [
   "sync-secret-service",
   "crypto-rust",
 ] }
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

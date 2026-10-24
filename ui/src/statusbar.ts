@@ -4,8 +4,8 @@
  * The header shows what is open; the status bar shows state. The left side is
  * about the vault: which one is active, when it last synced (sync sits next to
  * the name because it belongs to the vault, not the window), and the message.
- * The right side is about the note and the window: the last command result,
- * problems in other vaults, words, the font size of the note, the line
+ * The right side is about the note and the window: the downloaded update, the
+ * last command result, problems in other vaults, words, the font size of the note, the line
  * numbers toggle, and one button for theme, language and settings.
  *
  * The full file path is gone: the header shows the folder, and "Reveal in
@@ -38,6 +38,8 @@ export interface StatusBarActions {
   run: () => void;
   /** Chip: a conflict or a failure in another vault. */
   chip: (anchor: HTMLElement) => void;
+  /** A new version is on disk: restart into it. */
+  update: () => void;
   /** Note font size: steps up or down; 0 resets to normal. */
   scale: (steps: number) => void;
   /** Line numbers in the editor gutter: on or off. */
@@ -58,6 +60,7 @@ export class StatusBar {
   private readonly runIcon: HTMLSpanElement;
   private readonly runText: HTMLSpanElement;
   private readonly chip: HTMLButtonElement;
+  private readonly update: HTMLButtonElement;
   private readonly scale: HTMLDivElement;
   private readonly scaleSlider: HTMLInputElement;
   private readonly scaleSmaller: HTMLButtonElement;
@@ -80,6 +83,7 @@ export class StatusBar {
       </button>
       <span class="status-message" id="status-message" role="status" aria-live="polite"></span>
       <span class="spacer"></span>
+      <button class="status-item" id="status-update" hidden></button>
       <button class="status-item" id="status-run" aria-expanded="false" hidden>
         <span class="status-run-icon"></span><span class="status-run-text"></span>
       </button>
@@ -114,6 +118,7 @@ export class StatusBar {
     this.runIcon = pick(".status-run-icon");
     this.runText = pick(".status-run-text");
     this.chip = pick("#status-chip");
+    this.update = pick("#status-update");
     this.scale = pick("#status-scale");
     this.scaleSlider = pick("#status-scale-slider");
     this.scaleSmaller = pick("#status-scale-smaller");
@@ -126,6 +131,7 @@ export class StatusBar {
     this.sync.onclick = () => actions.sync();
     this.run.onclick = () => actions.run();
     this.chip.onclick = () => actions.chip(this.chip);
+    this.update.onclick = () => actions.update();
     this.scaleSmaller.onclick = () => actions.scale(-1);
     this.scaleLarger.onclick = () => actions.scale(1);
     this.scaleValue.onclick = () => actions.scale(0);
@@ -217,6 +223,19 @@ export class StatusBar {
     this.chip.textContent = text ?? "";
     this.chip.hidden = text === null;
     this.chip.dataset.tone = tone;
+  }
+
+  /**
+   * The downloaded update, as in Zed: the download was silent, and the button
+   * lets the user pick the moment of the restart. `null` hides it. Only a
+   * ready version shows: a check or a failure is not worth a segment, a
+   * laptop without network would show an error each few hours.
+   */
+  setUpdate(version: string | null): void {
+    this.update.hidden = version === null;
+    if (version === null) return;
+    this.update.textContent = t("statusbar.update");
+    this.update.title = t("statusbar.update.title", { version });
   }
 
   /** Message: save, note creation, core error. */

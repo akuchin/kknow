@@ -55,7 +55,9 @@ brew install --cask akuchin/kknow/kknow
 ```
 
 The cask is for Apple Silicon only. The command installs `kknow.app` into
-`/Applications`. To get a new version, run `brew upgrade --cask kknow`.
+`/Applications`. The app then updates itself (see "Updates" below). Thus
+`brew upgrade` skips it. To update it through Homebrew, run
+`brew upgrade --cask --greedy kknow`.
 
 About the quarantine: the app has no Apple signature, so macOS puts the
 downloaded app in quarantine, and Gatekeeper calls it "damaged". The cask
@@ -85,6 +87,26 @@ flag:
 xattr -dr com.apple.quarantine /Applications/kknow.app
 ```
 
+### Updates
+
+The app checks for a new version in the background. The first check is 15
+seconds after the start, and the next checks come each 6 hours. The app
+downloads a new version without a question. Then the status bar shows
+**Restart to update**. Click it, and kknow saves the note and starts the new
+version. If you quit without the button, the new version installs on quit. On
+Windows, the update installs only from the button.
+
+To stop the background checks, turn off **Settings → General → Update
+automatically**. The **Check now** button works also when the setting is off.
+The app menu has **Check for Updates…** too.
+
+The check is a GET request to the `latest.json` file of the latest GitHub
+release. The app sends no data about you or your notes. Each update archive
+has a signature, and the app does not install an archive with a bad signature.
+
+A developer build never checks: `pnpm dev` and `pnpm install:app` give version
+0.0.0.
+
 ### Making a release
 
 The git tag is the version. Make a tag and push it:
@@ -105,6 +127,25 @@ cask. For this, the repository needs the `HOMEBREW_TAP_TOKEN` secret: a
 fine-grained token with "Contents: Read and write" access to
 `akuchin/homebrew-kknow` only. Without the secret, the release still works, and
 you update the cask by hand.
+
+The update archives need a signing key. Make it one time:
+
+```bash
+pnpm tauri signer generate -w ~/.tauri/kknow.key
+```
+
+1. Put the public key (`~/.tauri/kknow.key.pub`) into
+   `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
+2. Put the private key into the `TAURI_SIGNING_PRIVATE_KEY` secret.
+3. Put its password into the `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret.
+
+Without the key or the public key, the workflow stops before it makes the
+release. Keep a copy of the private key in a safe place. If you lose it, the
+installed apps cannot accept the next versions.
+
+The release stays a draft until all platforms are built. The apps read
+`latest.json` from the latest published release. Thus they never see a
+release that has no `latest.json` or only some platforms.
 
 ## Running the app
 
@@ -994,8 +1035,8 @@ Also, you can keep a window open next to the notes. Press Esc to close it.
 
 Sections:
 
-- **General** — the interface language, the last note at startup, and `.md`
-  files in kknow on double-click.
+- **General** — the interface language, the last note at startup, `.md`
+  files in kknow on double-click, and updates.
 - **Appearance** — the theme: the built-in themes and the themes of the active
   vault.
 - **Vaults** — a list. Each vault has a name, a label color, a path and

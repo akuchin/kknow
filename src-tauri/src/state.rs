@@ -48,6 +48,9 @@ pub enum Error {
     #[error("не удалось открыть окно: {0}")]
     Window(String),
 
+    #[error("не удалось установить обновление: {0}")]
+    Update(String),
+
     // In the test build, secrets live in memory, so this error cannot happen.
     #[cfg_attr(test, allow(dead_code))]
     #[error("связка ключей: {0}")]

@@ -10,6 +10,7 @@ mod settings;
 mod state;
 mod sync;
 mod sync_status;
+mod updater;
 
 use kknow_app::files::OpenFiles;
 use kknow_app::settings::AppSettings;
@@ -18,7 +19,7 @@ use state::AppState;
 use tauri::Manager;
 
 /// How long to wait for the last sync when the window closes.
-const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+pub(crate) const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Paths from command-line arguments: `kknow ~/notes`, `kknow README.md` and
 /// `open -a kknow --args ~/notes ~/work`.
@@ -225,21 +226,38 @@ pub fn run() {
     let builder = builder
         .menu(move |handle| menu::build(handle, &locale))
         .on_menu_event(|app, event| {
-            if event.id() == menu::SETTINGS_ITEM {
+            let updates = event.id() == menu::UPDATES_ITEM;
+            if event.id() == menu::SETTINGS_ITEM || updates {
                 if let Err(error) = commands::open_settings(app.clone(), None) {
                     eprintln!("не удалось открыть настройки: {error}");
                 }
+            }
+            // "General" shows the status, so the user sees how the check
+            // goes, without a dialog.
+            if updates {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    updater::check(&app).await;
+                });
             }
         });
 
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .manage(sync_status::SyncStatuses::default())
         .manage(settings)
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
+
+            let version = app.package_info().version.to_string();
+            app.manage(updater::Updates::new(updater::is_release(
+                &version,
+                cfg!(debug_assertions),
+            )));
+            updater::schedule(handle.clone());
 
             // The state starts the watcher and the scheduler itself: vaults
             // open lazily and do not need to know about the window. An open
@@ -311,6 +329,9 @@ pub fn run() {
             sync::sync_statuses,
             settings::get_settings,
             settings::set_settings,
+            updater::update_status,
+            updater::check_update,
+            updater::restart_to_update,
             files::list_files,
             files::open_file,
             files::take_opened_file,
@@ -337,10 +358,15 @@ pub fn run() {
         // `RunEvent::Opened`, which macOS uses to pass a folder opened outside.
         .build(tauri::generate_context!())
         .expect("не удалось запустить приложение")
-        .run(|_app, _event| {
+        .run(|app, event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = &_event {
-                open_paths(_app, urls);
+            if let tauri::RunEvent::Opened { urls } = &event {
+                open_paths(app, urls);
+            }
+            // The user quit without the "Restart" button: the next start is
+            // the new version anyway.
+            if let tauri::RunEvent::Exit = event {
+                updater::install_on_exit(app);
             }
         });
 }
