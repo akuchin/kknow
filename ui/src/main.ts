@@ -22,7 +22,6 @@ import {
   type Opened,
   type RunOutcome,
   type SyncConflict,
-  type SyncReport,
   type SyncSettings,
   type SyncStatus,
   type Theme,
@@ -64,6 +63,7 @@ import { Palette } from "./palette";
 import { SaveQueue } from "./session";
 import { countWords } from "./statusbar";
 import "./styles.css";
+import { describeReport, syncSegment, type SyncWords } from "./sync-text";
 import { buildTree, fileName, type Folder } from "./tree-model";
 import { app, el, initDom } from "./window/dom";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
@@ -2842,22 +2842,6 @@ function conflictItems(conflicts: SyncConflict[]): HTMLLIElement[] {
   });
 }
 
-function describeReport(report: SyncReport): string {
-  const counts: [Key, number][] = [
-    ["sync.report.uploaded", report.uploaded],
-    ["sync.report.downloaded", report.downloaded],
-    ["sync.report.removedLocal", report.removedLocal],
-    ["sync.report.removedRemote", report.removedRemote],
-    ["sync.report.conflicts", report.conflicts.length],
-  ];
-
-  const parts = counts
-    .filter(([, count]) => count > 0)
-    .map(([label, count]) => t("sync.report.entry", { label: t(label), count }));
-
-  return parts.length > 0 ? parts.join(", ") : t("sync.report.upToDate");
-}
-
 async function runSync(): Promise<void> {
   // A vault without sync settings cannot sync: open the settings section that
   // configures it.
@@ -2874,7 +2858,7 @@ async function runSync(): Promise<void> {
 
   try {
     const report = await api.syncNow();
-    showSyncPanel(describeReport(report), conflictItems(report.conflicts));
+    showSyncPanel(describeReport(report, syncWords), conflictItems(report.conflicts));
     setStatus(
       report.conflicts.length > 0
         ? t("status.conflicts", { count: report.conflicts.length })
@@ -2911,67 +2895,15 @@ async function refreshStatuses(): Promise<void> {
   describeRemote();
 }
 
-/** Short sync target: a bucket or a folder name. */
-function shortLocation(location: string | null): string {
-  if (!location) return t("statusbar.sync.off");
-  // The folder name for a folder, the address for a bucket: both are recognizable.
-  const tail = location.replace(/\/+$/, "").split("/").filter(Boolean).pop();
-  return tail ?? location;
-}
+/** Sync texts get the window language and keys through this object. */
+const syncWords: SyncWords = { t, shortcut, withShortcut, describeError };
 
-/**
- * Time since the last successful sync.
- *
- * The window computes it, not the core: "2 min ago" depends on the language,
- * and the time comes as a number.
- */
-function timeAgo(at: number): string {
-  const minutes = Math.floor((Date.now() - at) / 60000);
-  if (minutes < 1) return t("statusbar.sync.justNow");
-  if (minutes < 60) return t("statusbar.sync.minutesAgo", { count: minutes });
-  return t("statusbar.sync.hoursAgo", { count: Math.floor(minutes / 60) });
-}
-
-/**
- * Sync state in the status bar: off, ready, busy, error.
- *
- * Only this function decides what to show. Else, after an error, another
- * handler could switch the segment back to "ready".
- */
+/** Shows the sync state of the active vault in the status bar and the chip. */
 function describeRemote(): void {
   const own = vault ? statuses.get(vault.id) : undefined;
   showChip();
-
-  if (!own || own.state === "off") {
-    // Unconfigured sync is muted: a click opens the form, not a sync.
-    status.setSync(
-      t("statusbar.sync.off"),
-      "off",
-      withShortcut(t("sync.title.unset"), "settings.open"),
-    );
-    return;
-  }
-
-  const place = shortLocation(own.location);
-  if (own.state === "syncing") {
-    const of = t("statusbar.sync.progress", { done: own.done, total: own.total });
-    status.setSync(own.total > 0 ? of : t("statusbar.sync.busy"), "busy", t("status.syncing"));
-  } else if (own.state === "error") {
-    status.setSync(t("statusbar.sync.error"), "error", own.message ? describeError(own.message) : "");
-  } else {
-    const when = own.at ? ` · ${timeAgo(own.at)}` : "";
-    status.setSync(
-      `${place}${when}`,
-      own.state === "conflict" ? "conflict" : "ready",
-      own.state === "conflict"
-        ? t("statusbar.sync.conflicts", { count: own.conflicts })
-        : t("sync.title", {
-            location: own.location ?? place,
-            sync: shortcut("vault.sync"),
-            settings: shortcut("settings.open"),
-          }),
-    );
-  }
+  const segment = syncSegment(own, syncWords);
+  status.setSync(segment.text, segment.tone, segment.title);
 }
 
 /**
