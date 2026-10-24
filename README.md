@@ -1045,7 +1045,8 @@ Sections:
 - **General** — the interface language, the last note at startup, `.md`
   files in kknow on double-click, and updates.
 - **Appearance** — the theme: the built-in themes and the themes of the active
-  vault.
+  vault. Also what the note tree shows: the note title (the first `#`
+  heading) or the file name without `.md`.
 - **Vaults** — a list. Each vault has a name, a label color, a path and
   "Reveal". It also has the sync settings (provider, interval, conflict policy)
   and the time of the last sync. A "Sync" button and a directory summary are

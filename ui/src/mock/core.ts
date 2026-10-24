@@ -318,6 +318,7 @@ function readSettings(): AppSettings {
   const fallback: AppSettings = {
     locale: localStorage.getItem("kknow:locale") ?? "ru",
     theme: "light",
+    noteLabel: "title",
     viewMode: "split",
     openLastNote: true,
     lineNumbers: true,

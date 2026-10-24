@@ -804,7 +804,12 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   text follows the UI language: `set_settings` changes it.
 - Sections:
   - General — language, whether to open the last note.
-  - Appearance — theme and errors in the themes of the active vault.
+  - Appearance — theme, errors in the themes of the active vault, and what
+    the note tree shows. `noteLabel` in `settings.json` is `title` (the
+    first-level heading, else the file name) or `file` (the file name without
+    `.md`). The tree sorts by file name in both cases. The title stays in the
+    header, the palette and the links: only the tree follows the setting,
+    because there the file name helps to find the file on disk.
   - Vaults.
   - Commands.
   - Keys — reference.

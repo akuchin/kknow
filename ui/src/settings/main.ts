@@ -26,6 +26,7 @@ import {
   type CommandManifest,
   type CommandSpec,
   type KeymapView,
+  type NoteLabel,
   type ConflictPolicy,
   type MarkdownAssociation,
   type Provider,
@@ -534,6 +535,21 @@ async function renderAppearance(): Promise<void> {
       t("settings.appearance.theme"),
       select(options, settings!.theme, (value) => void patch({ theme: value })),
       t("settings.appearance.theme.detail"),
+    ),
+  );
+
+  page.append(
+    row(
+      t("settings.appearance.noteLabel"),
+      select(
+        [
+          { value: "title", label: t("settings.appearance.noteLabel.title") },
+          { value: "file", label: t("settings.appearance.noteLabel.file") },
+        ],
+        settings!.noteLabel,
+        (value) => void patch({ noteLabel: value as NoteLabel }),
+      ),
+      t("settings.appearance.noteLabel.detail"),
     ),
   );
 

@@ -57,6 +57,25 @@ fn lenient_mode<'de, D: Deserializer<'de>>(raw: D) -> std::result::Result<ViewMo
     })
 }
 
+/// What the note tree shows for a note.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NoteLabel {
+    /// The first-level heading, or the file name if there is none.
+    #[default]
+    Title,
+    /// The file name without `.md`, as on disk.
+    File,
+}
+
+/// An unknown label falls back to the title, as an unknown mode does.
+fn lenient_label<'de, D: Deserializer<'de>>(raw: D) -> std::result::Result<NoteLabel, D::Error> {
+    Ok(match String::deserialize(raw)?.as_str() {
+        "file" => NoteLabel::File,
+        _ => NoteLabel::Title,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 // `#[serde(default)]` is on the struct, not on the fields: a missing field then
 // takes its value from the manual `Default`, not the zero of its type.
@@ -68,6 +87,9 @@ pub struct AppSettings {
     pub locale: String,
     /// Theme ID: built-in `light`/`dark` or a theme from the vault.
     pub theme: String,
+    /// What the note tree shows for a note: its title or its file name.
+    #[serde(deserialize_with = "lenient_label")]
+    pub note_label: NoteLabel,
     /// Mode for a note that does not have its own mode yet.
     #[serde(deserialize_with = "lenient_mode")]
     pub view_mode: ViewMode,
@@ -90,6 +112,7 @@ impl Default for AppSettings {
         AppSettings {
             locale: DEFAULT_LOCALE.to_string(),
             theme: DEFAULT_THEME.to_string(),
+            note_label: NoteLabel::Title,
             view_mode: ViewMode::Split,
             open_last_note: true,
             line_numbers: true,
@@ -216,6 +239,7 @@ mod tests {
 
         assert_eq!(settings.locale, "ru");
         assert_eq!(settings.theme, "light");
+        assert_eq!(settings.note_label, NoteLabel::Title);
         assert_eq!(settings.view_mode, ViewMode::Split);
         assert!(settings.open_last_note);
         assert!(settings.line_numbers);
@@ -230,6 +254,7 @@ mod tests {
         let settings = AppSettings {
             locale: "en".to_string(),
             theme: "night".to_string(),
+            note_label: NoteLabel::File,
             view_mode: ViewMode::Read,
             open_last_note: false,
             line_numbers: false,
@@ -249,6 +274,7 @@ mod tests {
         assert!(written.contains(r#""lineNumbers": false"#), "{written}");
         assert!(written.contains(r#""autoUpdate": false"#), "{written}");
         assert!(written.contains(r#""noteScale": 130"#), "{written}");
+        assert!(written.contains(r#""noteLabel": "file""#), "{written}");
     }
 
     #[test]
@@ -344,6 +370,19 @@ mod tests {
         assert!(loaded.problem.is_none());
         assert_eq!(loaded.settings.locale, "en", "остальное прочитано");
         assert_eq!(loaded.settings.view_mode, ViewMode::Split);
+    }
+
+    #[test]
+    fn an_unknown_note_label_falls_back_to_the_title() {
+        let home = dir();
+        let path = AppSettings::path(home.path());
+        fs::write(&path, r#"{"locale":"en","noteLabel":"path"}"#).unwrap();
+
+        let loaded = AppSettings::load(&path).unwrap();
+
+        assert!(loaded.problem.is_none());
+        assert_eq!(loaded.settings.locale, "en", "остальное прочитано");
+        assert_eq!(loaded.settings.note_label, NoteLabel::Title);
     }
 
     #[test]

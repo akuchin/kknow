@@ -1393,7 +1393,7 @@ function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
 
   const heading = document.createElement("span");
   heading.className = "note-title";
-  heading.textContent = note.title;
+  heading.textContent = appSettings?.noteLabel === "file" ? fileName(note) : note.title;
   button.append(heading);
 
   const target: CommandTarget = { kind: "note", name: note.id, vault: vaultId };
@@ -3020,7 +3020,9 @@ function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
   const defaultChanged = incoming.viewMode !== appSettings?.viewMode;
   const scaleChanged = incoming.noteScale !== appSettings?.noteScale;
+  const labelChanged = incoming.noteLabel !== appSettings?.noteLabel;
   appSettings = incoming;
+  if (labelChanged) renderTree();
   showLineNumbers(incoming.lineNumbers);
   // A new default size affects only a file without its own size.
   if (scaleChanged) {

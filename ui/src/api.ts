@@ -122,10 +122,14 @@ export interface SyncSettings {
 /** Note mode: inline markup, markdown with a preview beside it, or read only. */
 export type ViewMode = "edit" | "split" | "read";
 
+/** What the note tree shows: the first heading or the file name. */
+export type NoteLabel = "title" | "file";
+
 /** App settings: language, theme and editor behaviour. */
 export interface AppSettings {
   locale: string;
   theme: string;
+  noteLabel: NoteLabel;
   /** The mode for a note that has no mode of its own yet. */
   viewMode: ViewMode;
   openLastNote: boolean;
