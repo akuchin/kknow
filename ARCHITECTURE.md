@@ -1394,6 +1394,27 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - ⌘, — settings.
 - ⌘1…⌘9 — vault by number.
 
+The keys above are macOS keys. On Windows and Linux ⌘ is Ctrl.
+
+Each key belongs to an action: a named thing the user can do (`note.new`,
+`history.back`, `table.rowUp`). The list of actions and their keys is
+`ui/src/actions.ts`. The keys use the CodeMirror format (`Mod-Shift-b`), where
+`Mod` is ⌘ on macOS and Ctrl elsewhere. Everything reads this list:
+
+- the window handler (`windowActions` in `main.ts`) and the CodeMirror
+  keymaps (`bindings(action, run)`);
+- every hint: tooltips (`withShortcut`), menu items and palette actions (the
+  `action` field), the keys page of the settings.
+
+A hint shows the key as the system writes it: `⇧⌘B` on macOS (Apple order
+⌃⌥⇧⌘), `Ctrl+Shift+B` on Windows and Linux. The first key of an action is
+the one that hints show; the others are aliases (⌘⇧P for the palette).
+
+The locales have no keys: a label names the action, and the code adds the
+key. A key inside a sentence is a placeholder (`{{key}}`, `{{submit}}`). A
+test in `ui/tests/i18n.test.ts` fails if a locale has ⌘, Ctrl, Esc or a
+similar key name.
+
 The window reads keys by `event.code`, so they do not depend on the keyboard
 layout.
 

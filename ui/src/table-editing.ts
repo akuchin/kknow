@@ -25,6 +25,7 @@ import { syntaxTree } from "@codemirror/language";
 import { Prec, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
+import { bindings } from "./actions";
 import {
   ROW,
   cellsOf,
@@ -358,10 +359,10 @@ export function tableEditing(): Extension {
       { key: "Tab", run: nextCell, shift: previousCell },
       { key: "Enter", run: nextRow },
       { key: "Mod-Enter", run: escapeTable },
-      { key: "Alt-Shift-ArrowUp", run: command("rowUp") },
-      { key: "Alt-Shift-ArrowDown", run: command("rowDown") },
-      { key: "Alt-Shift-ArrowLeft", run: command("columnLeft") },
-      { key: "Alt-Shift-ArrowRight", run: command("columnRight") },
+      ...bindings("table.rowUp", command("rowUp")),
+      ...bindings("table.rowDown", command("rowDown")),
+      ...bindings("table.columnLeft", command("columnLeft")),
+      ...bindings("table.columnRight", command("columnRight")),
     ]),
   );
 }

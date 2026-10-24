@@ -48,6 +48,7 @@ import {
 } from "@codemirror/view";
 
 import { icon } from "./icons";
+import { bindings, formKeys, matches } from "./actions";
 import { t } from "./i18n";
 
 const MARKER = "@agent";
@@ -410,8 +411,8 @@ function fillForm(view: EditorView, dom: HTMLElement, target: NoteTarget): () =>
   field.rows = 2;
   field.placeholder =
     words === ""
-      ? t("editor.note.placeholder.block")
-      : t("editor.note.placeholder", { words });
+      ? t("editor.note.placeholder.block", formKeys())
+      : t("editor.note.placeholder", { words, ...formKeys() });
   if (target.kind === "edit") field.value = target.note.text;
 
   // An emptied note means "remove it": the form has no other way to say so.
@@ -431,10 +432,10 @@ function fillForm(view: EditorView, dom: HTMLElement, target: NoteTarget): () =>
 
   field.addEventListener("keydown", (event) => {
     // A note is one line: Enter saves, line breaks are not needed.
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    if (matches(event, "submit") && !event.isComposing) {
       event.preventDefault();
       save();
-    } else if (event.key === "Escape") {
+    } else if (matches(event, "cancel")) {
       event.preventDefault();
       event.stopPropagation();
       cancel();
@@ -605,5 +606,5 @@ export function revealNote(view: EditorView, note: AgentNote): void {
 
 /** The form and ⌘⇧M: add a note to the selection or paragraph, or edit the one under the cursor. */
 export function agentNotes(): Extension {
-  return [formField, commentMarkers, keymap.of([{ key: "Mod-Shift-m", run: openForm }])];
+  return [formField, commentMarkers, keymap.of(bindings("note.comment", openForm))];
 }

@@ -34,7 +34,7 @@ function noteItems(view: EditorView): MenuItem[] {
         label: t("editor.menu.note.edit"),
         detail: shorten(target.note.text),
         glyph: "comment",
-        hint: "⌘⇧M",
+        action: "note.comment",
         run: () => openNoteForm(view, target),
       },
       {
@@ -57,7 +57,7 @@ function noteItems(view: EditorView): MenuItem[] {
       label: t("editor.menu.note.add"),
       detail,
       glyph: "comment",
-      hint: "⌘⇧M",
+      action: "note.comment",
       disabled: !target,
       run: () => target && openNoteForm(view, target),
     },
@@ -72,7 +72,7 @@ function bookmarkItems(view: EditorView): MenuItem[] {
     {
       label: t(hasBookmark(state, line) ? "bookmark.remove" : "bookmark.add"),
       glyph: "bookmark",
-      hint: "⌘⇧B",
+      action: "bookmark.toggle",
       run: () => toggleBookmarkAt(view, line),
     },
   ];
@@ -93,7 +93,7 @@ function clipboardItems(view: EditorView): MenuItem[] {
   return [
     {
       label: t("editor.menu.cut"),
-      hint: "⌘X",
+      action: "edit.cut",
       disabled: selected === "",
       run: () =>
         void copy()
@@ -103,13 +103,13 @@ function clipboardItems(view: EditorView): MenuItem[] {
     {
       label: t("editor.menu.copy"),
       glyph: "copy",
-      hint: "⌘C",
+      action: "edit.copy",
       disabled: selected === "",
       run: () => void copy().catch(console.error),
     },
     {
       label: t("editor.menu.paste"),
-      hint: "⌘V",
+      action: "edit.paste",
       run: () =>
         void navigator.clipboard
           .readText()

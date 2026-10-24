@@ -64,6 +64,14 @@ for (const [name, dict] of Object.entries(locales)) {
     }
   });
 
+  test(`${name}: без сочетаний клавиш`, () => {
+    // Keys belong to actions (`src/actions.ts`): the code adds them as this
+    // system writes them. A text gets a key through a placeholder.
+    for (const [key, value] of Object.entries(dict)) {
+      assert.doesNotMatch(value, /[⌘⇧⌥⌃↵⌫]|\b(Ctrl|Cmd|Esc|Enter)\b|↑↓/, key);
+    }
+  });
+
   if (name === REFERENCE) continue;
 
   test(`${name}: те же ключи и подстановки, что в ${REFERENCE}`, () => {

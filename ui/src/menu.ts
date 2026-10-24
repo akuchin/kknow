@@ -17,6 +17,7 @@
  * (`openMenuAt`) and gives the focus back to the text.
  */
 
+import { formatKey, shortcut, type Action } from "./actions";
 import { icon, type IconName } from "./icons";
 
 /** Menu item. Everything except the label and the action is optional. */
@@ -24,7 +25,9 @@ export interface MenuItem {
   label: string;
   /** Second line: provider, path, last sync time. */
   detail?: string;
-  /** Global shortcut shown on the right, for example `⌘,`. */
+  /** The window action that the item runs: its key shows on the right. */
+  action?: Action;
+  /** A key to show that is not an action of its own: `⌘1` for a vault. */
   hint?: string;
   /**
    * Key that runs the item while the menu is open: a Latin letter, a digit,
@@ -172,11 +175,13 @@ function itemButton(item: MenuItem): HTMLButtonElement {
   button.append(text);
 
   if (item.key) button.dataset.key = keyCode(item.key);
-  const shortcut = item.key ?? item.hint;
-  if (shortcut) {
+  const shown = item.key
+    ? formatKey(keyCode(item.key))
+    : (item.hint ?? (item.action ? shortcut(item.action) : ""));
+  if (shown) {
     const hint = document.createElement("kbd");
     hint.className = "menu-key";
-    hint.textContent = shortcut;
+    hint.textContent = shown;
     button.append(hint);
   }
 

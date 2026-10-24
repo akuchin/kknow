@@ -13,6 +13,7 @@
 
 import type { BookmarkView, GlobalResult, NoteSummary } from "./api";
 import { iconMarkup } from "./icons";
+import { matches, shortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
 
 /** Delay before a query: each keystroke would otherwise call the core. */
@@ -48,10 +49,10 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** An action at the bottom of the palette: a label and its shortcut. */
+/** An action at the bottom of the palette: a label and the action with its keys. */
 export interface PaletteAction {
   label: string;
-  hint: string;
+  action?: Action;
   run: () => void;
 }
 
@@ -152,9 +153,9 @@ export class Palette {
         <div class="palette-actions" id="palette-actions"></div>
       </div>
       <footer class="palette-foot">
-        <span>${t("palette.hint.move")}</span>
-        <span>${t("palette.hint.open")}</span>
-        <span>${t("palette.hint.close")}</span>
+        <span>${t("palette.hint.move", { keys: shortcut("list.previous") + shortcut("list.next") })}</span>
+        <span>${t("palette.hint.open", { key: shortcut("submit") })}</span>
+        <span>${t("palette.hint.close", { key: shortcut("cancel") })}</span>
         <span class="spacer"></span>
         <span id="palette-count"></span>
       </footer>
@@ -291,7 +292,7 @@ export class Palette {
           vault: { id: hit.vault, name: hit.vaultName, color: hit.color },
         })),
         t("palette.results", { query: text }),
-        nameable(text) ? t("palette.empty") : t("palette.emptyPlain"),
+        nameable(text) ? t("palette.empty", { key: shortcut("submit") }) : t("palette.emptyPlain"),
         "found",
       );
     } catch {
@@ -340,7 +341,9 @@ export class Palette {
     this.show(
       rows,
       t("palette.bookmarks"),
-      t(bookmarks.length === 0 ? "palette.noBookmarks" : "palette.emptyPlain"),
+      bookmarks.length === 0
+        ? t("palette.noBookmarks", { key: shortcut("bookmark.toggle") })
+        : t("palette.emptyPlain"),
       "found",
     );
   }
@@ -457,7 +460,7 @@ export class Palette {
         label.textContent = action.label;
 
         const hint = document.createElement("kbd");
-        hint.textContent = action.hint;
+        hint.textContent = action.action ? shortcut(action.action) : "";
 
         button.append(label, hint);
         return button;
@@ -475,13 +478,13 @@ export class Palette {
   }
 
   private onKey(event: KeyboardEvent): void {
-    if (event.key === "ArrowDown") {
+    if (matches(event, "list.next")) {
       event.preventDefault();
       this.move(1);
-    } else if (event.key === "ArrowUp") {
+    } else if (matches(event, "list.previous")) {
       event.preventDefault();
       this.move(-1);
-    } else if (event.key === "Enter") {
+    } else if (matches(event, "submit")) {
       event.preventDefault();
       this.activate();
     }

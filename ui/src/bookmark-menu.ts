@@ -16,6 +16,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 
 import { bookmarkName, hasBookmark, nameBookmarkAt, toggleBookmarkAt } from "./bookmarks";
+import { matches } from "./actions";
 import { t } from "./i18n";
 import { openMenu } from "./menu";
 
@@ -126,10 +127,10 @@ function editName(view: EditorView, line: number, x: number, y: number): void {
     view.focus();
   };
   field.onkeydown = (event) => {
-    if (event.key === "Enter") {
+    if (matches(event, "submit")) {
       event.preventDefault();
       finish(true);
-    } else if (event.key === "Escape") {
+    } else if (matches(event, "cancel")) {
       event.preventDefault();
       finish(false);
     }

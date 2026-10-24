@@ -38,6 +38,7 @@ import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
 import { paintCode } from "./highlight";
 import { icon } from "./icons";
 import { imageElement, isImage, paintImages } from "./images";
+import { formatKey } from "./actions";
 import { t } from "./i18n";
 import { draggedFrom, onPress } from "./pointer";
 import { isDelimiter, parseTable, type Table } from "./table";
@@ -643,7 +644,7 @@ function tableDom(state: EditorState, model: Table): HTMLElement {
   for (const [index, cells] of model.rows.entries()) {
     const header = index === 0;
     const tr = document.createElement("tr");
-    tr.append(handle("row", index, t("editor.table.selectRow")));
+    tr.append(handle("row", index, t("editor.table.selectRow", { key: formatKey("Shift") })));
 
     for (let column = 0; column < model.columns; column += 1) {
       const cell = cells[column];
@@ -673,7 +674,7 @@ function handleRow(model: Table): HTMLElement {
   tr.append(handle("corner", 0, t("editor.table.selectNone")));
 
   for (let column = 0; column < model.columns; column += 1) {
-    tr.append(handle("column", column, t("editor.table.selectColumn")));
+    tr.append(handle("column", column, t("editor.table.selectColumn", { key: formatKey("Shift") })));
   }
   return tr;
 }

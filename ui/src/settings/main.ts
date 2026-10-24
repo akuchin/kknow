@@ -33,6 +33,7 @@ import {
   type VaultView,
   type ViewMode,
 } from "../api";
+import { formatKey, keysOf, shortcut, vaultKey } from "../actions";
 import { iconMarkup } from "../icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "../i18n";
 import { MODES } from "../note-mode";
@@ -590,27 +591,32 @@ function renderKeys(): void {
   page.className = "settings-page";
   page.append(heading(t("settings.section.keys")));
 
+  // The palette has two keys, and both are worth learning.
   const keys: [string, Key][] = [
-    ["⌘K", "settings.keys.palette"],
-    ["⌘⇧P", "settings.keys.palette"],
-    ["⌘N", "settings.keys.newNote"],
-    ["⌘O", "settings.keys.openFile"],
-    ["⌘S", "settings.keys.save"],
-    ["⌘F", "settings.keys.find"],
-    ["⌘E", "settings.keys.mode"],
-    ["⌘\\", "settings.keys.sidebar"],
-    ["⌘⌥← ⌘⌥→", "settings.keys.history"],
-    ["⌘= ⌘− ⌘0", "settings.keys.scale"],
-    ["⌘⇧S", "settings.keys.sync"],
-    ["⌘1…⌘9", "settings.keys.vaults"],
-    ["⌘,", "settings.keys.settings"],
+    ...keysOf("palette.open").map((key): [string, Key] => [formatKey(key), "settings.keys.palette"]),
+    [shortcut("note.new"), "settings.keys.newNote"],
+    [shortcut("file.open"), "settings.keys.openFile"],
+    [shortcut("note.save"), "settings.keys.save"],
+    [shortcut("note.find"), "settings.keys.find"],
+    [shortcut("note.mode"), "settings.keys.mode"],
+    [shortcut("sidebar.toggle"), "settings.keys.sidebar"],
+    [`${shortcut("history.back")} ${shortcut("history.forward")}`, "settings.keys.history"],
+    [
+      `${shortcut("scale.larger")} ${shortcut("scale.smaller")} ${shortcut("scale.reset")}`,
+      "settings.keys.scale",
+    ],
+    [shortcut("vault.sync"), "settings.keys.sync"],
+    [`${formatKey(vaultKey(1))}…${formatKey(vaultKey(9))}`, "settings.keys.vaults"],
+    [shortcut("settings.open"), "settings.keys.settings"],
   ];
 
   const list = document.createElement("dl");
   list.className = "settings-keys";
   for (const [combo, label] of keys) {
     const key = document.createElement("dt");
-    key.innerHTML = `<kbd>${combo}</kbd>`;
+    const kbd = document.createElement("kbd");
+    kbd.textContent = combo;
+    key.append(kbd);
     const meaning = document.createElement("dd");
     meaning.textContent = t(label);
     list.append(key, meaning);
@@ -1560,7 +1566,7 @@ async function renderVaultStats(page: HTMLElement, vault: VaultView): Promise<vo
       t("status.notes", { count: stats.notes }),
       t("settings.vaults.folders", { count: stats.folders }),
       formatSize(stats.bytes),
-      hotkey <= 9 ? t("settings.vaults.hotkey", { key: `⌘${hotkey}` }) : "",
+      hotkey <= 9 ? t("settings.vaults.hotkey", { key: formatKey(vaultKey(hotkey)) }) : "",
     ]
       .filter(Boolean)
       .join(" · ");

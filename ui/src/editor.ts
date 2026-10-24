@@ -29,6 +29,7 @@ import {
 import { editorGutter, setLineNumbers } from "./gutter";
 import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
+import { bindings } from "./actions";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
 import { tableEditing } from "./table-editing";
@@ -209,9 +210,9 @@ function toggleInline(marker: string) {
 
 /** Bold, italic, strikethrough. */
 const formatKeymap = [
-  { key: "Mod-b", run: toggleInline("**") },
-  { key: "Mod-i", run: toggleInline("*") },
-  { key: "Mod-Shift-x", run: toggleInline("~~") },
+  ...bindings("format.bold", toggleInline("**")),
+  ...bindings("format.italic", toggleInline("*")),
+  ...bindings("format.strike", toggleInline("~~")),
 ];
 
 /**

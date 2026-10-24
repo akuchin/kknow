@@ -17,6 +17,7 @@
  */
 
 import { icon, iconMarkup } from "./icons";
+import { withShortcut } from "./actions";
 import { t } from "./i18n";
 import { SCALE_PERCENT } from "./note-scale";
 
@@ -151,13 +152,13 @@ export class StatusBar {
     more.title = t("statusbar.more");
     more.setAttribute("aria-label", t("statusbar.more"));
     this.scale.setAttribute("aria-label", t("statusbar.scale.title"));
-    this.scaleSlider.title = t("statusbar.scale.title");
+    this.scaleSlider.title = withShortcut(t("statusbar.scale.title"), "scale.larger", "scale.smaller");
     this.scaleSlider.setAttribute("aria-label", t("statusbar.scale.title"));
-    this.scaleSmaller.title = t("statusbar.scale.smaller");
+    this.scaleSmaller.title = withShortcut(t("statusbar.scale.smaller"), "scale.smaller");
     this.scaleSmaller.setAttribute("aria-label", t("statusbar.scale.smaller"));
-    this.scaleLarger.title = t("statusbar.scale.larger");
+    this.scaleLarger.title = withShortcut(t("statusbar.scale.larger"), "scale.larger");
     this.scaleLarger.setAttribute("aria-label", t("statusbar.scale.larger"));
-    this.scaleValue.title = t("statusbar.scale.reset");
+    this.scaleValue.title = withShortcut(t("statusbar.scale.reset"), "scale.reset");
     this.sync.setAttribute("aria-label", t("panel.sync.title"));
     this.setWords(0);
     this.setLineNumbers(false);

@@ -15,6 +15,7 @@
  */
 
 import { icon } from "./icons";
+import { formKeys, matches, withShortcut } from "./actions";
 import { t } from "./i18n";
 import { lineAt } from "./preview-lines";
 
@@ -102,11 +103,13 @@ export class PreviewNotes {
     this.picked = picked;
     this.dom.classList.remove("is-form");
     this.dom.replaceChildren(
-      button(t("editor.note.add"), t("editor.note.add.title"), () => this.showForm(), "comment"),
+      button(t("editor.note.add"), withShortcut(t("editor.note.add.title"), "note.comment"), () => this.showForm(), "comment"),
     );
     if (this.options.bookmarkable()) {
       this.dom.append(
-        button(t("bookmark.toggle"), t("bookmark.toggle.title"), () => this.bookmark(), "bookmark"),
+        button(
+          t("bookmark.toggle"),
+          withShortcut(t("bookmark.toggle.title"), "bookmark.toggle"), () => this.bookmark(), "bookmark"),
       );
     }
     this.dom.hidden = false;
@@ -196,7 +199,7 @@ export class PreviewNotes {
     const field = document.createElement("textarea");
     field.className = "cm-agent-popup-field";
     field.rows = 2;
-    field.placeholder = t("editor.note.placeholder", { words: picked.words });
+    field.placeholder = t("editor.note.placeholder", { words: picked.words, ...formKeys() });
 
     const save = (): void => {
       if (field.value.trim() === "") {
@@ -220,10 +223,10 @@ export class PreviewNotes {
     };
 
     field.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      if (matches(event, "submit") && !event.isComposing) {
         event.preventDefault();
         save();
-      } else if (event.key === "Escape") {
+      } else if (matches(event, "cancel")) {
         event.preventDefault();
         event.stopPropagation();
         this.hide();

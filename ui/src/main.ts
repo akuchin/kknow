@@ -29,6 +29,16 @@ import {
   type VaultView,
   type ViewMode,
 } from "./api";
+import {
+  formKeys,
+  formatKey,
+  matches,
+  matchesKey,
+  shortcut,
+  vaultKey,
+  withShortcut,
+  type Action,
+} from "./actions";
 import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
@@ -75,11 +85,13 @@ app.innerHTML = `
         ${iconMarkup("sidebar")}
       </button>
       <span class="spacer"></span>
-      <button id="nav-back" class="ghost bare" disabled title="${t("topbar.back")}"
+      <button id="nav-back" class="ghost bare" disabled
+              title="${withShortcut(t("topbar.back"), "history.back")}"
               aria-label="${t("topbar.back")}">
         ${iconMarkup("back")}
       </button>
-      <button id="nav-forward" class="ghost bare" disabled title="${t("topbar.forward")}"
+      <button id="nav-forward" class="ghost bare" disabled
+              title="${withShortcut(t("topbar.forward"), "history.forward")}"
               aria-label="${t("topbar.forward")}">
         ${iconMarkup("chevron")}
       </button>
@@ -126,7 +138,7 @@ app.innerHTML = `
         </button>
       </div>
       <div class="mode-switch" role="group" aria-label="${t("topbar.mode")}"
-           title="${t("topbar.mode")}">
+           title="${withShortcut(t("topbar.mode"), "note.mode")}">
         ${MODES.map(
           (mode) => `
         <button data-mode="${mode}" aria-pressed="false" aria-label="${t(`mode.${mode}`)}"
@@ -135,10 +147,11 @@ app.innerHTML = `
         </button>`,
         ).join("")}
       </div>
-      <button id="open-palette" class="search-button" title="${t("topbar.search.title")}">
+      <button id="open-palette" class="search-button"
+              title="${withShortcut(t("topbar.search.title"), "palette.open")}">
         ${iconMarkup("search")}
         <span>${t("topbar.search")}</span>
-        <kbd>⌘K</kbd>
+        <kbd>${shortcut("palette.open")}</kbd>
       </button>
     </div>
   </header>
@@ -149,7 +162,8 @@ app.innerHTML = `
     <div class="sidebar-head">
       <span class="sidebar-title">${t("sidebar.vaults")}</span>
       <div class="sidebar-tools" role="toolbar" aria-label="${t("sidebar.tools")}">
-        <button id="new-note" class="ghost bare" title="${t("topbar.newNote.title")}"
+        <button id="new-note" class="ghost bare"
+                title="${withShortcut(t("topbar.newNote.title"), "note.new")}"
                 aria-label="${t("topbar.newNote.title")}">
           ${iconMarkup("filePlus")}
         </button>
@@ -178,7 +192,7 @@ app.innerHTML = `
     <section class="files" aria-labelledby="files-title">
       <div class="sidebar-head">
         <span id="files-title" class="sidebar-title">${t("sidebar.files")}</span>
-        <button id="open-file" class="ghost bare" title="${t("sidebar.files.open")} (⌘O)"
+        <button id="open-file" class="ghost bare" title="${withShortcut(t("sidebar.files.open"), "file.open")}"
                 aria-label="${t("sidebar.files.open")}">
           ${iconMarkup("note")}
         </button>
@@ -552,7 +566,7 @@ function setSidebarHidden(hidden: boolean): void {
   // color, the sidebar itself is visible.
   el.toggleSidebar.setAttribute("aria-expanded", String(!hidden));
   const label = t(hidden ? "topbar.sidebar.show" : "topbar.sidebar.hide");
-  el.toggleSidebar.title = label;
+  el.toggleSidebar.title = withShortcut(label, "sidebar.toggle");
   el.toggleSidebar.setAttribute("aria-label", label);
 }
 
@@ -1573,7 +1587,7 @@ function openVaultMenu(anchor: HTMLElement): void {
     checked: entry.active,
     disabled: !entry.available,
     tone: entry.available ? undefined : "warning",
-    hint: index < 9 ? `⌘${index + 1}` : undefined,
+    hint: index < 9 ? formatKey(vaultKey(index + 1)) : undefined,
     run: () => void switchVault(entry.id),
   }));
 
@@ -1585,7 +1599,7 @@ function openVaultMenu(anchor: HTMLElement): void {
         {
           label: t("menu.vault.settings"),
           glyph: "gear",
-          hint: "⌘,",
+          action: "settings.open",
           run: () => void openSettings("vaults"),
         },
       ],
@@ -1618,7 +1632,7 @@ async function openCommandMenu(anchor: HTMLElement, target: CommandTarget): Prom
   const rename: MenuItem = {
     label: t("commands.rename"),
     glyph: "pencil",
-    detail: t("commands.rename.hint"),
+    detail: t("commands.rename.hint", formKeys()),
     key: "R",
     run: () => startTreeRename(target),
   };
@@ -1946,7 +1960,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("sidebar.vault.rename"),
           glyph: "note",
-          detail: t("sidebar.vault.rename.hint"),
+          detail: t("sidebar.vault.rename.hint", formKeys()),
           key: "R",
           run: () => startRename(entry),
         },
@@ -1982,7 +1996,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("menu.vault.settings"),
           glyph: "gear",
-          hint: "⌘,",
+          action: "settings.open",
           run: () => void openSettings("vaults"),
         },
       ],
@@ -2094,10 +2108,10 @@ function renameInTree(
   };
 
   input.onkeydown = (event) => {
-    if (event.key === "Enter") {
+    if (matches(event, "submit")) {
       event.preventDefault();
       void finish(true);
-    } else if (event.key === "Escape") {
+    } else if (matches(event, "cancel")) {
       event.preventDefault();
       void finish(false);
     }
@@ -2853,7 +2867,11 @@ function describeRemote(): void {
 
   if (!own || own.state === "off") {
     // Unconfigured sync is muted: a click opens the form, not a sync.
-    status.setSync(t("statusbar.sync.off"), "off", t("sync.title.unset"));
+    status.setSync(
+      t("statusbar.sync.off"),
+      "off",
+      withShortcut(t("sync.title.unset"), "settings.open"),
+    );
     return;
   }
 
@@ -2870,7 +2888,11 @@ function describeRemote(): void {
       own.state === "conflict" ? "conflict" : "ready",
       own.state === "conflict"
         ? t("statusbar.sync.conflicts", { count: own.conflicts })
-        : t("sync.title", { location: own.location ?? place }),
+        : t("sync.title", {
+            location: own.location ?? place,
+            sync: shortcut("vault.sync"),
+            settings: shortcut("settings.open"),
+          }),
     );
   }
 }
@@ -3116,13 +3138,13 @@ function openBookmarksMenu(): void {
         {
           label: t("palette.action.bookmark"),
           glyph: "bookmark",
-          hint: "⌘⇧B",
+          action: "bookmark.toggle",
           run: () => toggleCurrentBookmark(),
         },
         {
           label: t("topbar.bookmarks.all"),
           glyph: "search",
-          hint: "⌘⌥B",
+          action: "bookmark.list",
           run: () => palette.open("", "bookmarks"),
         },
       ],
@@ -3267,7 +3289,7 @@ el.newNoteForm.onsubmit = (event) => {
 };
 
 el.newNoteName.onkeydown = (event) => {
-  if (event.key === "Escape") {
+  if (matches(event, "cancel")) {
     el.newNoteForm.hidden = true;
     el.newNoteName.value = "";
   }
@@ -3314,36 +3336,34 @@ const palette = new Palette({
     // window, and a command is about what is open in it.
     ...noteCommands.map((command) => ({
       label: command.name,
-      // Commands have no shortcuts: each user has a different set, and a ⌘ key
-      // for them would take a shortcut from the window.
-      hint: "",
+      // Commands have no keys: each user has a different set, and a key for
+      // them would take one from the window.
       run: () => {
         const target = currentTarget();
         if (target) void runCommand(command, target);
       },
     })),
-    { label: t("palette.action.newNote"), hint: "⌘N", run: () => el.newNote.click() },
-    { label: t("palette.action.openFile"), hint: "⌘O", run: () => void pickFile() },
+    { label: t("palette.action.newNote"), action: "note.new", run: () => el.newNote.click() },
+    { label: t("palette.action.openFile"), action: "file.open", run: () => void pickFile() },
     ...MODES.map((each) => ({
       label: t("palette.action.mode", { mode: t(`mode.${each}`) }),
-      hint: "",
       run: () => setMode(each),
     })),
-    { label: t("palette.action.bookmark"), hint: "⌘⇧B", run: () => toggleCurrentBookmark() },
-    { label: t("palette.action.bookmarks"), hint: "⌘⌥B", run: () => palette.open("", "bookmarks") },
-    { label: t("palette.action.sidebar"), hint: "⌘\\", run: () => setSidebarHidden(!sidebarHidden) },
-    { label: t("palette.action.back"), hint: "⌘⌥←", run: () => void travel(-1) },
-    { label: t("palette.action.forward"), hint: "⌘⌥→", run: () => void travel(1) },
-    { label: t("palette.action.sync"), hint: "⌘⇧S", run: () => void runSync() },
+    { label: t("palette.action.bookmark"), action: "bookmark.toggle", run: () => toggleCurrentBookmark() },
+    { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
+    { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
+    { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
+    { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
+    { label: t("palette.action.sync"), action: "vault.sync", run: () => void runSync() },
     {
       label: t("palette.action.syncSettings"),
-      hint: "⌘,",
+      action: "settings.open",
       run: () => void openSettings("vaults"),
     },
-    { label: t("palette.action.reload"), hint: "", run: () => void reloadVault() },
-    { label: t("menu.scale.larger"), hint: "⌘=", run: () => changeCurrentScale(1) },
-    { label: t("menu.scale.smaller"), hint: "⌘−", run: () => changeCurrentScale(-1) },
-    { label: t("menu.scale.reset"), hint: "⌘0", run: () => changeCurrentScale(0) },
+    { label: t("palette.action.reload"), run: () => void reloadVault() },
+    { label: t("menu.scale.larger"), action: "scale.larger", run: () => changeCurrentScale(1) },
+    { label: t("menu.scale.smaller"), action: "scale.smaller", run: () => changeCurrentScale(-1) },
+    { label: t("menu.scale.reset"), action: "scale.reset", run: () => changeCurrentScale(0) },
   ],
 });
 
@@ -3450,7 +3470,7 @@ function openMoreMenu(anchor: HTMLElement): void {
     },
     {
       items: [
-        { label: t("menu.settings"), glyph: "gear", hint: "⌘,", run: () => void openSettings() },
+        { label: t("menu.settings"), glyph: "gear", action: "settings.open", run: () => void openSettings() },
       ],
     },
   ]);
@@ -3467,86 +3487,67 @@ async function switchLocale(name: string): Promise<void> {
   location.reload();
 }
 
+/**
+ * The window actions. A run that returns `false` did not take the key: the
+ * event goes on as if nobody handled it.
+ */
+const windowActions: [Action, () => boolean | void][] = [
+  ["note.new", () => el.newNote.click()],
+  ["file.open", () => void pickFile()],
+  ["vault.sync", () => void runSync()],
+  ["note.save", () => void flushPendingSave()],
+  // In the editor its own keymap handles the key; here it is for a preview selection.
+  ["note.comment", () => previewNotes.openForm() || tableNotes.openForm()],
+  ["note.mode", () => setMode(nextMode(mode))],
+  // ⌘B is bold in the editor, so the bookmark uses Shift.
+  ["bookmark.toggle", () => toggleCurrentBookmark()],
+  ["bookmark.list", () => palette.open("", "bookmarks")],
+  ["sidebar.toggle", () => setSidebarHidden(!sidebarHidden)],
+  // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
+  ["history.back", () => void travel(-1)],
+  ["history.forward", () => void travel(1)],
+  // ⌘⇧P is the common command palette key, and users press it by habit.
+  // Plain ⌘P stays free: it is print.
+  ["palette.open", () => palette.open()],
+  // Two searches: ⌘F in the open note, ⌘K in all vaults.
+  ["note.find", () => editor.openSearch()],
+  ["settings.open", () => void openSettings()],
+  ["scale.larger", () => changeCurrentScale(1)],
+  ["scale.smaller", () => changeCurrentScale(-1)],
+  // Zero is not a vault: ⌘1…⌘9 are vault numbers, ⌘0 resets the size as in a browser.
+  ["scale.reset", () => changeCurrentScale(0)],
+];
+
 document.addEventListener("keydown", (event) => {
   // The editor can handle the key itself: its note search takes ⌘F and ⌘G.
   if (event.defaultPrevented) return;
 
   // The command output float covers the work, so Escape closes it like any
   // overlay.
-  if (event.key === "Escape" && !el.runFloat.hidden) {
+  if (matches(event, "cancel") && !el.runFloat.hidden) {
     event.preventDefault();
     showRunOutput(false);
     return;
   }
-  if (event.key === "Escape" && !el.notesFloat.hidden) {
+  if (matches(event, "cancel") && !el.notesFloat.hidden) {
     event.preventDefault();
     showNotesFloat(false);
     return;
   }
 
-  if (!(event.metaKey || event.ctrlKey)) return;
-  // `code` is the physical key position, so the keyboard layout does not matter.
-  const key = event.code;
+  const found = windowActions.find(([action]) => matches(event, action));
+  if (found) {
+    if (found[1]() !== false) event.preventDefault();
+    return;
+  }
 
-  if (key === "KeyN") {
-    event.preventDefault();
-    el.newNote.click();
-  } else if (key === "KeyO") {
-    event.preventDefault();
-    void pickFile();
-  } else if (key === "KeyS" && event.shiftKey) {
-    event.preventDefault();
-    void runSync();
-  } else if (key === "KeyS") {
-    event.preventDefault();
-    void flushPendingSave();
-  } else if (key === "KeyM" && event.shiftKey) {
-    // In the editor its own keymap handles ⌘⇧M; here it is for a preview selection.
-    if (previewNotes.openForm() || tableNotes.openForm()) event.preventDefault();
-  } else if (key === "KeyE") {
-    event.preventDefault();
-    setMode(nextMode(mode));
-  } else if (key === "KeyB" && event.shiftKey) {
-    // ⌘B is bold in the editor, so the bookmark uses Shift.
-    event.preventDefault();
-    toggleCurrentBookmark();
-  } else if (key === "KeyB" && event.altKey) {
-    event.preventDefault();
-    palette.open("", "bookmarks");
-  } else if (key === "Backslash") {
-    event.preventDefault();
-    setSidebarHidden(!sidebarHidden);
-  } else if (event.altKey && (key === "ArrowLeft" || key === "ArrowRight")) {
-    // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
-    event.preventDefault();
-    void travel(key === "ArrowLeft" ? -1 : 1);
-  } else if (key === "KeyK" || (key === "KeyP" && event.shiftKey)) {
-    // ⌘⇧P is the common command palette shortcut, and users press it by habit.
-    // Plain ⌘P stays free: it is print.
-    event.preventDefault();
-    palette.open();
-  } else if (key === "KeyF") {
-    // Two searches: ⌘F in the open note, ⌘K in all vaults.
-    event.preventDefault();
-    editor.openSearch();
-  } else if (key === "Comma") {
-    event.preventDefault();
-    void openSettings();
-  } else if (key === "Equal" || key === "NumpadAdd") {
-    // ⌘= and ⌘+ are one key (plus needs Shift); Shift is not required.
-    event.preventDefault();
-    changeCurrentScale(1);
-  } else if (key === "Minus" || key === "NumpadSubtract") {
-    event.preventDefault();
-    changeCurrentScale(-1);
-  } else if (key === "Digit0" || key === "Numpad0") {
-    // Zero is not a vault: ⌘1…⌘9 are vault numbers, ⌘0 resets the size as in a browser.
-    event.preventDefault();
-    changeCurrentScale(0);
-  } else if (/^Digit[1-9]$/.test(key)) {
-    // ⌘1…⌘9 pick a vault by its position in the list.
-    event.preventDefault();
-    void switchByHotkey(Number(key.slice(-1)));
+  // ⌘1…⌘9 pick a vault by its position in the list.
+  for (let number = 1; number <= 9; number++) {
+    if (matchesKey(event, vaultKey(number))) {
+      event.preventDefault();
+      void switchByHotkey(number);
+      return;
+    }
   }
 });
 

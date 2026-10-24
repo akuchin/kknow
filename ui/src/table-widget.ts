@@ -32,6 +32,7 @@ import { agentNotes, formatNote, previewAnchor } from "./agent-notes";
 import { editorMenu } from "./editor-menu";
 import { highlightStyle } from "./highlight";
 import { icon, type IconName } from "./icons";
+import { withShortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
 import { draggedFrom } from "./pointer";
 import {
@@ -955,7 +956,7 @@ function onCopy(event: ClipboardEvent): void {
 }
 
 /** A toolbar button, or a gap between button groups. */
-type Tool = { command: Command | "source"; icon: IconName; title: Key } | "gap";
+type Tool = { command: Command | "source"; icon: IconName; title: Key; action?: Action } | "gap";
 
 /**
  * Icons only: the toolbar floats above the table and must stay narrow. The
@@ -971,10 +972,20 @@ const TOOLS: Tool[] = [
   { command: "alignCenter", icon: "alignCenter", title: "editor.table.alignCenter" },
   { command: "alignRight", icon: "alignRight", title: "editor.table.alignRight" },
   "gap",
-  { command: "rowUp", icon: "rowUp", title: "editor.table.rowUp" },
-  { command: "rowDown", icon: "rowDown", title: "editor.table.rowDown" },
-  { command: "columnLeft", icon: "columnLeft", title: "editor.table.columnLeft" },
-  { command: "columnRight", icon: "columnRight", title: "editor.table.columnRight" },
+  { command: "rowUp", icon: "rowUp", title: "editor.table.rowUp", action: "table.rowUp" },
+  { command: "rowDown", icon: "rowDown", title: "editor.table.rowDown", action: "table.rowDown" },
+  {
+    command: "columnLeft",
+    icon: "columnLeft",
+    title: "editor.table.columnLeft",
+    action: "table.columnLeft",
+  },
+  {
+    command: "columnRight",
+    icon: "columnRight",
+    title: "editor.table.columnRight",
+    action: "table.columnRight",
+  },
   "gap",
   { command: "sortAsc", icon: "sortAsc", title: "editor.table.sortAsc" },
   { command: "sortDesc", icon: "sortDesc", title: "editor.table.sortDesc" },
@@ -1008,8 +1019,8 @@ function toolbar(
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.title = t(tool.title);
-    button.ariaLabel = button.title;
+    button.ariaLabel = t(tool.title);
+    button.title = tool.action ? withShortcut(t(tool.title), tool.action) : t(tool.title);
     button.append(icon(tool.icon));
     button.dataset.command = tool.command;
     button.disabled = disabled(tool.command);
