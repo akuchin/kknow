@@ -12,6 +12,9 @@
  * Only one menu is open at a time: opening a second one closes the first.
  * The menu lives in `document.body` because its anchor button is in the
  * header or the status bar, and both clip their content.
+ *
+ * The editor context menu has no button: it opens at the mouse pointer
+ * (`openMenuAt`) and gives the focus back to the text.
  */
 
 import { icon, type IconName } from "./icons";
@@ -44,8 +47,13 @@ export interface MenuSection {
   items: MenuItem[];
 }
 
-/** The open menu. Close it before opening another one. */
-let current: { root: HTMLElement; anchor: HTMLElement } | null = null;
+/**
+ * The open menu. Close it before opening another one.
+ *
+ * `toggle`: the anchor is a button that opens and closes the menu itself. A
+ * context menu has none: its anchor is the text, and a click there closes it.
+ */
+let current: { root: HTMLElement; anchor: HTMLElement; toggle: boolean } | null = null;
 
 /**
  * Opens the menu below the button (or above it, if the button is at the
@@ -58,7 +66,21 @@ export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
   const sameAnchor = current?.anchor === anchor;
   closeMenu();
   if (sameAnchor) return;
+  show(sections, anchor, anchor.getBoundingClientRect(), true);
+  anchor.setAttribute("aria-haspopup", "menu");
+  anchor.setAttribute("aria-expanded", "true");
+}
 
+/**
+ * Opens a context menu at the pointer. `focus` gets the focus back when the
+ * menu closes: the editor, so typing goes on where it was.
+ */
+export function openMenuAt(x: number, y: number, focus: HTMLElement, sections: MenuSection[]): void {
+  closeMenu();
+  show(sections, focus, new DOMRect(x, y, 0, 0), false);
+}
+
+function show(sections: MenuSection[], anchor: HTMLElement, rect: DOMRect, toggle: boolean): void {
   const root = document.createElement("div");
   root.className = "menu";
   root.setAttribute("role", "menu");
@@ -81,11 +103,9 @@ export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
   }
 
   document.body.append(root);
-  current = { root, anchor };
-  anchor.setAttribute("aria-haspopup", "menu");
-  anchor.setAttribute("aria-expanded", "true");
+  current = { root, anchor, toggle };
 
-  place(root, anchor);
+  place(root, rect);
   root.addEventListener("keydown", onKeyDown);
   // Focus the current choice first: arrow keys move from there.
   const items = enabledItems(root);
@@ -101,7 +121,7 @@ export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
 /** Closes the menu and returns focus to the button that opened it. */
 export function closeMenu(): void {
   if (!current) return;
-  const { root, anchor } = current;
+  const { root, anchor, toggle } = current;
   current = null;
 
   document.removeEventListener("pointerdown", onPointerDown, true);
@@ -110,7 +130,7 @@ export function closeMenu(): void {
 
   const returnFocus = root.contains(document.activeElement);
   root.remove();
-  anchor.setAttribute("aria-expanded", "false");
+  if (toggle) anchor.setAttribute("aria-expanded", "false");
   if (returnFocus) anchor.focus();
 }
 
@@ -170,12 +190,12 @@ function itemButton(item: MenuItem): HTMLButtonElement {
 }
 
 /**
- * Places the menu below the button, or above it if there is no room below.
+ * Places the menu below the button (or the pointer), or above it if there is
+ * no room below.
  *
  * The status bar is at the bottom edge, so its menus always open upward.
  */
-function place(root: HTMLElement, anchor: HTMLElement): void {
-  const rect = anchor.getBoundingClientRect();
+function place(root: HTMLElement, rect: DOMRect): void {
   const size = root.getBoundingClientRect();
   const margin = 6;
 
@@ -246,6 +266,7 @@ function onPointerDown(event: PointerEvent): void {
   const target = event.target as Node;
   // A click on the anchor button does not close here: the button toggles the
   // menu itself, else the menu would close and open again.
-  if (current.root.contains(target) || current.anchor.contains(target)) return;
+  if (current.root.contains(target)) return;
+  if (current.toggle && current.anchor.contains(target)) return;
   closeMenu();
 }

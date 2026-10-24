@@ -400,7 +400,8 @@ function renderNotes(): void {
     const words = document.createElement("span");
     words.className = "notes-words";
     words.textContent = note.anchor || t("panel.notes.noWords");
-    if (note.anchorFrom === null) {
+    // A note without words is about its paragraph; it did not lose them.
+    if (note.anchorFrom === null && note.anchor !== "") {
       words.classList.add("is-detached");
       words.title = t("editor.note.detached");
     }

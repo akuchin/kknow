@@ -7,6 +7,13 @@
 //! Search must be fast<!-- @agent «fast»: measure on 10k notes -->.
 //! ```
 //!
+//! A note can have no words: `<!-- @agent: text -->` at the end of a
+//! paragraph is about the whole paragraph. The editor writes it so when the
+//! person leaves a note with only the cursor in the paragraph.
+//!
+//! The window calls these notes "comments"; the marker stays `@agent`,
+//! because agents look for it.
+//!
 //! The words are repeated in the comment on purpose. The agent reads raw
 //! markdown and does not need to guess what the task refers to. The preview
 //! uses them to know what to highlight: it highlights the words **just
@@ -99,6 +106,15 @@ mod tests {
 
         assert_eq!(note.anchor, "");
         assert_eq!(note.text, "переписать абзац");
+    }
+
+    #[test]
+    fn note_written_by_the_editor_without_words_is_parsed() {
+        // The exact form `formatNote` in `ui/src/agent-notes.ts` writes.
+        let note = parse("<!-- @agent: сократить вдвое -->").unwrap();
+
+        assert_eq!(note.anchor, "");
+        assert_eq!(note.text, "сократить вдвое");
     }
 
     #[test]

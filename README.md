@@ -181,11 +181,13 @@ kknow --vault Personal stats               # work with it by name
   removes it. Field parsing comes later.
 - The parser skips code and math: `` `[[this is not a link]]` `` is not a link.
 - The preview shows a code block in the `mermaid` language as a diagram.
-- Notes for the agent: `words<!-- @agent «words»: task -->`. The editor
-  highlights the words and hides the comment. To add a note for the agent,
-  select the words and click "For agent" above the selection, or press ⌘⇧M.
-  The 💬 button in the header lists all notes for the agent in the text. Click
-  one to go to its words.
+- Comments for an agent: `words<!-- @agent «words»: task -->`. The editor
+  highlights the words and hides the comment. To add a comment, select the
+  words, right-click and choose "Add comment", or press ⌘⇧M. Without a
+  selection the comment goes to the whole paragraph:
+  `<!-- @agent: task -->` at its end. The same menu edits or removes the
+  comment under the cursor. The 💬 button in the header lists all comments in
+  the text. Click one to go to its words.
 
 Short links follow the usual wiki rules. kknow tries the full path first, then
 the file name, then a path suffix. If many notes have the same name, kknow
@@ -252,7 +254,7 @@ The header shows what is open:
   and the folder. The name is a button that opens the note menu. This menu is
   the same as the menu of the note row in the tree. It has the note commands,
   rename, move, duplicate, link, Finder and delete.
-- On the right are notes for the agent 💬 and the note toolbar:
+- On the right are comments 💬 and the note toolbar:
   - the bookmark ribbon: it fills when the note has bookmarks. Its menu goes
     to each bookmark, sets or removes a bookmark on the cursor line (⌘⇧B) and
     shows all bookmarks (⌘⌥B);
@@ -544,9 +546,9 @@ the match until the "next" button reaches it.
 ⌘⇧B adds a bookmark to the line with the cursor. An icon appears to the left of
 the line. Press ⌘⇧B again to remove the bookmark.
 
-The popup above selected text can do the same. Next to "For agent", it has a
-"Bookmark" button, in the editor and in the preview. The preview also shows the
-icons, in "Side by side" and in "Read".
+The editor context menu (right click) can do the same. In the preview, the
+popup above selected text has a "Bookmark" button next to "Comment". The
+preview also shows the icons, in "Side by side" and in "Read".
 
 "Read" has no cursor. There, ⌘⇧B adds a bookmark to the selection. Without a
 selection, it adds a bookmark to the first visible paragraph at the top.

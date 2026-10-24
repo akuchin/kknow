@@ -29,6 +29,7 @@ import {
 import { EditorView, WidgetType, drawSelection, keymap } from "@codemirror/view";
 
 import { agentNotes, formatNote, previewAnchor } from "./agent-notes";
+import { editorMenu } from "./editor-menu";
 import { highlightStyle } from "./highlight";
 import { icon, type IconName } from "./icons";
 import { t, type Key } from "./i18n";
@@ -629,8 +630,9 @@ function cellExtensions(cell: CellEditor): Extension {
     EditorView.lineWrapping,
     markdown({ base: markdownLanguage }),
     syntaxHighlighting(highlightStyle),
-    // The "For agent" popup over a selection in the cell, as in the note.
+    // Comments and the context menu in the cell, as in the note.
     agentNotes(),
+    editorMenu(),
   ];
 }
 
@@ -640,6 +642,7 @@ function cellExtensions(cell: CellEditor): Extension {
  *
  * The check waits for a microtask and looks at the focus itself: the note
  * form is a tooltip inside the cell editor, and focus goes into it and back.
+ * The context menu lives in `body`, so it is checked by itself.
  * When the form saves, its field leaves the DOM before the editor gets the
  * focus again.
  */
@@ -648,6 +651,9 @@ function closeOnLeave(cell: CellEditor): void {
     queueMicrotask(() => {
       if (cell.closing || editing !== cell) return;
       if (document.hasFocus() && cell.view.dom.contains(document.activeElement)) return;
+      // The context menu of the cell takes the focus for its keys and gives
+      // it back when it closes.
+      if (document.activeElement?.closest(".menu")) return;
       closeCell(cell, null);
     });
   });

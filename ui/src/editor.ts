@@ -22,6 +22,7 @@ import {
   toggleBookmark,
   toggleBookmarkAt,
 } from "./bookmarks";
+import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
@@ -263,6 +264,7 @@ export class Editor {
         livePreview(),
         agentNotes(),
         bookmarks(),
+        editorMenu(),
         blockSelection,
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,
