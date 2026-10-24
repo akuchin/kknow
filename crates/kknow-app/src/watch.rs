@@ -172,6 +172,22 @@ mod tests {
     }
 
     #[test]
+    fn a_move_to_the_trash_is_only_a_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Черновик.md"), "# Черновик").unwrap();
+        let mut vault = kknow_core::Vault::open(dir.path()).unwrap();
+        let watcher = VaultWatcher::start(dir.path()).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+
+        vault.remove(&NoteId::parse("Черновик").unwrap()).unwrap();
+
+        assert_eq!(
+            wait(&watcher),
+            [VaultEvent::Removed(NoteId::parse("Черновик").unwrap())]
+        );
+    }
+
+    #[test]
     fn ignores_other_files_and_hidden_folders() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join(".trash")).unwrap();

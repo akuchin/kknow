@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-use kknow_core::{Note, NoteId, Vault};
+use kknow_core::{Note, NoteId, Trash, Vault};
 use kknow_index::{Edge, LinkGraph, ParsedNote, Resolver, SearchHit, SearchIndex};
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Plan as SyncPlan, Report as SyncReport, Staged, SyncEngine,
@@ -544,6 +544,8 @@ impl Workspace {
         Ok(id)
     }
 
+    /// Moves the note to the vault trash and removes it from search and
+    /// graph.
     pub fn delete(&mut self, id: &NoteId) -> Result<()> {
         self.vault.remove(id)?;
         self.parsed.remove(id);
@@ -640,8 +642,8 @@ impl Workspace {
         Ok(self.vault.create_folder(raw)?)
     }
 
-    /// Deletes a folder with all its notes and removes them from search and
-    /// graph.
+    /// Moves a folder with all its notes to the vault trash and removes them
+    /// from search and graph.
     pub fn delete_folder(&mut self, raw: &str) -> Result<()> {
         let removed = self.vault.remove_folder(raw)?;
         for id in &removed {
@@ -658,6 +660,25 @@ impl Workspace {
                 bookmarks.forget(id);
             }
         })
+    }
+
+    pub fn trash(&self) -> Trash {
+        self.vault.trash()
+    }
+
+    /// Restores a trash entry and parses its notes again. Bookmarks of the
+    /// notes do not come back: the delete forgot them.
+    pub fn restore(&mut self, entry: &str) -> Result<Vec<NoteId>> {
+        let restored = self.vault.restore(entry)?;
+        for id in &restored {
+            let content = self.vault.read(id)?;
+            self.ingest(id, &content)?;
+        }
+        if !restored.is_empty() {
+            self.search.commit()?;
+            self.rebuild_graph();
+        }
+        Ok(restored)
     }
 
     pub fn backlinks(&self, id: &NoteId) -> &[Edge] {
@@ -996,6 +1017,25 @@ mod tests {
     }
 
     #[test]
+    fn a_restored_note_returns_to_graph_and_search() {
+        let (_dir, mut workspace) = workspace();
+        let id = NoteId::parse("Projects/kknow").unwrap();
+        workspace.delete(&id).unwrap();
+
+        let entries = workspace.trash().entries().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            workspace.restore(&entries[0].id).unwrap(),
+            std::slice::from_ref(&id)
+        );
+
+        assert!(workspace.contains(&id));
+        assert!(workspace.graph().broken().is_empty());
+        assert_eq!(found(&workspace, "синхронизацию"), ["Projects/kknow"]);
+        assert!(workspace.trash().entries().unwrap().is_empty());
+    }
+
+    #[test]
     fn rename_moves_the_note_in_search_and_graph() {
         let (_dir, mut workspace) = workspace();
         let from = NoteId::parse("Projects/kknow").unwrap();
@@ -1163,6 +1203,11 @@ mod tests {
         assert_eq!(report.removed_local.len(), 1);
         assert_eq!(target.len(), 1);
         assert!(found(&target, "синхронизацию").is_empty());
+        // The note is not lost: it waits in the trash of this device.
+        assert_eq!(
+            target.trash().entries().unwrap()[0].path,
+            "Projects/kknow.md"
+        );
     }
 
     #[test]

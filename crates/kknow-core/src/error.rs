@@ -21,6 +21,9 @@ pub enum Error {
     #[error("already exists: {0}")]
     AlreadyExists(PathBuf),
 
+    #[error("trash entry not found: {0}")]
+    TrashEntryNotFound(String),
+
     #[error("file is too large: {0}")]
     TooLarge(PathBuf),
 
