@@ -72,22 +72,30 @@ jobs:
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
-      # A draft. The API "release by tag" does not see drafts, so the id comes
-      # from the list. A second run (workflow_dispatch) reuses the release.
+      # A draft. The API "release by tag" does not see drafts, so a second run
+      # (workflow_dispatch) finds the release in the list and reuses it.
+      #
+      # A new release takes its id from the create response, not from the
+      # list: the list shows a new release only after a delay. With an empty
+      # id, `tauri-action` silently skips all uploads, and the release gets
+      # only the CLI. Thus an empty id stops the workflow.
       - name: Create release
         id: create
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          find_id() {
-            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-              --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n 1
-          }
-          id="$(find_id)"
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -n 1)"
           if [[ -z "$id" ]]; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
-              --verify-tag --title "kknow $TAG" --generate-notes
-            id="$(find_id)"
+            # The API makes a missing tag from the default branch on publish.
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null
+            id="$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" -f name="kknow $TAG" \
+              -F draft=true -F generate_release_notes=true --jq .id)"
+          fi
+          if [[ -z "$id" ]]; then
+            echo "::error::no release id for $TAG"
+            exit 1
           fi
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
