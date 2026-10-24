@@ -460,6 +460,7 @@
   "image.missing": "картинка не найдена: {{target}}",
   "image.external": "картинки из сети не загружаются: {{target}}",
   "image.broken": "не удалось показать картинку: {{target}}",
+  "image.saveFailed": "не удалось сохранить картинку: {{error}}",
   "editor.table.rowAdd": "Добавить строку ниже",
   "editor.table.rowRemove": "Удалить строки",
   "editor.table.columnAdd": "Добавить колонку справа",

@@ -36,6 +36,8 @@ keyring = { version = "3", features = [
   "crypto-rust",
 ] }
 tauri-plugin-updater = "2"
+# The image name comes percent-encoded in a header (`save_attachment`).
+percent-encoding = "2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

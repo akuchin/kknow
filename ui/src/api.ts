@@ -432,6 +432,21 @@ export const api = {
   /** Bytes of an image that the note links to. The core resolves the path. */
   noteImage: (id: string, target: string) =>
     invoke<ArrayBuffer | number[]>("note_image", { id, target }),
+  /**
+   * Saves a pasted image into `attachments/`: at the vault root, or next to
+   * the standalone `file`. The body is raw bytes, so the name goes in a
+   * header. Returns the path for the link.
+   */
+  saveAttachment: (name: string, bytes: Uint8Array, file: string | null) =>
+    invoke<string>("save_attachment", bytes, {
+      headers: {
+        "kknow-name": encodeURIComponent(name),
+        ...(file === null ? {} : { "kknow-file": encodeURIComponent(file) }),
+      },
+    }),
+  /** Copies an image file dropped on the editor into `attachments/`, like `saveAttachment`. */
+  attachFile: (source: string, file: string | null) =>
+    invoke<string>("attach_file", { source, file }),
   createNote: (name: string) => invoke<NoteView>("create_note", { name }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
@@ -588,6 +603,8 @@ export interface DragDrop {
   over: boolean;
   /** Dropped paths; empty while dragging. */
   paths: string[];
+  /** The drop point in CSS pixels of the page; only with `paths`. */
+  point?: { x: number; y: number };
 }
 
 /**
@@ -603,7 +620,10 @@ export function onDragDrop(handler: (state: DragDrop) => void) {
     if (payload.type === "enter" || payload.type === "over") {
       handler({ over: true, paths: [] });
     } else if (payload.type === "drop") {
-      handler({ over: false, paths: payload.paths });
+      // The shell gives physical pixels; `elementFromPoint` needs CSS pixels.
+      const scale = window.devicePixelRatio || 1;
+      const point = { x: payload.position.x / scale, y: payload.position.y / scale };
+      handler({ over: false, paths: payload.paths, point });
     } else {
       handler({ over: false, paths: [] });
     }

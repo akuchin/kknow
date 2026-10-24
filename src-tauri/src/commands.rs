@@ -11,8 +11,9 @@ use kknow_app::vaults::VaultEntry;
 use kknow_app::{Saved, Workspace};
 use kknow_core::NoteId;
 use kknow_index::Edge;
+use percent_encoding::percent_decode_str;
 use serde::Serialize;
-use tauri::ipc::Response;
+use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Manager, Runtime, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::state::{AppState, Error, Result};
@@ -507,6 +508,61 @@ pub fn note_image(
     })?;
     let bytes = kknow_core::image::read(&path).map_err(kknow_app::Error::from)?;
     Ok(Response::new(bytes))
+}
+
+/// Saves a pasted image and returns the path for the link.
+///
+/// The body is raw bytes, for the same reason as in `note_image`. So the name
+/// and the standalone file come in headers, percent-encoded: a header holds
+/// only ASCII. The window gives only a file name. The core selects the folder:
+/// `attachments/` at the vault root, or next to a standalone file.
+#[tauri::command]
+pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Result<String> {
+    let header = |key: &str| {
+        let value = request.headers().get(key)?.to_str().ok()?;
+        Some(percent_decode_str(value).decode_utf8_lossy().into_owned())
+    };
+    let dir = attachment_dir(&state, header("kknow-file").as_deref())?;
+    let name = header("kknow-name").unwrap_or_default();
+    let saved = match request.body() {
+        InvokeBody::Raw(bytes) => kknow_core::image::save(&dir, &name, bytes),
+        // The fallback IPC path sends bytes as a JSON array of numbers.
+        InvokeBody::Json(value) => {
+            let bytes: Vec<u8> =
+                serde_json::from_value(value.clone()).map_err(|_| Error::NoImageBytes)?;
+            kknow_core::image::save(&dir, &name, &bytes)
+        }
+    };
+    Ok(saved.map_err(kknow_app::Error::from)?)
+}
+
+/// Copies an image file dropped on the editor, like `save_attachment`.
+///
+/// `source` comes from the shell drop event, as in `open_file`. The command
+/// only reads it, and only an image of a limited size.
+#[tauri::command]
+pub fn attach_file(
+    state: State<'_, AppState>,
+    source: String,
+    file: Option<String>,
+) -> Result<String> {
+    let dir = attachment_dir(&state, file.as_deref())?;
+    Ok(kknow_core::image::import(&dir, Path::new(&source)).map_err(kknow_app::Error::from)?)
+}
+
+/// Where `attachments/` goes: the active vault root, or the folder of a
+/// standalone file. The file must be in the list (`known_file`).
+fn attachment_dir(state: &AppState, file: Option<&str>) -> Result<PathBuf> {
+    match file {
+        Some(file) => {
+            let path = state.known_file(file)?;
+            let dir = path.parent().ok_or_else(|| Error::UnknownFile(file.to_string()))?;
+            Ok(dir.to_path_buf())
+        }
+        None => state
+            .slot(None)?
+            .read(|workspace| Ok(workspace.root().to_path_buf())),
+    }
 }
 
 #[tauri::command]

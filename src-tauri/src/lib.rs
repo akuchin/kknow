@@ -304,6 +304,8 @@ pub fn run() {
             commands::save_note,
             commands::preview,
             commands::note_image,
+            commands::save_attachment,
+            commands::attach_file,
             commands::create_note,
             commands::delete_note,
             commands::list_folders,
