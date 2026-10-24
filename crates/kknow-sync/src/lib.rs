@@ -51,6 +51,18 @@ pub use provider::{MemoryProvider, SyncProvider};
 #[cfg(feature = "s3")]
 pub use s3::{S3Config, S3Provider};
 
+/// A sync engine for the saved settings: the provider and the conflict policy.
+///
+/// Both frontends build the engine here. Before, each one called `connect`
+/// and then `with_policy`, and a frontend that forgot the second call would
+/// silently sync with the default policy.
+pub fn engine(
+    config: &RemoteConfig,
+    secret: Option<String>,
+) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
+    Ok(SyncEngine::new(connect(config, secret)?).with_policy(config.policy))
+}
+
 /// Connects to storage from the saved settings.
 ///
 /// This is one entry point for both frontends: the window and the terminal

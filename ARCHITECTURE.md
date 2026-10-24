@@ -204,6 +204,15 @@ External edit:
 
   `run` joins the three parts for the terminal. Thus a note save does not wait
   until the sync ends.
+- Both frontends build the engine with `kknow_sync::engine(config, secret)`:
+  the provider and the conflict policy come together. Only the secret differs
+  (the keychain or an environment variable).
+- The window joins the three parts itself (`src-tauri/src/sync.rs`,
+  `exchange`), not `kknow-app`. The parts take the vault lock, and the lock
+  (`VaultSlot`) belongs to the window: the CLI owns its `Workspace` alone and
+  calls the one-step `Workspace::sync`. The status and the events are also
+  window things. If the steps moved into `kknow-app`, it would need a lock
+  abstraction for one caller.
 - Progress is `Progress { done, total }` over the actions of the plan.
 - `src-tauri/src/sync_status.rs` keeps the state of each vault
   (`off | idle | syncing | conflict | error`). It also keeps the time of the

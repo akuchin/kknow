@@ -94,8 +94,7 @@ fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
         None
     };
 
-    let provider = kknow_sync::connect(config, secret)?;
-    Ok(SyncEngine::new(provider).with_policy(config.policy))
+    Ok(kknow_sync::engine(config, secret)?)
 }
 
 /// Sync settings of the vault, if sync is configured.

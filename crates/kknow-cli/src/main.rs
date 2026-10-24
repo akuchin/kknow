@@ -15,7 +15,7 @@ use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
 use kknow_index::{Edge, EdgeKind, Subpath, Task};
 use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
-use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings, SyncEngine};
+use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings};
 
 #[derive(Parser)]
 #[command(
@@ -1036,8 +1036,7 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
         Provider::Folder { .. } => None,
     };
 
-    let provider = kknow_sync::connect(&config, secret).map_err(|error| error.to_string())?;
-    let engine = SyncEngine::new(provider).with_policy(config.policy);
+    let engine = kknow_sync::engine(&config, secret).map_err(|error| error.to_string())?;
 
     if dry_run {
         let plan = workspace
