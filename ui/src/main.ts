@@ -13,8 +13,6 @@ import {
   onVaultOpened,
   parseLink,
   type CommandTarget,
-  type NoteSummary,
-  type TrashEntryView,
   type VaultInfo,
   type VaultView,
 } from "./api";
@@ -25,28 +23,25 @@ import {
   matchesKey,
   useKeymap,
   vaultKey,
-  withShortcut,
   type Action,
   type Keymap,
 } from "./actions";
-import { icon } from "./icons";
 import { describeError, locale, t } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, moveMode, nextMode } from "./note-mode";
 import { moveScale } from "./note-scale";
 import { Palette } from "./palette";
 import "./styles.css";
-import { buildTree, fileName, folderOf, join, leafOf, type Folder } from "./tree-model";
+import { folderOf, join, leafOf } from "./tree-model";
 import {
   applySettings,
-  initAppearance,
   loadSettings,
   openMoreMenu,
   pickTheme,
   refreshThemes,
   toggleLineNumbers,
 } from "./window/appearance";
-import { app, el, initDom } from "./window/dom";
+import { el, initDom } from "./window/dom";
 import { editor, initEditor } from "./window/editor";
 import {
   LAST_FILE,
@@ -98,7 +93,6 @@ import {
   takeDrop,
   takeOpened,
 } from "./window/files";
-import { emptyItem, markActive, rowActions, rowMenu } from "./window/rows";
 import {
   goToHeading,
   loadVaultMemory,
@@ -109,38 +103,29 @@ import {
   saveBookmarks,
   toggleCurrentBookmark,
 } from "./window/marks";
+import { closeTrashView, initTrash } from "./window/trash";
 import {
-  closeTrashView,
-  initTrash,
-  markTrashViewing,
-  trashItem,
-  viewingTrash,
-} from "./window/trash";
-import { copyText, openSettings, readList } from "./window/util";
+  activeNotes,
+  collator,
+  expandVault,
+  foldersIn,
+  forgetTree,
+  initTree,
+  loadNotes,
+  openSidebar,
+  refreshTree,
+  renderTree,
+  restoreExpanded,
+  restoreSidebar,
+  toggleSidebar,
+} from "./window/tree";
+import { copyText, openSettings } from "./window/util";
 import { state } from "./window/state";
 
 // The browser uses the document language for hyphenation and word selection.
 document.documentElement.lang = locale;
 
 initDom();
-
-/**
- * Notes of each vault: every vault has its own tree.
- *
- * The sidebar shows all vaults at once, so one note list is not enough. A tree
- * loads lazily when its vault is expanded. The active vault always loads: the
- * palette, the counter and note restore depend on it.
- */
-const trees = new Map<string, NoteSummary[]>();
-
-/** Vault folders, separate from notes: empty folders are not in the note list. */
-const folderLists = new Map<string, string[]>();
-
-/** Trash entries of each loaded vault, the newest first: the last tree node. */
-const trashes = new Map<string, TrashEntryView[]>();
-/** Sidebar collapsed state; it persists between runs. */
-const SIDEBAR = "kknow:sidebar";
-let sidebarHidden = localStorage.getItem(SIDEBAR) === "hidden";
 
 initEditor({
   onChange: onEdit,
@@ -163,408 +148,12 @@ initStatus(
   () => flushPendingSave(),
 );
 
-/** Collapses the sidebar; the editor takes its space. */
-function setSidebarHidden(hidden: boolean): void {
-  sidebarHidden = hidden;
-  localStorage.setItem(SIDEBAR, hidden ? "hidden" : "shown");
-  app.dataset.sidebar = hidden ? "hidden" : "shown";
-  // This is "is the sidebar expanded", not "is the button on": no accent
-  // color, the sidebar itself is visible.
-  el.toggleSidebar.setAttribute("aria-expanded", String(!hidden));
-  const label = t(hidden ? "topbar.sidebar.show" : "topbar.sidebar.hide");
-  el.toggleSidebar.title = withShortcut(label, "sidebar.toggle");
-  el.toggleSidebar.setAttribute("aria-label", label);
-}
-
-/**
- * The sidebar is a workspace: the tree roots are vaults, not folders of one
- * directory.
- *
- * This shows everything at once. A click on a note from another vault opens
- * it and switches the vault automatically.
- */
-function renderTree(): void {
-  el.noteList.replaceChildren();
-
-  if (state.vaults.length === 0) {
-    el.noteList.append(emptyItem(t("sidebar.vaults.empty")));
-    return;
-  }
-
-  el.noteList.append(...state.vaults.map(vaultItem));
-  // While a trash note covers the open note, only the trash note is marked.
-  markActive(viewingTrash() ? null : (state.note?.id ?? null));
-  markTrashViewing();
-}
-
-/**
- * Collapsed folders, one set per vault.
- *
- * There was one set when the sidebar had one tree. Now there is a tree per
- * vault, and a shared set would collapse a folder with the same name in
- * another vault.
- */
-const collapsed = new Map<string, Set<string>>();
-
-/** Expanded vaults: only their trees are visible and loaded from disk. */
-const expanded = new Set<string>(readList("kknow:vaults:open"));
-
-/** Vaults that are loading now; for a large vault this is parsing and indexing. */
-const reading = new Set<string>();
-
-function foldersOf(id: string): Set<string> {
-  let folders = collapsed.get(id);
-  if (!folders) {
-    folders = new Set(readList(`kknow:folders:${id}`));
-    collapsed.set(id, folders);
-  }
-  return folders;
-}
-
-function rememberFolders(id: string): void {
-  localStorage.setItem(`kknow:folders:${id}`, JSON.stringify([...foldersOf(id)]));
-}
-
-/** Expanded vaults persist between runs, like collapsed folders. */
-function rememberExpanded(): void {
-  localStorage.setItem("kknow:vaults:open", JSON.stringify([...expanded]));
-}
-
-/** Tree order follows the window language rules, so accented letters sort correctly. */
-const collator = new Intl.Collator(locale);
-
-/**
- * A vault as a tree root: a row with a label and an expanded or collapsed tree.
- *
- * An unavailable vault (for example, an external disk was unplugged) stays in
- * the list but does not expand: there is nothing to read, and an external
- * cause must not remove the entry.
- */
-function vaultItem(entry: VaultView): HTMLLIElement {
-  const item = document.createElement("li");
-  const open = expanded.has(entry.id) && entry.available;
-
-  const row = document.createElement("div");
-  row.className = "tree-row vault-row";
-  row.dataset.vault = entry.id;
-  if (entry.active) row.dataset.active = "true";
-  if (!entry.available) row.dataset.missing = "true";
-
-  const button = document.createElement("button");
-  button.className = "vault";
-  button.dataset.vault = entry.id;
-  button.disabled = !entry.available;
-  button.setAttribute("aria-expanded", String(open));
-  button.title = entry.available
-    ? t(open ? "sidebar.vault.collapse" : "sidebar.vault.expand", { name: entry.name })
-    : t("menu.vault.missing");
-  button.onclick = () => void toggleVault(entry);
-
-  const arrow = icon("chevron");
-  arrow.classList.add("chevron");
-  const label = document.createElement("span");
-  label.className = "vault-label";
-  label.dataset.color = entry.color;
-  const name = document.createElement("span");
-  name.className = "note-title";
-  name.textContent = entry.name;
-  button.append(arrow, label, name);
-
-  const more = rowMenu(t("sidebar.vault.menu", { name: entry.name }), (anchor) =>
-    openVaultRowMenu(anchor, entry),
-  );
-
-  const plus = rowPlus(t("sidebar.folder.newNote", { name: entry.name }), entry.id, "");
-  plus.disabled = !entry.available;
-  row.append(button, rowActions(more, plus));
-  // A right click opens the same menu, as users expect in a tree.
-  row.oncontextmenu = (event) => {
-    event.preventDefault();
-    openVaultRowMenu(more, entry);
-  };
-  item.append(row);
-
-  if (!open) return item;
-
-  const nested = document.createElement("ul");
-  const notes = trees.get(entry.id);
-  const folders = folderLists.get(entry.id) ?? [];
-  if (!notes) {
-    // No tree yet: the core parses and indexes a vault on first visit, which
-    // takes time on a large folder. "No notes" would be wrong here: an empty
-    // tree and an unloaded tree are different things.
-    nested.append(emptyItem(t("sidebar.vault.loading")));
-  } else if (notes.length === 0 && folders.length === 0) {
-    nested.append(emptyItem(t("sidebar.empty")));
-  } else {
-    nested.append(...treeItems(buildTree(notes, folders, collator), entry.id));
-  }
-  // The trash is always the last node, also in an empty vault: a deleted
-  // note must stay one click away.
-  if (notes) nested.append(trashItem(entry, trashes.get(entry.id) ?? []));
-  item.append(nested);
-  return item;
-}
-
-/** Expands or collapses a vault. On first expand it loads from disk. */
-async function toggleVault(entry: VaultView): Promise<void> {
-  if (!entry.available) return;
-
-  if (expanded.delete(entry.id)) {
-    rememberExpanded();
-    renderTree();
-    return;
-  }
-
-  expanded.add(entry.id);
-  rememberExpanded();
-  // A loaded tree shows at once. A tree that is loading shows when it is done:
-  // a second request for the same folder adds nothing.
-  if (trees.has(entry.id) || reading.has(entry.id)) {
-    renderTree();
-    return;
-  }
-
-  reading.add(entry.id);
-  renderTree();
-  try {
-    await loadNotes(entry.id);
-  } catch (error) {
-    // On a load failure the branch stays collapsed: expanded and empty, it
-    // would look like a vault without notes.
-    expanded.delete(entry.id);
-    rememberExpanded();
-    fail(error);
-  } finally {
-    reading.delete(entry.id);
-    renderTree();
-  }
-}
-
-/**
- * Loads the vaults that were expanded in the previous run.
- *
- * The expanded state persists, but the trees do not. Without this a branch
- * would stay expanded and empty until clicked, which falsely says "no notes".
- * This runs after the active vault loads: the user needs that tree first.
- */
-async function restoreExpanded(): Promise<void> {
-  const pending = state.vaults.filter(
-    (entry) =>
-      entry.available &&
-      expanded.has(entry.id) &&
-      !trees.has(entry.id) &&
-      !reading.has(entry.id),
-  );
-  if (pending.length === 0) return;
-
-  for (const entry of pending) reading.add(entry.id);
-  renderTree();
-
-  await Promise.all(
-    pending.map(async (entry) => {
-      try {
-        await loadNotes(entry.id);
-      } catch (error) {
-        // On a load failure the branch collapses: expanded and empty, it would
-        // look like a vault without notes.
-        expanded.delete(entry.id);
-        fail(error);
-      } finally {
-        reading.delete(entry.id);
-      }
-    }),
-  );
-  rememberExpanded();
-  renderTree();
-}
-
-/** Folder content as list rows; subfolders get their own nested `<ul>`. */
-function treeItems(folder: Folder, vaultId: string): HTMLLIElement[] {
-  const items = folder.folders.map((child) => folderItem(child, vaultId));
-  items.push(...folder.notes.map((note) => noteItem(note, vaultId)));
-  return items;
-}
-
-/**
- * The "+" button of a vault or folder row: a new note inside it.
- *
- * Creation is the most frequent action on a folder, so it gets a button of
- * its own next to "⋯", as in the sidebar of Claude. An inactive vault becomes
- * active first, because the core creates in the active vault.
- */
-function rowPlus(title: string, vaultId: string, folder: string): HTMLButtonElement {
-  const plus = document.createElement("button");
-  plus.className = "row-plus";
-  plus.title = title;
-  plus.setAttribute("aria-label", title);
-  plus.append(icon("plus"));
-  plus.onclick = async () => {
-    if (vaultId !== state.vault?.id) await switchVault(vaultId);
-    openNewNoteForm(folder ? `${folder}/` : "", "note");
-  };
-  return plus;
-}
-
-function folderItem(folder: Folder, vaultId: string): HTMLLIElement {
-  const item = document.createElement("li");
-  const open = !foldersOf(vaultId).has(folder.path);
-
-  const button = document.createElement("button");
-  button.className = "folder";
-  button.setAttribute("aria-expanded", String(open));
-  button.title = t(open ? "sidebar.folder.collapse" : "sidebar.folder.expand", {
-    name: folder.name,
-  });
-  button.onclick = () => toggleFolder(vaultId, folder.path);
-
-  const arrow = icon("chevron");
-  arrow.classList.add("chevron");
-  const name = document.createElement("span");
-  name.className = "note-title";
-  name.textContent = folder.name;
-  button.append(arrow, name);
-
-  const target: CommandTarget = { kind: "folder", name: folder.path, vault: vaultId };
-  const more = rowMenu(t("sidebar.folder.menu", { name: folder.name }), (anchor) =>
-    void openCommandMenu(anchor, target),
-  );
-
-  const row = document.createElement("div");
-  row.className = "tree-row folder-row";
-  // Inline rename finds the row by these attributes.
-  row.dataset.path = folder.path;
-  row.dataset.vault = vaultId;
-  const plus = rowPlus(t("sidebar.folder.newNote", { name: folder.name }), vaultId, folder.path);
-  row.append(button, rowActions(more, plus));
-  row.oncontextmenu = (event) => {
-    event.preventDefault();
-    void openCommandMenu(more, target);
-  };
-  item.append(row);
-
-  if (open) {
-    const nested = document.createElement("ul");
-    nested.append(...treeItems(folder, vaultId));
-    item.append(nested);
-  }
-  return item;
-}
-
-function toggleFolder(vaultId: string, path: string): void {
-  const folders = foldersOf(vaultId);
-  if (!folders.delete(path)) folders.add(path);
-  rememberFolders(vaultId);
-  renderTree();
-}
-
-/**
- * Expands the folders above a note and its vault.
- *
- * A note can open from outside the tree (a link, search, creation). In a
- * collapsed branch its active mark would be invisible.
- */
-function reveal(vaultId: string, id: string): boolean {
-  let opened = false;
-  if (!expanded.has(vaultId)) {
-    expanded.add(vaultId);
-    rememberExpanded();
-    opened = true;
-  }
-
-  const parts = id.split("/");
-  parts.pop();
-
-  const folders = foldersOf(vaultId);
-  let path = "";
-  let unfolded = false;
-  for (const part of parts) {
-    path = path ? `${path}/${part}` : part;
-    if (folders.delete(path)) unfolded = true;
-  }
-
-  if (unfolded) rememberFolders(vaultId);
-  return opened || unfolded;
-}
-
-// The tree follows the open note: it marks the note and expands the branch
-// that holds it.
-state.on("note", (note) => {
-  // The note can be in a collapsed branch or vault; then redraw the tree.
-  if (note && !note.file && state.vault && reveal(state.vault.id, note.id)) renderTree();
-  markActive(note?.id ?? null);
+initTree({
+  openVaultMenu: openVaultRowMenu,
+  openCommandMenu,
+  switchVault,
+  openNewNoteForm,
 });
-
-/** Note row in the tree. It also knows its vault: the sidebar has many. */
-function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
-  const item = document.createElement("li");
-  const button = document.createElement("button");
-  button.className = "note";
-  button.dataset.id = note.id;
-  button.dataset.vault = vaultId;
-  // The list truncates the name; the tooltip shows it in full.
-  button.title = note.id;
-  // A note from another vault switches to that vault first: themes, sync and
-  // the status bar belong to the active vault.
-  button.onclick = () => void openFound(note.id, vaultId);
-
-  const heading = document.createElement("span");
-  heading.className = "note-title";
-  heading.textContent = state.settings?.noteLabel === "file" ? fileName(note) : note.title;
-  button.append(heading);
-
-  const target: CommandTarget = { kind: "note", name: note.id, vault: vaultId };
-  const more = rowMenu(t("sidebar.note.menu", { name: note.title }), (anchor) =>
-    void openCommandMenu(anchor, target),
-  );
-
-  const row = document.createElement("div");
-  row.className = "tree-row note-row";
-  row.dataset.id = note.id;
-  row.dataset.vault = vaultId;
-  row.append(button, rowActions(more));
-  row.oncontextmenu = (event) => {
-    event.preventDefault();
-    void openCommandMenu(more, target);
-  };
-  item.append(row);
-  return item;
-}
-
-/** Notes of the active vault, for the palette and the counter. */
-function activeNotes(): NoteSummary[] {
-  return state.vault ? (trees.get(state.vault.id) ?? []) : [];
-}
-
-/**
- * Reloads the tree of one vault.
- *
- * For an inactive vault the core opens it, parses the folder and builds the
- * index. So call this only for the active vault and expanded vaults.
- */
-async function loadNotes(id: string): Promise<NoteSummary[]> {
-  const [notes, folders, trash] = await Promise.all([
-    api.listNotes(id),
-    api.listFolders(id),
-    // A broken trash folder must not hide the notes.
-    api.listTrash(id).catch(() => []),
-  ]);
-  trees.set(id, notes);
-  folderLists.set(id, folders);
-  trashes.set(id, trash);
-  return notes;
-}
-
-/** Reloads the tree only if it is shown. */
-async function refreshTree(id: string): Promise<void> {
-  if (!trees.has(id)) return;
-  try {
-    await loadNotes(id);
-  } catch (error) {
-    fail(error);
-  }
-  renderTree();
-}
 
 /**
  * Vault menu: the list, add and settings.
@@ -874,7 +463,7 @@ function startTreeRename(target: CommandTarget): void {
   if (!name || !vaultId) return;
   // The input goes into a tree row. A rename from the header menu cannot
   // reach it while the sidebar is collapsed, so open the sidebar.
-  if (sidebarHidden) setSidebarHidden(false);
+  openSidebar();
 
   const folder = folderOf(name);
   const row =
@@ -970,7 +559,7 @@ function openMoveMenu(anchor: HTMLElement, target: CommandTarget): void {
 
   const leaf = leafOf(name);
   const parent = folderOf(name);
-  const choices = ["", ...(folderLists.get(vaultId) ?? [])]
+  const choices = ["", ...foldersIn(vaultId)]
     .filter((folder) => folder !== parent)
     // A folder cannot move into itself.
     .filter(
@@ -1116,11 +705,7 @@ async function forgetVault(entry: VaultView): Promise<void> {
     return;
   }
 
-  trees.delete(entry.id);
-  folderLists.delete(entry.id);
-  collapsed.delete(entry.id);
-  expanded.delete(entry.id);
-  rememberExpanded();
+  forgetTree(entry.id);
 
   // If the active vault was removed, the core already picked another; open it.
   if (entry.id === state.vault?.id) {
@@ -1164,8 +749,7 @@ async function useVault(info: VaultInfo): Promise<void> {
   loadVaultMemory(info.id);
 
   // Expand the active vault in the sidebar: the user came for it.
-  expanded.add(info.id);
-  rememberExpanded();
+  expandVault(info.id);
   const notes = await loadNotes(info.id);
   renderTree();
 
@@ -1319,7 +903,6 @@ async function resolveConflicts(id: string): Promise<void> {
   palette.open(t("statusbar.chip.query"));
 }
 
-initAppearance({ renderTree });
 initTrash({ renderTree, refreshTree });
 initNote({
   closeTrashView,
@@ -1328,7 +911,6 @@ initNote({
   opened: rememberOpened,
   switchVault,
 });
-el.toggleSidebar.onclick = () => setSidebarHidden(!sidebarHidden);
 el.noteMenu.onclick = () => openNoteMenu();
 
 /**
@@ -1444,13 +1026,6 @@ initSync({ resolve: resolveConflicts });
 
 el.addVault.onclick = () => void pickVault();
 
-/** Collapses every vault. Folders inside keep their state for the next expand. */
-el.collapseAll.onclick = () => {
-  expanded.clear();
-  rememberExpanded();
-  renderTree();
-};
-
 async function reloadVault(): Promise<void> {
   if (!state.vault) return;
   await flushPendingSave();
@@ -1503,7 +1078,7 @@ function toggleNewNoteForm(mode: "note" | "folder"): void {
     el.newNoteForm.hidden = true;
     return;
   }
-  if (sidebarHidden) setSidebarHidden(false);
+  openSidebar();
   openNewNoteForm(currentFolderPrefix(), mode);
 }
 
@@ -1590,7 +1165,7 @@ const palette = new Palette({
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
     { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
     { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
-    { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
+    { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => toggleSidebar() },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
     { label: t("palette.action.sync"), action: "vault.sync", run: () => void runSync() },
@@ -1624,7 +1199,7 @@ const windowActions: [Action, () => boolean | void][] = [
   ["bookmark.toggle", () => toggleCurrentBookmark()],
   ["bookmark.list", () => palette.open("", "bookmarks")],
   ["task.list", () => palette.open("", "tasks")],
-  ["sidebar.toggle", () => setSidebarHidden(!sidebarHidden)],
+  ["sidebar.toggle", () => toggleSidebar()],
   // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
   ["history.back", () => void travel(-1)],
   ["history.forward", () => void travel(1)],
@@ -1739,7 +1314,7 @@ async function boot(): Promise<void> {
   if (await refreshKeymap()) return;
 
   setMode(defaultMode(), { remember: false });
-  setSidebarHidden(sidebarHidden);
+  restoreSidebar();
   status.setVault(null);
   describeRemote();
   // Until a vault opens, only built-in themes exist: the others live in the

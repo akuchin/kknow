@@ -16,20 +16,8 @@ import { editor } from "./editor";
 import { applyScale, flushPendingSave, positionKey, setMode } from "./note";
 import { state } from "./state";
 import { fail, setStatus, status } from "./status";
+import { renderTree } from "./tree";
 import { openSettings } from "./util";
-
-/** Steps of higher zones that the appearance zone starts. */
-export interface AppearanceHooks {
-  /** Redraws the sidebar tree: the note labels changed. */
-  renderTree: () => void;
-}
-
-let hooks: AppearanceHooks;
-
-/** Takes the hooks. */
-export function initAppearance(calls: AppearanceHooks): void {
-  hooks = calls;
-}
 
 /** Built-in themes. Their values are in styles.css. */
 const BUILT_IN: [string, string][] = [
@@ -184,7 +172,7 @@ export function applySettings(incoming: AppSettings): void {
   const scaleChanged = incoming.noteScale !== state.settings?.noteScale;
   const labelChanged = incoming.noteLabel !== state.settings?.noteLabel;
   state.setSettings(incoming);
-  if (labelChanged) hooks.renderTree();
+  if (labelChanged) renderTree();
   showLineNumbers(incoming.lineNumbers);
   // A new default size affects only a file without its own size.
   if (scaleChanged) {

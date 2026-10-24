@@ -47,8 +47,8 @@ let trashViewing: { vault: string; entry: string; note: string } | null = null;
 
 /**
  * The trash node of a vault: a row with the entry count, and the entries
- * under it (`entries`, the newest first). Its menu empties the trash; the menu of an entry restores it or
- * removes it for good.
+ * under it (`entries`, the newest first). Its menu empties the trash; the
+ * menu of an entry restores it or removes it for good.
  */
 export function trashItem(entry: VaultView, entries: TrashEntryView[]): HTMLLIElement {
   const item = document.createElement("li");
