@@ -1201,7 +1201,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - The gutter asks for its markers on each update. Thus both kinds of markers
   are in state fields and are built again only when the bookmark positions,
   the text or the syntax tree change.
-- Line numbers are off by default. The setting is `lineNumbers` in
+- Line numbers are on by default. The setting is `lineNumbers` in
   `settings.json`. They are a window setting, not part of the document, so they
   are in a compartment. The editor turns them on and off without a new state,
   and the undo history stays.
