@@ -1702,6 +1702,13 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
     the first one as an edit by someone else.
   - On window focus, kknow compares the open note with the disk again, because
     the watcher can miss an event.
+- **State with rules leaves `main.ts` one zone at a time.** `main.ts` is the
+  window glue, and any handler there can change any module variable. A zone
+  whose state has rules gets its own module that owns the state and has an
+  explicit API: `session.ts` (the autosave timer and the queue of writes) and
+  `navigation.ts` (back and forward). These modules have no imports, so
+  `node --test` checks them without Vite. The next zone moves out when a
+  feature touches it, not in one big rewrite.
 - **Autosave has a fixed delay and is not a setting.** The window writes 1 s
   after the last key press. It also writes at once when the window loses
   focus, when it closes, and before it leaves the note. Nobody tuned the delay,

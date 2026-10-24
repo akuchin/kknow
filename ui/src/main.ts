@@ -57,10 +57,12 @@ import { Editor, type EditorPosition } from "./editor";
 import { icon, iconMarkup, type IconName } from "./icons";
 import { LOCALE_NAMES, describeError, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
+import { History, type Place } from "./navigation";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
 import type { Heading } from "./outline";
 import { Palette } from "./palette";
+import { SaveQueue } from "./session";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
 
@@ -382,7 +384,6 @@ const SIDEBAR = "kknow:sidebar";
 let sidebarHidden = localStorage.getItem(SIDEBAR) === "hidden";
 /** App settings: shared with the settings window and stored in the core. */
 let appSettings: AppSettings | null = null;
-let saveTimer: number | undefined;
 let previewTimer: number | undefined;
 let wordsTimer: number | undefined;
 
@@ -547,8 +548,7 @@ function onEdit(text: string): void {
   setStatus(t("status.notSaved"), "work");
   scheduleWords(text);
 
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void save(text), SAVE_DELAY);
+  saves.schedule(text);
 
   window.clearTimeout(previewTimer);
   // Skip a hidden preview: each refresh is a core call on every edit.
@@ -606,93 +606,37 @@ function setSidebarHidden(hidden: boolean): void {
   el.toggleSidebar.setAttribute("aria-label", label);
 }
 
-/**
- * Navigation history: back and forward, as in a browser.
- *
- * A place is a note in its vault or a separate file. Going back can lead to
- * another vault, which must become active first. While the window walks the
- * history (`travelling`), opens are not recorded: else "back" would add a new
- * step and never move.
- */
-type Place = { file: true; path: string } | { file: false; vault: string; id: string };
-
-const HISTORY_LIMIT = 100;
-const places: Place[] = [];
-let placeAt = -1;
-let travelling = false;
+/** Back and forward between notes; see `navigation.ts`. */
+const history = new History();
 
 function placeOf(view: NoteView): Place {
   return view.file ? { file: true, path: view.id } : { file: false, vault: vault?.id ?? "", id: view.id };
 }
 
-function samePlace(a: Place, b: Place): boolean {
-  return a.file
-    ? b.file && a.path === b.path
-    : !b.file && a.vault === b.vault && a.id === b.id;
-}
-
 function rememberPlace(view: NoteView): void {
-  if (travelling) return;
-  const place = placeOf(view);
-  if (placeAt >= 0 && samePlace(places[placeAt], place)) return;
-  // A new step after "back" drops the forward entries, as in a browser.
-  places.splice(placeAt + 1);
-  places.push(place);
-  if (places.length > HISTORY_LIMIT) places.shift();
-  placeAt = places.length - 1;
-  showHistory();
+  if (history.remember(placeOf(view))) showHistory();
 }
 
 function showHistory(): void {
-  el.navBack.disabled = placeAt <= 0;
-  el.navForward.disabled = placeAt >= places.length - 1;
+  el.navBack.disabled = !history.canBack;
+  el.navForward.disabled = !history.canForward;
 }
 
-/**
- * One step in the history. The place can be gone (the note was deleted or
- * renamed): then we remove it instead of getting stuck on it.
- */
 async function travel(step: -1 | 1): Promise<void> {
-  const target = placeAt + step;
-  if (target < 0 || target >= places.length) return;
-  const place = places[target];
-
-  travelling = true;
-  try {
-    if (place.file) await openFileView(place.path);
-    else await openFound(place.id, place.vault);
-  } finally {
-    travelling = false;
-  }
-
-  if (current && samePlace(placeOf(current), place)) {
-    placeAt = target;
-  } else {
-    places.splice(target, 1);
-    if (target < placeAt) placeAt -= 1;
-  }
+  await history.travel(
+    step,
+    (place) => (place.file ? openFileView(place.path) : openFound(place.id, place.vault)),
+    () => (current ? placeOf(current) : null),
+  );
   showHistory();
 }
 
-/**
- * Saves run strictly one at a time: each one needs the previous result as
- * `base`, else the second save would treat the first as an external edit.
- */
-let saving: Promise<void> = Promise.resolve();
+/** Autosave of the open note: the timer and the queue; see `session.ts`. */
+const saves = new SaveQueue((text) => saveNow(text), SAVE_DELAY);
 
 /** True if the editor has text that is not on disk. */
 function isDirty(): boolean {
   return current !== null && editor.getText() !== current.content;
-}
-
-function save(text: string): Promise<void> {
-  // The timer fired, so no edit is pending. Before this fix the timer stayed
-  // armed, and the window always saw the note as unsaved: it ignored
-  // external edits, and the next save erased them.
-  window.clearTimeout(saveTimer);
-  saveTimer = undefined;
-  saving = saving.then(() => saveNow(text));
-  return saving;
 }
 
 /**
@@ -728,8 +672,7 @@ async function saveNow(text: string): Promise<void> {
         ? api.saveFile(outcome.copy, latest, null)
         : api.saveNote(outcome.copy, latest, null));
     }
-    window.clearTimeout(saveTimer);
-    saveTimer = undefined;
+    saves.cancel();
     applyNote(outcome.note);
     // A copy of a separate file goes next to it and appears in the file list.
     if (note.file) await refreshFiles();
@@ -1935,13 +1878,8 @@ function recentNotes(): NoteSummary[] {
 }
 
 /** Saves pending edits before leaving a note. */
-async function flushPendingSave(): Promise<void> {
-  if (saveTimer === undefined) {
-    // A write can be in progress; wait for it instead of leaving in the middle.
-    await saving;
-    return;
-  }
-  await save(editor.getText());
+function flushPendingSave(): Promise<void> {
+  return saves.flush(() => editor.getText());
 }
 
 /**
@@ -3138,10 +3076,7 @@ async function removeNote(id: string, vaultId: string): Promise<void> {
   // Drop pending edits of the deleted note: a save after the delete would
   // create the file again.
   const isCurrent = vaultId === vault?.id && current?.id === id;
-  if (isCurrent && saveTimer !== undefined) {
-    window.clearTimeout(saveTimer);
-    saveTimer = undefined;
-  }
+  if (isCurrent) saves.cancel();
 
   try {
     await api.deleteNote(id, vaultId);
@@ -3159,10 +3094,7 @@ async function removeFolder(name: string, vaultId: string): Promise<void> {
 
   const prefix = `${name}/`;
   const isCurrent = vaultId === vault?.id && current?.id.startsWith(prefix);
-  if (isCurrent && saveTimer !== undefined) {
-    window.clearTimeout(saveTimer);
-    saveTimer = undefined;
-  }
+  if (isCurrent) saves.cancel();
 
   try {
     await api.deleteFolder(name, vaultId);
