@@ -3417,7 +3417,7 @@ async function saveSettings(change: Partial<AppSettings>): Promise<void> {
 async function toggleLineNumbers(): Promise<void> {
   if (!appSettings) return;
   await saveSettings({ lineNumbers: !appSettings.lineNumbers });
-  // The event also comes here, but the mock does not send events.
+  // The event also comes here; the button does not wait for it.
   showLineNumbers(appSettings.lineNumbers);
 }
 

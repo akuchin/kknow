@@ -33,6 +33,7 @@ import type {
 } from "../api";
 import { setTaskBox, taskBox } from "../tasks";
 import type { ErrorView } from "../error-view";
+import { emit, listen } from "./event";
 
 /** An error in the same shape as the real commands send it. */
 function coded(code: string, message: string, params: Record<string, string> = {}): ErrorView {
@@ -396,6 +397,15 @@ function keymapView(): KeymapView {
  */
 let appSettings: AppSettings = readSettings();
 
+function keepSettings(settings: AppSettings): void {
+  appSettings = settings;
+  sessionStorage.setItem("kknow:mock:settings", JSON.stringify(settings));
+}
+
+// Each tab has its own copy of the mock; a change in the settings tab must
+// reach the copy of the main tab, else its next read returns the old values.
+void listen<AppSettings>("settings-changed", ({ payload }) => keepSettings(payload));
+
 function readSettings(): AppSettings {
   const fallback: AppSettings = {
     locale: localStorage.getItem("kknow:locale") ?? "ru",
@@ -438,6 +448,47 @@ const statuses = new Map<string, SyncStatus>([
     },
   ],
 ]);
+
+/** Saves the sync settings of the active vault, with the checks of the core. */
+function configureSync(settings: SyncSettingsForm, secret: boolean): SyncSettings {
+  const provider = settings.provider;
+
+  if (provider.kind === "s3" && !provider.bucket.trim()) {
+    throw coded("noBucket", "настройка синхронизации: не задан бакет");
+  }
+  if (provider.kind === "folder" && !provider.path.trim()) {
+    throw coded("noFolder", "настройка синхронизации: не задана папка");
+  }
+
+  const location =
+    provider.kind === "folder"
+      ? provider.path
+      : `${provider.endpoint ?? "s3:/"}/${provider.bucket}/${provider.prefix ?? ""}`;
+
+  statuses.set(activeVault.id, {
+    ...statusOf(activeVault.id),
+    state: "idle",
+    location,
+    autoSyncMinutes: settings.autoSyncMinutes,
+  });
+
+  remote = {
+    ...settings,
+    location,
+    // A folder never has secrets; the core answers the same way.
+    needsSecret: provider.kind === "s3",
+    hasSecret: provider.kind === "s3" && (secret || (remote?.hasSecret ?? false)),
+  };
+  return remote;
+}
+
+/**
+ * A page can start with sync already set up: the smoke tests put the settings
+ * form into `sessionStorage` before the page loads. The settings window is
+ * another tab with its own mock, so it cannot set up sync for this one.
+ */
+const presetSync = sessionStorage.getItem("kknow:mock:sync");
+if (presetSync) configureSync(JSON.parse(presetSync) as SyncSettingsForm, false);
 
 function statusOf(vault: string): SyncStatus {
   return (
@@ -775,8 +826,9 @@ export async function invoke<T>(
       return appSettings as T;
 
     case "set_settings": {
-      appSettings = args?.settings as AppSettings;
-      sessionStorage.setItem("kknow:mock:settings", JSON.stringify(appSettings));
+      keepSettings(args?.settings as AppSettings);
+      // As in the core: every window learns about the change, this one too.
+      emit("settings-changed", appSettings);
       return appSettings as T;
     }
 
@@ -1284,39 +1336,8 @@ export async function invoke<T>(
     case "sync_settings":
       return remote as T;
 
-    case "save_sync_settings": {
-      const settings = args?.settings as SyncSettingsForm;
-      const provider = settings.provider;
-
-      if (provider.kind === "s3" && !provider.bucket.trim()) {
-        throw coded("noBucket", "настройка синхронизации: не задан бакет");
-      }
-      if (provider.kind === "folder" && !provider.path.trim()) {
-        throw coded("noFolder", "настройка синхронизации: не задана папка");
-      }
-
-      const location =
-        provider.kind === "folder"
-          ? provider.path
-          : `${provider.endpoint ?? "s3:/"}/${provider.bucket}/${provider.prefix ?? ""}`;
-
-      statuses.set(activeVault.id, {
-        ...statusOf(activeVault.id),
-        state: "idle",
-        location,
-        autoSyncMinutes: settings.autoSyncMinutes,
-      });
-
-      remote = {
-        ...settings,
-        location,
-        // A folder never has secrets; the core answers the same way.
-        needsSecret: provider.kind === "s3",
-        hasSecret:
-          provider.kind === "s3" && (Boolean(args?.secret) || (remote?.hasSecret ?? false)),
-      };
-      return remote as T;
-    }
+    case "save_sync_settings":
+      return configureSync(args?.settings as SyncSettingsForm, Boolean(args?.secret)) as T;
 
     case "forget_sync_settings":
       remote = null;
