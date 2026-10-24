@@ -22,6 +22,7 @@ import { renderGeneral, repaintUpdate, setUpdate } from "./general";
 import { initKeys, loadKeymap, renderKeys, takeKeymap } from "./keys";
 import "./settings.css";
 import { state, view } from "./state";
+import { initSyncForm } from "./sync-form";
 import { renderVaults, repaintVaults } from "./vaults";
 
 /** Window sections: URL anchor and label. */
@@ -50,6 +51,7 @@ const el = {
 view.body = el.body;
 view.section = section;
 view.render = render;
+initSyncForm(renderVaults);
 
 function section(): string {
   const wanted = location.hash.replace("#", "");
