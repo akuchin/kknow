@@ -120,3 +120,35 @@ test("the command form adds, edits and removes a command", async ({ page }) => {
   await expect(commands).toHaveCount(before);
   await expect(page.locator(".settings-command-list")).not.toContainText("Сборка");
 });
+
+test("the vault page renames, recolors and sets up sync", async ({ page }) => {
+  await page.goto("/settings.html#vaults");
+  const picked = page.locator('.settings-vault[aria-current="true"]');
+  await expect(picked).toHaveCount(1);
+
+  const name = page.locator("#settings-body input.settings-name");
+  await name.fill("Мои заметки");
+  await name.press("Tab");
+  await expect(picked).toContainText("Мои заметки");
+
+  await page.locator('.settings-color[data-color="red"]').click();
+  await expect(page.locator('.settings-color[data-color="red"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(picked.locator(".vault-label")).toHaveAttribute("data-color", "red");
+
+  // S3 shows its key form; its button saves the fields.
+  const provider = page
+    .locator(".settings-row", { hasText: t("settings.vaults.provider") })
+    .locator("select");
+  await provider.selectOption("s3");
+  // The bucket is the first field; "Префикс в бакете" also has its name in it.
+  const bucket = page.locator(".settings-s3 label").first().locator("input");
+  await expect(page.locator(".settings-s3 label").first()).toContainText(t("dialog.sync.bucket"));
+  await expect(bucket).toHaveValue("kknow");
+  await bucket.fill("notes-bucket");
+  await page.locator(".settings-s3 button", { hasText: t("dialog.sync.save") }).click();
+  await expect(bucket).toHaveValue("notes-bucket");
+
+  await provider.selectOption("off");
+  await expect(page.locator(".settings-s3")).toHaveCount(0);
+  await expect(provider).toHaveValue("off");
+});
