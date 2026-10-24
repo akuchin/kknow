@@ -262,7 +262,7 @@ pub async fn check_update<R: Runtime>(app: AppHandle<R>) -> UpdateStatus {
 pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     let updates = app.state::<Updates>();
     let Some(ready) = updates.take() else {
-        return Err(Error::Update("новая версия ещё не скачана".into()));
+        return Err(Error::UpdateNotReady);
     };
 
     if crate::sync_status::start_closing() {

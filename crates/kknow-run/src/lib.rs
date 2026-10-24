@@ -53,7 +53,7 @@ pub enum Error {
     #[error("{}: {reason}", path.display())]
     Manifest { path: PathBuf, reason: String },
 
-    #[error("io error at {path}: {source}")]
+    #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]

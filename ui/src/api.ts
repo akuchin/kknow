@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { ErrorView } from "./error-view";
 
 /** An open vault: what the window shows after a switch. */
 export interface VaultInfo {
@@ -186,7 +187,8 @@ export interface SyncStatus {
   total: number;
   /** End of the last successful sync, in ms since the epoch. */
   at: number | null;
-  message: string | null;
+  /** What went wrong, as a coded error; `describeError` gives the text. */
+  message: ErrorView | null;
   /** Number of conflict copies in the folder. */
   conflicts: number;
   location: string | null;

@@ -32,6 +32,12 @@ import type {
   VaultView,
 } from "../api";
 import { setTaskBox, taskBox } from "../tasks";
+import type { ErrorView } from "../error-view";
+
+/** An error in the same shape as the real commands send it. */
+function coded(code: string, message: string, params: Record<string, string> = {}): ErrorView {
+  return { code, params, message };
+}
 
 /** Source line mark, the same as the core puts into HTML. */
 function line(number: number, block = false): string {
@@ -203,7 +209,7 @@ const notes: MockNote[] = [
 
 /** Mock image: an SVG of the needed size with a caption. */
 function mockImage(target: string): ArrayBuffer {
-  if (target.includes("missing")) throw new Error(`картинка не найдена: ${target}`);
+  if (target.includes("missing")) throw coded("imageNotFound", `картинка не найдена: ${target}`, { value: target });
   const [width, height] = target.includes("tall") ? [600, 1800] : [2400, 900];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#7aa2f7"/><circle cx="50%" cy="50%" r="${height / 4}" fill="#e0af68"/><text x="24" y="80" font-size="64" fill="#1a1b26">${target}</text></svg>`;
   return new TextEncoder().encode(svg).buffer as ArrayBuffer;
@@ -503,7 +509,7 @@ function bookmarkLines(marks: BookmarkMark[], content: string): BookmarkMark[] {
 
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
-  if (!note) throw new Error(`заметка не найдена: ${id}`);
+  if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
   return note;
 }
 
@@ -543,7 +549,7 @@ function parseQuery(query: string): { field: string | null; text: string } {
   const match = /^(title|tag|body|path):\((.*)\)$|^(title|tag|body|path):(\S+)$/.exec(query.trim());
   if (!match) {
     // An unclosed parenthesis is a broken query; the core behaves the same.
-    if (/^\w+:\(/.test(query.trim())) throw new Error("не удалось разобрать запрос");
+    if (/^\w+:\(/.test(query.trim())) throw coded("searchQuery", "не удалось разобрать запрос", { detail: query });
     return { field: null, text: query.trim().toLowerCase() };
   }
 
@@ -703,7 +709,7 @@ function fileEntry(path: string): FileEntry {
 
 function fileView(path: string): NoteView {
   const content = looseFiles.get(path);
-  if (content === undefined) throw new Error(`файла больше нет, он убран из списка: ${path}`);
+  if (content === undefined) throw coded("fileGone", `файла больше нет, он убран из списка: ${path}`, { value: path });
   const heading = /^#\s+(.+)$/m.exec(content)?.[1];
   return {
     id: path,
@@ -734,7 +740,7 @@ let update: UpdateStatus = sessionStorage.getItem("kknow:mock:updated")
 const attachments = new Map<string, ArrayBuffer | null>();
 
 function mockAttachment(name: string, bytes: ArrayBuffer | null): string {
-  if (!isImageName(name)) throw new Error(`invalid image name: ${name}`);
+  if (!isImageName(name)) throw coded("invalidImageName", `некорректное имя картинки: ${name}`, { value: name });
   const dot = name.lastIndexOf(".");
   let free = name;
   for (let n = 2; attachments.has(`attachments/${free}`); n++) {
@@ -846,7 +852,7 @@ export async function invoke<T>(
 
     case "activate_vault": {
       const found = vaults.find((vault) => vault.id === args?.id);
-      if (!found) throw new Error(`хранилище не найдено: ${String(args?.id)}`);
+      if (!found) throw coded("unknownVault", `хранилище не найдено: ${String(args?.id)}`, { value: String(args?.id) });
       activeVault = found;
       return vaultInfo(found) as T;
     }
@@ -921,7 +927,7 @@ export async function invoke<T>(
       const done = args?.done as boolean;
       const lines = note.content.split("\n");
       const changed = setTaskBox(lines[number - 1] ?? "", done);
-      if (changed === null) throw new Error(`в ${note.id} на строке ${number} нет задачи`);
+      if (changed === null) throw coded("notATask", `в ${note.id} на строке ${number} нет задачи: заметка изменилась`, { value: note.id, line: String(number) });
       lines[number - 1] = changed;
       note.content = lines.join("\n");
       // The mock HTML is fixed, so only the box of that line changes.
@@ -1003,7 +1009,7 @@ export async function invoke<T>(
     case "delete_note": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.notes.findIndex((note) => note.id === id);
-      if (index < 0) throw new Error(`заметка не найдена: ${id}`);
+      if (index < 0) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
       putInTrash(asked, `${id}.md`, asked.notes.splice(index, 1), []);
       return undefined as T;
     }
@@ -1018,9 +1024,9 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const to = (args?.to as string).replace(/^\/+|\/+$/g, "");
       const note = asked.notes.find((note) => note.id === id);
-      if (!note) throw new Error(`заметка не найдена: ${id}`);
+      if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
       if (asked.notes.some((other) => other !== note && other.id === to)) {
-        throw new Error(`заметка уже существует: ${to}`);
+        throw coded("noteExists", `заметка уже существует: ${to}`, { value: to });
       }
       note.id = to;
       note.folder = to.includes("/") ? to.slice(0, to.lastIndexOf("/")) : null;
@@ -1030,7 +1036,7 @@ export async function invoke<T>(
     case "duplicate_note": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const note = asked.notes.find((note) => note.id === id);
-      if (!note) throw new Error(`заметка не найдена: ${id}`);
+      if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
       // As in the core: `copy`, then `copy 2`, `copy 3`, and so on; the first free name.
       let copy = `${note.id} copy`;
       for (let n = 2; asked.notes.some((other) => other.id === copy); n += 1) {
@@ -1110,11 +1116,11 @@ export async function invoke<T>(
     case "restore_trash": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
-      if (index < 0) throw new Error(`запись корзины не найдена: ${String(args?.entry)}`);
+      if (index < 0) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.entry)}`, { value: String(args?.entry) });
       const entry = asked.trash[index];
       // As in the core: a taken file stops the whole restore.
       const taken = entry.notes.find((note) => asked.notes.some((other) => other.id === note.id));
-      if (taken) throw new Error(`файл уже существует: ${taken.id}.md`);
+      if (taken) throw coded("exists", `уже существует: ${taken.id}.md`, { value: `${taken.id}.md` });
       asked.trash.splice(index, 1);
       asked.notes.push(...entry.notes);
       asked.folders.push(...entry.folders.filter((folder) => !asked.folders.includes(folder)));
@@ -1125,14 +1131,14 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const entry = asked.trash.find((each) => each.id === args?.entry);
       const note = entry?.notes.find((each) => `${each.id}.md` === args?.note);
-      if (!note) throw new Error(`запись корзины не найдена: ${String(args?.note)}`);
+      if (!note) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.note)}`, { value: String(args?.note) });
       return note.html as T;
     }
 
     case "delete_trash_entry": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
-      if (index < 0) throw new Error(`запись корзины не найдена: ${String(args?.entry)}`);
+      if (index < 0) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.entry)}`, { value: String(args?.entry) });
       asked.trash.splice(index, 1);
       return undefined as T;
     }
@@ -1219,7 +1225,7 @@ export async function invoke<T>(
 
     case "run_command": {
       const command = MOCK_COMMANDS.find((entry) => entry.id === args?.command);
-      if (!command) throw new Error(`команда не найдена: ${String(args?.command)}`);
+      if (!command) throw coded("unknownCommand", `команда не найдена: ${String(args?.command)}`, { value: String(args?.command) });
 
       // The browser has no real processes: the mock returns prepared output.
       // Its job is to show the panel.
@@ -1283,10 +1289,10 @@ export async function invoke<T>(
       const provider = settings.provider;
 
       if (provider.kind === "s3" && !provider.bucket.trim()) {
-        throw new Error("не задан бакет");
+        throw coded("noBucket", "настройка синхронизации: не задан бакет");
       }
       if (provider.kind === "folder" && !provider.path.trim()) {
-        throw new Error("не задана папка");
+        throw coded("noFolder", "настройка синхронизации: не задана папка");
       }
 
       const location =
@@ -1318,7 +1324,7 @@ export async function invoke<T>(
       return undefined as T;
 
     case "sync_now": {
-      if (!remote) throw new Error("синхронизация не настроена");
+      if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
       statuses.set(activeVault.id, {
         ...statusOf(activeVault.id),
         state: "conflict",
@@ -1342,7 +1348,7 @@ export async function invoke<T>(
 
     case "open_file": {
       const path = args?.path as string;
-      if (!/\.(md|markdown|mdown)$/i.test(path)) throw new Error(`это не markdown-файл: ${path}`);
+      if (!/\.(md|markdown|mdown)$/i.test(path)) throw coded("notMarkdown", `это не markdown-файл: ${path}`, { value: path });
       if (!looseFiles.has(path)) looseFiles.set(path, `# ${fileEntry(path).name}\n\nОткрыт в заглушке.\n`);
       return { kind: "file", path } as T;
     }

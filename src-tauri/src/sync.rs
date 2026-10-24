@@ -320,7 +320,7 @@ fn failed<R: Runtime>(
 ) -> Error {
     statuses.update(app, vault, |status| {
         status.state = SyncState::Error;
-        status.message = Some(error.to_string());
+        status.message = Some((&error).into());
         status.location = Some(location.to_string());
     });
     error

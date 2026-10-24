@@ -55,7 +55,7 @@ import { PreviewNotes } from "./preview-notes";
 import { cellOf } from "./table-widget";
 import { Editor, type EditorPosition } from "./editor";
 import { icon, iconMarkup, type IconName } from "./icons";
-import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
+import { LOCALE_NAMES, describeError, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
@@ -520,7 +520,7 @@ function setStatus(text: string, tone: "idle" | "work" | "error" = "idle"): void
 }
 
 function fail(error: unknown): void {
-  setStatus(String(error), "error");
+  setStatus(describeError(error), "error");
 }
 
 function showUpdate(update: UpdateStatus): void {
@@ -2860,7 +2860,7 @@ async function adoptVaults(paths: string[]): Promise<void> {
     try {
       added = await api.addVault(path);
     } catch (error) {
-      problem ??= String(error);
+      problem ??= describeError(error);
     }
   }
 
@@ -3053,7 +3053,7 @@ async function openFiles(paths: string[]): Promise<void> {
     try {
       last = await api.openFile(path);
     } catch (error) {
-      problem ??= String(error);
+      problem ??= describeError(error);
     }
   }
 
@@ -3079,7 +3079,7 @@ async function savePastedImage(name: string, bytes: Uint8Array): Promise<string 
   try {
     return await api.saveAttachment(name, bytes, current.file ? current.id : null);
   } catch (error) {
-    setStatus(t("image.saveFailed", { error: String(error) }), "error");
+    setStatus(t("image.saveFailed", { error: describeError(error) }), "error");
     return null;
   }
 }
@@ -3098,7 +3098,7 @@ async function attachDropped(paths: string[], at: number): Promise<void> {
     try {
       saved.push(await api.attachFile(path, note.file ? note.id : null));
     } catch (error) {
-      problem ??= String(error);
+      problem ??= describeError(error);
     }
   }
   if (!current || positionKey(current) !== positionKey(note)) return;
@@ -3289,7 +3289,7 @@ async function runSync(): Promise<void> {
     );
   } catch (error) {
     // The core already set the segment state to error; only the report is left.
-    showSyncPanel(String(error), []);
+    showSyncPanel(describeError(error), []);
     fail(error);
   } finally {
     syncing = false;
@@ -3364,7 +3364,7 @@ function describeRemote(): void {
     const of = t("statusbar.sync.progress", { done: own.done, total: own.total });
     status.setSync(own.total > 0 ? of : t("statusbar.sync.busy"), "busy", t("status.syncing"));
   } else if (own.state === "error") {
-    status.setSync(t("statusbar.sync.error"), "error", own.message ?? "");
+    status.setSync(t("statusbar.sync.error"), "error", own.message ? describeError(own.message) : "");
   } else {
     const when = own.at ? ` · ${timeAgo(own.at)}` : "";
     status.setSync(

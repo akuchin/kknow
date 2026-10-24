@@ -6,31 +6,31 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("vault root is not a directory: {0}")]
+    #[error("корень хранилища — не каталог: {0}")]
     NotADirectory(PathBuf),
 
-    #[error("note not found in vault: {0}")]
+    #[error("заметки нет в хранилище: {0}")]
     NoteNotFound(NoteId),
 
-    #[error("path escapes the vault root: {0}")]
+    #[error("путь выходит за корень хранилища: {0}")]
     OutsideVault(PathBuf),
 
-    #[error("invalid folder path: {0}")]
+    #[error("некорректный путь папки: {0}")]
     InvalidFolder(String),
 
-    #[error("already exists: {0}")]
+    #[error("уже существует: {0}")]
     AlreadyExists(PathBuf),
 
-    #[error("trash entry not found: {0}")]
+    #[error("запись корзины не найдена: {0}")]
     TrashEntryNotFound(String),
 
-    #[error("file is too large: {0}")]
+    #[error("файл слишком большой: {0}")]
     TooLarge(PathBuf),
 
-    #[error("invalid image name: {0}")]
+    #[error("некорректное имя картинки: {0}")]
     InvalidImageName(String),
 
-    #[error("io error at {path}: {source}")]
+    #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]

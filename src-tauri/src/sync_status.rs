@@ -54,8 +54,8 @@ pub struct SyncStatus {
     /// formats the time ("2 min ago") because the format depends on the
     /// language.
     pub at: Option<u64>,
-    /// What went wrong: a string from the core, like all other errors.
-    pub message: Option<String>,
+    /// What went wrong: a code with values, like all other errors.
+    pub message: Option<crate::errors::ErrorView>,
     /// Number of conflict copies in the folder.
     pub conflicts: usize,
     /// Sync target: a bucket or a folder.

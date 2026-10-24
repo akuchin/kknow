@@ -22,6 +22,7 @@
  */
 
 import type ru from "../../locales/ru.json";
+import { errorText } from "./error-view";
 
 /** Values for `{{name}}` substitution. */
 export type Params = Record<string, string | number>;
@@ -112,4 +113,17 @@ function lookup(from: Dict, key: string, params: Params): string | undefined {
   if (key in from) return from[key];
   const category = plurals.select(Number(params.count ?? 0));
   return from[`${key}_${category}`] ?? from[`${key}_other`];
+}
+
+/** The text for a key that the code builds at run time, if a locale has it. */
+function maybe(key: string, params: Params): string | undefined {
+  if (lookup(dict, key, params) === undefined && lookup(reference, key, params) === undefined) {
+    return undefined;
+  }
+  return t(key as Key, params);
+}
+
+/** The error text in this language; see `error-view.ts`. */
+export function describeError(error: unknown): string {
+  return errorText(error, maybe);
 }

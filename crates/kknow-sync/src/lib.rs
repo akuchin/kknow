@@ -86,7 +86,7 @@ pub fn connect(config: &RemoteConfig, secret: Option<String>) -> Result<Box<dyn 
         }
 
         #[cfg(not(feature = "s3"))]
-        Provider::S3(_) => Err(Error::Config("эта сборка собрана без поддержки S3".into())),
+        Provider::S3(_) => Err(Error::NoS3),
     }
 }
 
@@ -103,8 +103,14 @@ pub enum Error {
     #[error("манифест не разобрать: {0}")]
     Manifest(#[from] serde_json::Error),
 
-    #[error("настройка синхронизации: {0}")]
-    Config(String),
+    #[error("настройка синхронизации: не задан бакет")]
+    NoBucket,
+
+    #[error("настройка синхронизации: не задана папка")]
+    NoFolder,
+
+    #[error("эта сборка собрана без поддержки S3")]
+    NoS3,
 
     #[error("манифест обещает заметку {0}, но в хранилище её нет")]
     MissingRemote(NoteId),
@@ -115,7 +121,7 @@ pub enum Error {
     #[error("хранилище изменилось во время синхронизации — запустите её ещё раз")]
     RemoteChanged,
 
-    #[error("io error at {path}: {source}")]
+    #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]

@@ -73,7 +73,7 @@ pub enum Error {
     #[error("хранилища не могут лежать одно в другом: {0} внутри {1}")]
     NestedVault(PathBuf, PathBuf),
 
-    #[error("io error at {path}: {source}")]
+    #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]

@@ -2039,6 +2039,18 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   has the parts "plan — network — write" for the same reason. In Tauri this
   needs `#[tauri::command(async)]`. Without it, the command would run on the
   main thread, and the window would stop responding.
+- **An error goes to the window as a code, not as a text.** The core writes
+  its errors in Russian, because the CLI prints them as they are. The window
+  has a second language, so a command fails with `{ code, params, message }`
+  (`src-tauri/src/errors.rs`), and `describeError` (`ui/src/i18n.ts`) shows
+  the `error.<code>` text from `locales/`. The Russian `message` is the
+  fallback for a code without a text.
+  - The map from the error types to codes lives in `src-tauri`, not in the
+    crates: the codes are a contract with the window.
+  - A test reads `errors.rs` and checks that each code has a text in each
+    locale file. The mock (`ui/src/mock/core.ts`) fails with the same shape.
+  - The `detail` value comes from the OS or a library (an I/O error, an S3
+    reply). It stays in the language of its source.
 - **Almost all commands are `#[tauri::command(async)]`.** A sync command runs
   on the main thread, so a slow disk, a lazy vault open or the network freezes
   the window. Only getters of memory stay sync (`list_vaults`,

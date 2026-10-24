@@ -1,5 +1,6 @@
 mod association;
 mod commands;
+mod errors;
 mod files;
 mod keymap;
 mod live;

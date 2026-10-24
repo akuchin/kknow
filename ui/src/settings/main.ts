@@ -61,7 +61,7 @@ import {
   type Keymap,
 } from "../actions";
 import { iconMarkup } from "../icons";
-import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "../i18n";
+import { LOCALE_NAMES, describeError, locale, locales, setLocale, t, type Key } from "../i18n";
 import { MODES } from "../note-mode";
 import { SCALE_PERCENT } from "../note-scale";
 import "../styles.css";
@@ -447,7 +447,7 @@ function updateRow(): HTMLElement {
     try {
       update = await api.checkUpdate();
     } catch (error) {
-      update = { state: "failed", message: String(error) };
+      update = { state: "failed", message: describeError(error) };
     }
     paintUpdate?.();
   };
@@ -498,12 +498,12 @@ function markdownRow(): HTMLElement {
       state.textContent = t("settings.general.markdown.done");
     } catch (error) {
       claim.disabled = false;
-      state.textContent = String(error);
+      state.textContent = describeError(error);
     }
   };
 
   api.markdownAssociation().then(show, (error) => {
-    state.textContent = String(error);
+    state.textContent = describeError(error);
   });
   return item;
 }
@@ -521,7 +521,7 @@ async function renderAppearance(): Promise<void> {
     themes = set.themes;
     problems = set.problems;
   } catch (error) {
-    problems = [String(error)];
+    problems = [describeError(error)];
   }
 
   const options = [
@@ -582,7 +582,7 @@ async function renderAppearance(): Promise<void> {
   function showProblem(error: unknown): void {
     const note = document.createElement("p");
     note.className = "settings-problem";
-    note.textContent = String(error);
+    note.textContent = describeError(error);
     page.append(note);
   }
 }
@@ -617,7 +617,7 @@ function themeRow(theme: Theme): HTMLElement {
       await renderAppearance();
     } catch (error) {
       share.disabled = false;
-      share.title = String(error);
+      share.title = describeError(error);
       console.error(error);
     }
   };
@@ -994,7 +994,7 @@ async function renderCommands(): Promise<void> {
     // vaults only, and picking them by name is easier.
     [manifest, vaults] = await Promise.all([api.editCommands(), api.listVaults()]);
   } catch (error) {
-    page.append(heading(t("settings.section.commands")), problem(String(error)));
+    page.append(heading(t("settings.section.commands")), problem(describeError(error)));
     el.body.replaceChildren(page);
     return;
   }
@@ -1859,7 +1859,7 @@ async function renderVaultStats(page: HTMLElement, vault: VaultView): Promise<vo
       .filter(Boolean)
       .join(" · ");
   } catch (error) {
-    line.textContent = String(error);
+    line.textContent = describeError(error);
   }
 }
 

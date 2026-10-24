@@ -9,6 +9,7 @@ use kknow_app::vaults::{LabelColor, VaultEntry, VaultRegistry};
 use kknow_run::CommandSet;
 use serde::{Serialize, Serializer};
 
+use crate::errors::ErrorView;
 use crate::files::Opened;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -51,6 +52,9 @@ pub enum Error {
     #[error("не удалось открыть окно: {0}")]
     Window(String),
 
+    #[error("новая версия ещё не скачана")]
+    UpdateNotReady,
+
     #[error("не удалось установить обновление: {0}")]
     Update(String),
 
@@ -69,10 +73,11 @@ pub enum Error {
     Run(#[from] kknow_run::Error),
 }
 
-/// The error goes to the frontend as a string: that is all the status needs.
+/// The error goes to the window as a code with values, so the window can show
+/// it in its own language (`errors.rs`).
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        ErrorView::from(self).serialize(serializer)
     }
 }
 

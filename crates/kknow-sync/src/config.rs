@@ -171,12 +171,8 @@ impl RemoteConfig {
     /// Empty settings are not saved: without a bucket or path there is no target.
     fn check(&self) -> Result<()> {
         match &self.provider {
-            Provider::S3(s3) if s3.bucket.trim().is_empty() => {
-                Err(Error::Config("не задан бакет".into()))
-            }
-            Provider::Folder { path } if path.as_os_str().is_empty() => {
-                Err(Error::Config("не задана папка".into()))
-            }
+            Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket),
+            Provider::Folder { path } if path.as_os_str().is_empty() => Err(Error::NoFolder),
             _ => Ok(()),
         }
     }
