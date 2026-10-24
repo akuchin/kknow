@@ -18,7 +18,7 @@ jobs:
         os: [macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: System libraries (Linux)
         if: runner.os == 'Linux'
