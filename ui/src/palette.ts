@@ -303,7 +303,11 @@ export class Palette {
     }
   }
 
-  /** Bookmarks filtered by the typed text: note title, path and line text. */
+  /**
+   * Bookmarks filtered by the typed text: name, note title, path and line text.
+   * A named bookmark shows its name as the title, and the note title moves to
+   * the snippet next to the line text.
+   */
   private async runBookmarks(text: string, ticket: number): Promise<void> {
     let bookmarks: BookmarkView[];
     try {
@@ -318,17 +322,21 @@ export class Palette {
       .filter(
         (bookmark) =>
           !wanted ||
-          [bookmark.title, bookmark.note, bookmark.text].some((field) =>
+          [bookmark.name ?? "", bookmark.title, bookmark.note, bookmark.text].some((field) =>
             field.toLowerCase().includes(wanted),
           ),
       )
-      .map<Row>((bookmark) => ({
-        id: bookmark.note,
-        title: bookmark.title,
-        folder: bookmark.folder,
-        snippet: escapeHtml(bookmark.text.trim()) || null,
-        line: bookmark.line,
-      }));
+      .map<Row>((bookmark) => {
+        const text = bookmark.text.trim();
+        const snippet = bookmark.name ? [bookmark.title, text].filter(Boolean).join(" — ") : text;
+        return {
+          id: bookmark.note,
+          title: bookmark.name ?? bookmark.title,
+          folder: bookmark.folder,
+          snippet: escapeHtml(snippet) || null,
+          line: bookmark.line,
+        };
+      });
     this.show(
       rows,
       t("palette.bookmarks"),

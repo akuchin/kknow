@@ -13,14 +13,18 @@ import {
   revealNote,
   type AgentNote,
 } from "./agent-notes";
+import type { BookmarkMark } from "./api";
+import { bookmarkMenu } from "./bookmark-menu";
 import {
+  bookmarkChanged,
   bookmarkLines,
-  bookmarkToggled,
+  bookmarkMarks,
   bookmarks,
   goToLine,
-  setBookmarkLines,
+  setBookmarkMarks,
   toggleBookmark,
   toggleBookmarkAt,
+  type BookmarkChange,
 } from "./bookmarks";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
@@ -222,8 +226,8 @@ export interface EditorOptions {
   onChange: (text: string) => void;
   /** Agent notes in the open text, for the list in the window header. */
   onNotes?: (notes: AgentNote[]) => void;
-  /** A bookmark was toggled; `lines` holds all bookmark lines after it. */
-  onBookmark?: (lines: number[], set: boolean) => void;
+  /** The user changed a bookmark; `marks` holds all bookmarks after it. */
+  onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
 }
 
 /** A CodeMirror wrapper that exposes only the text. */
@@ -263,6 +267,7 @@ export class Editor {
         livePreview(),
         agentNotes(),
         bookmarks(),
+        bookmarkMenu(),
         blockSelection,
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,
@@ -271,8 +276,8 @@ export class Editor {
           if (update.docChanged) {
             options.onChange(update.state.doc.toString());
           }
-          const toggled = bookmarkToggled(update);
-          if (toggled) options.onBookmark?.(bookmarkLines(update.state), toggled.set);
+          const changed = bookmarkChanged(update);
+          if (changed) options.onBookmark?.(bookmarkMarks(update.state), changed.change);
           // Notes come from the syntax tree, which a long note builds in the
           // background after opening, so tree updates also trigger a report.
           if (update.docChanged || syntaxTree(update.startState) !== syntaxTree(update.state)) {
@@ -352,12 +357,17 @@ export class Editor {
     return bookmarkLines(this.view.state);
   }
 
+  /** Bookmarks with their names, sorted by line. */
+  getBookmarkMarks(): BookmarkMark[] {
+    return bookmarkMarks(this.view.state);
+  }
+
   /**
    * Call after `setText`, which clears bookmarks.
    * `enabled` is false for separate files: they cannot have bookmarks.
    */
-  setBookmarks(lines: number[], enabled: boolean): void {
-    setBookmarkLines(this.view, lines, enabled);
+  setBookmarks(marks: BookmarkMark[], enabled: boolean): void {
+    setBookmarkMarks(this.view, marks, enabled);
   }
 
   toggleBookmark(): void {

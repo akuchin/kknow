@@ -52,8 +52,7 @@ The plan for the redesign is closed. Its archive copy is
 
 - **Bookmarks do not sync, and you cannot go from one bookmark to the next.**
   Sync does not include `.kknow`, so bookmarks stay on one machine. The editor
-  has no command for the next and the previous bookmark in a note. A click does
-  not remove the marker. Only ⌘⇧B or the button in the popover removes it. The
+  has no command for the next and the previous bookmark in a note. The
   line markers in the preview (`data-line`) have one more use. They can scroll
   the preview together with the editor in "Side by side".
 

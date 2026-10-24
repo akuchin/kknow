@@ -22,7 +22,7 @@ use kknow_sync::{
     SyncProvider,
 };
 
-use crate::bookmarks::{Bookmark, Bookmarks};
+use crate::bookmarks::{Bookmark, Bookmarks, Mark};
 use crate::theme::ThemeSet;
 use crate::watch::{VaultEvent, VaultWatcher};
 
@@ -195,24 +195,31 @@ impl Workspace {
             .collect()
     }
 
-    /// Bookmark lines of the note in `content`, sorted and without duplicates.
+    /// Bookmarks of the note in `content`: lines with names, sorted and
+    /// without duplicates. Of two bookmarks on one line, a named one wins.
     ///
     /// If a bookmark's line text is not found, it keeps its old number, clamped
     /// to the text. So the user can see it and remove it.
-    pub fn bookmark_lines(&self, id: &NoteId, content: &str) -> Vec<usize> {
+    pub fn note_bookmarks(&self, id: &NoteId, content: &str) -> Vec<Mark> {
         let last = content.lines().count();
         if last == 0 {
             return Vec::new();
         }
-        let mut lines: Vec<usize> = self
+        let mut marks: Vec<Mark> = self
             .bookmarks
             .for_note(id)
             .into_iter()
-            .map(|bookmark| bookmark.locate(content).unwrap_or(bookmark.line).clamp(1, last))
+            .map(|bookmark| Mark {
+                line: bookmark
+                    .locate(content)
+                    .unwrap_or(bookmark.line)
+                    .clamp(1, last),
+                name: bookmark.name.clone(),
+            })
             .collect();
-        lines.sort_unstable();
-        lines.dedup();
-        lines
+        marks.sort_by_key(|mark| (mark.line, mark.name.is_none()));
+        marks.dedup_by_key(|mark| mark.line);
+        marks
     }
 
     /// Sets or removes a bookmark on line `line` of the note as it is on disk.
@@ -224,11 +231,19 @@ impl Workspace {
         Ok(set)
     }
 
-    /// Puts the note bookmarks on exactly these lines of `content`
-    /// ([`Bookmarks::place`]). The window uses this to report where edits
+    /// Names the bookmark on line `line` of the note, or removes the name
+    /// (`None`). `false` means there is no bookmark on that line.
+    pub fn name_bookmark(&mut self, id: &NoteId, line: usize, name: Option<&str>) -> Result<bool> {
+        let mut found = false;
+        self.edit_bookmarks(|bookmarks| found = bookmarks.rename_mark(id, line, name))?;
+        Ok(found)
+    }
+
+    /// Puts the note bookmarks on exactly these lines of `content`, with these
+    /// names ([`Bookmarks::place`]). The window uses this to report where edits
     /// moved them.
-    pub fn set_bookmarks(&mut self, id: &NoteId, lines: &[usize], content: &str) -> Result<()> {
-        self.edit_bookmarks(|bookmarks| bookmarks.place(id, lines, content))
+    pub fn set_bookmarks(&mut self, id: &NoteId, marks: &[Mark], content: &str) -> Result<()> {
+        self.edit_bookmarks(|bookmarks| bookmarks.place(id, marks, content))
     }
 
     fn reparse_all(&mut self) -> Result<()> {
@@ -722,6 +737,10 @@ mod tests {
             .collect()
     }
 
+    fn lines(marks: Vec<Mark>) -> Vec<usize> {
+        marks.into_iter().map(|mark| mark.line).collect()
+    }
+
     fn bookmarked(workspace: &Workspace) -> Vec<(String, usize)> {
         workspace
             .bookmarks()
@@ -752,7 +771,7 @@ mod tests {
         let edited = "# kknow\n\nВступление.\n\nПроект про заметки и синхронизацию. #rust";
         workspace.save(&kknow, edited).unwrap();
 
-        assert_eq!(workspace.bookmark_lines(&kknow, edited), [5]);
+        assert_eq!(lines(workspace.note_bookmarks(&kknow, edited)), [5]);
     }
 
     #[test]
@@ -775,8 +794,32 @@ mod tests {
         let kknow = NoteId::parse("Projects/kknow").unwrap();
         workspace.toggle_bookmark(&kknow, 3).unwrap();
 
-        assert_eq!(workspace.bookmark_lines(&kknow, "# kknow\n"), [1]);
-        assert!(workspace.bookmark_lines(&kknow, "").is_empty());
+        assert_eq!(lines(workspace.note_bookmarks(&kknow, "# kknow\n")), [1]);
+        assert!(workspace.note_bookmarks(&kknow, "").is_empty());
+    }
+
+    #[test]
+    fn a_bookmark_name_survives_reopening_and_saves() {
+        let (dir, mut workspace) = workspace();
+        let kknow = NoteId::parse("Projects/kknow").unwrap();
+        workspace.toggle_bookmark(&kknow, 3).unwrap();
+
+        assert!(workspace.name_bookmark(&kknow, 3, Some("суть")).unwrap());
+        assert!(
+            !workspace
+                .name_bookmark(&kknow, 1, Some("заголовок"))
+                .unwrap()
+        );
+        drop(workspace);
+        let mut workspace = Workspace::open(dir.path()).unwrap();
+
+        let edited = "# kknow\n\nВступление.\n\nПроект про заметки и синхронизацию. #rust";
+        workspace.save(&kknow, edited).unwrap();
+
+        assert_eq!(
+            workspace.note_bookmarks(&kknow, edited),
+            [Mark::new(5, Some("суть"))]
+        );
     }
 
     #[test]

@@ -162,7 +162,7 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line>`.
+`bookmark <note> <line> [--name <name>]`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
@@ -551,16 +551,23 @@ icons, in "Side by side" and in "Read".
 "Read" has no cursor. There, ⌘⇧B adds a bookmark to the selection. Without a
 selection, it adds a bookmark to the first visible paragraph at the top.
 
+A bookmark can have a name. Right-click the bookmark icon to open its menu:
+"Add name" (or "Rename"), "Remove name" and "Remove bookmark". Point to the
+icon to see the name.
+
 ⌘⌥B opens the palette on the "Bookmarks" chip. The palette shows all bookmarks
-in the vault with the line text. Type to make the list shorter. Press Enter to
-open the note at that line.
+in the vault with the line text. A named bookmark shows its name as the title.
+Type to make the list shorter: the palette looks in names, note titles, paths
+and line text. Press Enter to open the note at that line.
 
 A bookmark moves with its line if you add text above it. This works while you
 edit and after a restart.
 
 kknow keeps bookmarks in the vault, in `.kknow/bookmarks.json`, so the terminal
-also sees them. `kknow bookmarks` prints the list. `kknow bookmark plan 12` adds
-or removes a bookmark. Sync does not copy the service folder `.kknow`, so
+also sees them. `kknow bookmarks` prints the list, with names in «». `kknow
+bookmark plan 12` adds or removes a bookmark. `kknow bookmark plan 12 --name
+итоги` gives the bookmark a name, and sets the bookmark if it is not there.
+`--name ""` removes the name. Sync does not copy the service folder `.kknow`, so
 bookmarks stay on one machine. Standalone files have no bookmarks.
 
 ## Edits outside the app
