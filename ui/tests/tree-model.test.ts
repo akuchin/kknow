@@ -4,7 +4,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { NoteSummary } from "../src/api.ts";
-import { buildTree, descend, fileName, sortFolder, type Folder } from "../src/tree-model.ts";
+import {
+  buildTree,
+  descend,
+  fileName,
+  folderOf,
+  join,
+  leafOf,
+  sortFolder,
+  type Folder,
+} from "../src/tree-model.ts";
 
 const collator = new Intl.Collator("ru");
 
@@ -89,4 +98,13 @@ test("sortFolder sorts nested folders too", () => {
   descend(root, "б");
   sortFolder(root, collator);
   assert.deepEqual(shape(root), [{ "б/": [] }, { "в/": [{ "а/": [] }, { "я/": [] }] }]);
+});
+
+test("path helpers split and join folder paths", () => {
+  assert.equal(folderOf("a/b/c"), "a/b");
+  assert.equal(folderOf("c"), "");
+  assert.equal(leafOf("a/b/c"), "c");
+  assert.equal(leafOf("c"), "c");
+  assert.equal(join("a/b", "c"), "a/b/c");
+  assert.equal(join("", "c"), "c");
 });

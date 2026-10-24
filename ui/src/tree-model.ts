@@ -73,3 +73,19 @@ export function sortFolder(folder: Folder, collator: Intl.Collator): void {
   folder.notes.sort((a, b) => collator.compare(fileName(a), fileName(b)));
   for (const child of folder.folders) sortFolder(child, collator);
 }
+
+/** Parent folder of a path: `a/b/c` → `a/b`; an empty string for the root. */
+export function folderOf(path: string): string {
+  const at = path.lastIndexOf("/");
+  return at > 0 ? path.slice(0, at) : "";
+}
+
+/** Last segment of a path: `a/b/c` → `c`. */
+export function leafOf(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+/** A name inside a folder; the root has no prefix. */
+export function join(folder: string, name: string): string {
+  return folder ? `${folder}/${name}` : name;
+}

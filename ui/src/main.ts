@@ -61,7 +61,7 @@ import { SaveQueue } from "./session";
 import { countWords } from "./statusbar";
 import "./styles.css";
 import { describeReport, syncSegment, type SyncWords } from "./sync-text";
-import { buildTree, fileName, type Folder } from "./tree-model";
+import { buildTree, fileName, folderOf, join, leafOf, type Folder } from "./tree-model";
 import { app, el, initDom } from "./window/dom";
 import { editor, initEditor } from "./window/editor";
 import {
@@ -2072,20 +2072,6 @@ function openMoveMenu(anchor: HTMLElement, target: CommandTarget): void {
       : [{ label: t("commands.move.none"), disabled: true, run: () => {} }];
 
   openMenu(anchor, [{ title: t("commands.move.title", { name: leaf }), items }]);
-}
-
-/** Parent folder of a path: `a/b/c` → `a/b`; an empty string for the root. */
-function folderOf(path: string): string {
-  const at = path.lastIndexOf("/");
-  return at > 0 ? path.slice(0, at) : "";
-}
-
-function leafOf(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
-
-function join(folder: string, name: string): string {
-  return folder ? `${folder}/${name}` : name;
 }
 
 /**
