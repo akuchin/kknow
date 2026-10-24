@@ -45,6 +45,9 @@ pub enum Error {
     #[error("картинка не найдена: {0}")]
     ImageNotFound(String),
 
+    #[error("картинка пришла не байтами")]
+    NoImageBytes,
+
     #[error("не удалось открыть окно: {0}")]
     Window(String),
 

@@ -11,8 +11,9 @@ use kknow_app::vaults::VaultEntry;
 use kknow_app::{Saved, Workspace};
 use kknow_core::NoteId;
 use kknow_index::Edge;
+use percent_encoding::percent_decode_str;
 use serde::Serialize;
-use tauri::ipc::Response;
+use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Manager, Runtime, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::state::{AppState, Error, Result};
@@ -114,6 +115,24 @@ pub struct BookmarkView {
     text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+}
+
+/// A task in the palette list.
+#[derive(Serialize)]
+pub struct TaskView {
+    note: String,
+    title: String,
+    folder: Option<String>,
+    line: usize,
+    text: String,
+    done: bool,
+}
+
+/// A moved note: its new ID and the number of notes whose links changed.
+#[derive(Serialize)]
+pub struct RenamedNote {
+    id: String,
+    relinked: usize,
 }
 
 fn info(entry: &VaultEntry, workspace: &Workspace) -> VaultInfo {
@@ -509,6 +528,63 @@ pub fn note_image(
     Ok(Response::new(bytes))
 }
 
+/// Saves a pasted image and returns the path for the link.
+///
+/// The body is raw bytes, for the same reason as in `note_image`. So the name
+/// and the standalone file come in headers, percent-encoded: a header holds
+/// only ASCII. The window gives only a file name. The core selects the folder:
+/// `attachments/` at the vault root, or next to a standalone file.
+#[tauri::command]
+pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Result<String> {
+    let header = |key: &str| {
+        let value = request.headers().get(key)?.to_str().ok()?;
+        Some(percent_decode_str(value).decode_utf8_lossy().into_owned())
+    };
+    let dir = attachment_dir(&state, header("kknow-file").as_deref())?;
+    let name = header("kknow-name").unwrap_or_default();
+    let saved = match request.body() {
+        InvokeBody::Raw(bytes) => kknow_core::image::save(&dir, &name, bytes),
+        // The fallback IPC path sends bytes as a JSON array of numbers.
+        InvokeBody::Json(value) => {
+            let bytes: Vec<u8> =
+                serde_json::from_value(value.clone()).map_err(|_| Error::NoImageBytes)?;
+            kknow_core::image::save(&dir, &name, &bytes)
+        }
+    };
+    Ok(saved.map_err(kknow_app::Error::from)?)
+}
+
+/// Copies an image file dropped on the editor, like `save_attachment`.
+///
+/// `source` comes from the shell drop event, as in `open_file`. The command
+/// only reads it, and only an image of a limited size.
+#[tauri::command]
+pub fn attach_file(
+    state: State<'_, AppState>,
+    source: String,
+    file: Option<String>,
+) -> Result<String> {
+    let dir = attachment_dir(&state, file.as_deref())?;
+    Ok(kknow_core::image::import(&dir, Path::new(&source)).map_err(kknow_app::Error::from)?)
+}
+
+/// Where `attachments/` goes: the active vault root, or the folder of a
+/// standalone file. The file must be in the list (`known_file`).
+fn attachment_dir(state: &AppState, file: Option<&str>) -> Result<PathBuf> {
+    match file {
+        Some(file) => {
+            let path = state.known_file(file)?;
+            let dir = path
+                .parent()
+                .ok_or_else(|| Error::UnknownFile(file.to_string()))?;
+            Ok(dir.to_path_buf())
+        }
+        None => state
+            .slot(None)?
+            .read(|workspace| Ok(workspace.root().to_path_buf())),
+    }
+}
+
 #[tauri::command]
 pub fn create_note(
     state: State<'_, AppState>,
@@ -703,7 +779,46 @@ pub fn list_bookmarks(
     })
 }
 
-/// Renames or moves a note and returns its new ID.
+/// Tasks of all vault notes, sorted by note and line.
+#[tauri::command]
+pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<TaskView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        Ok(workspace
+            .tasks()
+            .into_iter()
+            .map(|(id, task)| TaskView {
+                note: id.as_str().to_string(),
+                title: title_of(workspace, id),
+                folder: id.folder().map(str::to_string),
+                line: task.line,
+                text: task.text.clone(),
+                done: task.done,
+            })
+            .collect())
+    })
+}
+
+/// Marks the task on a note line as done or open and returns the note.
+///
+/// The core reads the line from disk and refuses it if it is no longer a
+/// task. The window saves its edits before the call, so the disk is current.
+#[tauri::command]
+pub fn set_task(
+    state: State<'_, AppState>,
+    id: String,
+    line: usize,
+    done: bool,
+    vault: Option<String>,
+) -> Result<NoteView> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        let id = note_id(workspace, &id)?;
+        let content = workspace.set_task(&id, line, done)?;
+        Ok(note_view(workspace, &id, content))
+    })
+}
+
+/// Renames or moves a note and returns its new ID and the number of notes
+/// with rewritten links.
 ///
 /// The new name is the full path from the root, `Folder/Name`. For the core,
 /// rename and move are one operation, so the window does not separate them.
@@ -713,12 +828,15 @@ pub fn rename_note(
     id: String,
     to: String,
     vault: Option<String>,
-) -> Result<String> {
+) -> Result<RenamedNote> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let from = note_id(workspace, &id)?;
         let to = NoteId::parse(&to).ok_or_else(|| kknow_app::Error::InvalidName(to.clone()))?;
-        workspace.rename(&from, &to)?;
-        Ok(to.as_str().to_string())
+        let relinked = workspace.rename(&from, &to)?;
+        Ok(RenamedNote {
+            id: to.as_str().to_string(),
+            relinked: relinked.notes,
+        })
     })
 }
 
@@ -735,17 +853,18 @@ pub fn duplicate_note(
     })
 }
 
-/// Renames or moves a folder with all its notes.
+/// Renames or moves a folder with all its notes. Returns the number of notes
+/// with rewritten links.
 #[tauri::command]
 pub fn rename_folder(
     state: State<'_, AppState>,
     name: String,
     to: String,
     vault: Option<String>,
-) -> Result<()> {
+) -> Result<usize> {
     state
         .slot(vault.as_deref())?
-        .write(|workspace| Ok(workspace.rename_folder(&name, &to)?))
+        .write(|workspace| Ok(workspace.rename_folder(&name, &to)?.notes))
 }
 
 #[tauri::command]
@@ -873,19 +992,43 @@ mod tests {
     }
 
     #[test]
+    fn tasks_are_listed_and_set_through_the_note() {
+        let dir = vault();
+        fs::write(
+            dir.path().join("Index.md"),
+            "# Оглавление\n\n- [ ] прочитать\n",
+        )
+        .unwrap();
+        let app = app(&[dir.path()]);
+
+        let listed = list_tasks(app.state(), None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "Оглавление");
+        assert_eq!((listed[0].line, listed[0].done), (3, false));
+        assert_eq!(listed[0].text, "прочитать");
+
+        let note = set_task(app.state(), "Index".into(), 3, true, None).unwrap();
+        assert_eq!(note.content, "# Оглавление\n\n- [x] прочитать\n");
+        assert!(list_tasks(app.state(), None).unwrap()[0].done);
+        assert!(set_task(app.state(), "Index".into(), 1, true, None).is_err());
+    }
+
+    #[test]
     fn rename_note_returns_the_new_id_and_moves_the_file() {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        let id = rename_note(
+        let renamed = rename_note(
             app.state(),
             "Projects/kknow".into(),
             "Архив/kknow-old".into(),
             None,
         )
         .unwrap();
+        let id = renamed.id;
 
         assert_eq!(id, "Архив/kknow-old");
+        assert_eq!(renamed.relinked, 1, "ссылка из оглавления");
         assert!(dir.path().join("Архив/kknow-old.md").is_file());
         assert!(!dir.path().join("Projects/kknow.md").exists());
         assert!(load_note(app.state(), id, None).is_ok());
@@ -917,8 +1060,9 @@ mod tests {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        rename_folder(app.state(), "Projects".into(), "Work".into(), None).unwrap();
+        let relinked = rename_folder(app.state(), "Projects".into(), "Work".into(), None).unwrap();
 
+        assert_eq!(relinked, 1, "ссылка из оглавления");
         let notes = list_notes(app.state(), None).unwrap();
         assert!(notes.iter().any(|note| note.id == "Work/kknow"));
         assert!(

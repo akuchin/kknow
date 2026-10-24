@@ -46,8 +46,9 @@ import {
 import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
-import { paintBookmarks, topLine } from "./preview-lines";
-import { paintImages, setImageOwner } from "./images";
+import { markLine, paintBookmarks, scrollToLine, topLine } from "./preview-lines";
+import { imageLink } from "./attachment-name";
+import { isImage, paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
 import { cellOf } from "./table-widget";
@@ -57,6 +58,7 @@ import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
 import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
+import type { Heading } from "./outline";
 import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
@@ -363,6 +365,7 @@ const editor = new Editor(el.editor, {
   onChange: onEdit,
   onNotes: showNotes,
   onBookmark: (marks, change) => void saveBookmarks(marks, change),
+  saveImage: savePastedImage,
 });
 
 /** Agent notes from the preview: in "Read" mode the editor is hidden. */
@@ -765,6 +768,7 @@ async function refreshPreview(text: string): Promise<void> {
 function showPreview(html: string): void {
   if (mode === "edit") return;
   el.preview.innerHTML = html;
+  enableTaskBoxes();
   paintBookmarks(el.preview, editor.getBookmarks());
   paintCodeBlocks(el.preview);
   paintImages(el.preview);
@@ -1521,6 +1525,61 @@ async function openBookmark(id: string, line: number): Promise<void> {
   editor.goToLine(nearest ?? line);
 }
 
+/** Opens a task from the palette: the note at the task line. */
+async function openTask(id: string, line: number): Promise<void> {
+  if (current?.id !== id || current.file) await openNote(id);
+  if (current?.id !== id) return;
+  // "Read" mode hides the editor, but the line must be visible.
+  if (mode === "read") setMode("split", { remember: false });
+  editor.goToLine(line);
+}
+
+/**
+ * The core renders task boxes as disabled inputs, and a disabled input gets
+ * no clicks. A vault note makes them clickable; a separate file has no line
+ * marks, so its boxes stay as they are.
+ */
+function enableTaskBoxes(): void {
+  if (!current || current.file) return;
+  for (const box of el.preview.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")) {
+    box.disabled = false;
+  }
+}
+
+/**
+ * A click on a task box in the preview.
+ *
+ * The core changes the file, not the window: it checks that the line is still
+ * a task and writes through the usual save. The pending edits go to disk
+ * first, so the core sees the text of the editor. Then the editor changes the
+ * same character, and its text is again equal to the disk.
+ */
+async function setTask(line: number, done: boolean): Promise<void> {
+  if (!current || current.file) return;
+  const id = current.id;
+  await flushPendingSave();
+  if (current?.id !== id) return;
+  try {
+    const view = await api.setTask(id, line, done);
+    if (current?.id !== id) return;
+    applyNote(view, { keepEditor: true });
+    editor.setTask(line, done);
+    setStatus(t(done ? "status.taskDone" : "status.taskOpen"));
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/**
+ * Goes to a heading from the outline. The editor cursor moves in each mode,
+ * and an open preview scrolls to the heading too. "Read" keeps its mode: the
+ * user reads there.
+ */
+function goToHeading(heading: Heading): void {
+  editor.goToLine(heading.line);
+  if (mode !== "edit") scrollToLine(el.preview, heading.line);
+}
+
 /**
  * Recently opened notes. The palette shows them while the query is empty.
  *
@@ -2214,12 +2273,12 @@ async function renameNote(
   if (isCurrent) await flushPendingSave();
 
   try {
-    const moved = await api.renameNote(id, to, vaultId);
+    const { id: moved, relinked } = await api.renameNote(id, to, vaultId);
     moveScale(noteKey(vaultId, id), noteKey(vaultId, moved));
     moveMode(noteKey(vaultId, id), noteKey(vaultId, moved));
     await refreshTree(vaultId);
     if (isCurrent) await openNote(moved);
-    setStatus(t(done));
+    setStatus(movedStatus(done, relinked));
   } catch (error) {
     fail(error);
   }
@@ -2237,13 +2296,18 @@ async function renameFolder(
   if (inside) await flushPendingSave();
 
   try {
-    await api.renameFolder(name, to, vaultId);
+    const relinked = await api.renameFolder(name, to, vaultId);
     await refreshTree(vaultId);
     if (inside) await openNote(`${to}/${inside.slice(prefix.length)}`);
-    setStatus(t(done));
+    setStatus(movedStatus(done, relinked));
   } catch (error) {
     fail(error);
   }
+}
+
+/** "Renamed", plus the number of notes whose links the core rewrote. */
+function movedStatus(done: "status.renamed" | "status.moved", relinked: number): string {
+  return relinked > 0 ? `${t(done)} · ${t("status.relinked", { count: relinked })}` : t(done);
 }
 
 /** Copies a note next to it and opens the copy, since that is the goal. */
@@ -2677,6 +2741,42 @@ async function adoptDropped(paths: string[]): Promise<void> {
   const folders = paths.filter((path) => !MARKDOWN.test(path));
   if (folders.length > 0) await adoptVaults(folders);
   if (markdown.length > 0) await openFiles(markdown);
+}
+
+/**
+ * Saves a pasted image of the open note. The core puts it into `attachments/`
+ * of the vault, or next to a standalone file. Returns the path for the link.
+ */
+async function savePastedImage(name: string, bytes: Uint8Array): Promise<string | null> {
+  if (!current) return null;
+  try {
+    return await api.saveAttachment(name, bytes, current.file ? current.id : null);
+  } catch (error) {
+    setStatus(t("image.saveFailed", { error: String(error) }), "error");
+    return null;
+  }
+}
+
+/**
+ * Image files dropped on the editor: the core copies them into `attachments/`,
+ * and the links go to the drop point. The note can change during the copy;
+ * then the links have no place to go.
+ */
+async function attachDropped(paths: string[], at: number): Promise<void> {
+  const note = current;
+  if (!note) return;
+  const saved: string[] = [];
+  let problem: string | null = null;
+  for (const path of paths) {
+    try {
+      saved.push(await api.attachFile(path, note.file ? note.id : null));
+    } catch (error) {
+      problem ??= String(error);
+    }
+  }
+  if (!current || positionKey(current) !== positionKey(note)) return;
+  editor.insertImages(saved.map(imageLink), at);
+  if (problem) setStatus(t("image.saveFailed", { error: problem }), "error");
 }
 
 async function createNote(name: string): Promise<void> {
@@ -3312,6 +3412,17 @@ el.newNoteName.onkeydown = (event) => {
   }
 };
 
+// A task box in the preview changes the file, not only the picture. The
+// browser already flipped the box, so `checked` is the wanted state; the
+// redraw from the core shows the real one.
+el.preview.addEventListener("click", (event) => {
+  const box = event.target;
+  if (!(box instanceof HTMLInputElement) || box.type !== "checkbox") return;
+  event.preventDefault();
+  const line = markLine(el.preview, box);
+  if (line !== null) void setTask(line, box.checked);
+});
+
 // Links in the preview navigate inside the vault, not to the outside.
 el.preview.addEventListener("click", (event) => {
   const anchor = (event.target as HTMLElement).closest("a");
@@ -3343,11 +3454,16 @@ const palette = new Palette({
   search: (query) => api.searchAll(query),
   bookmarks: () => (vault ? api.listBookmarks() : Promise.resolve([])),
   openBookmark: (id, line) => void openBookmark(id, line),
+  tasks: () => (vault ? api.listTasks() : Promise.resolve([])),
+  openTask: (id, line) => void openTask(id, line),
   recent: recentNotes,
   total: () => activeNotes().length,
   activeVault: () => vault?.id ?? null,
   open: (id, from) => void openFound(id, from),
   create: (name) => void createNote(name),
+  // The editor has the text of a standalone file too, so it gets the outline.
+  headings: () => editor.getHeadings(),
+  goToHeading,
   actions: () => [
     // Commands of the open note come first: the other actions are about the
     // window, and a command is about what is open in it.
@@ -3368,6 +3484,8 @@ const palette = new Palette({
     })),
     { label: t("palette.action.bookmark"), action: "bookmark.toggle", run: () => toggleCurrentBookmark() },
     { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
+    { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
+    { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
     { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => setSidebarHidden(!sidebarHidden) },
     { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
     { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
@@ -3519,6 +3637,7 @@ const windowActions: [Action, () => boolean | void][] = [
   // ⌘B is bold in the editor, so the bookmark uses Shift.
   ["bookmark.toggle", () => toggleCurrentBookmark()],
   ["bookmark.list", () => palette.open("", "bookmarks")],
+  ["task.list", () => palette.open("", "tasks")],
   ["sidebar.toggle", () => setSidebarHidden(!sidebarHidden)],
   // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
   ["history.back", () => void travel(-1)],
@@ -3528,6 +3647,8 @@ const windowActions: [Action, () => boolean | void][] = [
   ["palette.open", () => palette.open()],
   // Two searches: ⌘F in the open note, ⌘K in all vaults.
   ["note.find", () => editor.openSearch()],
+  // ⌘⇧O as in VS Code: "Go to symbol" in the open file.
+  ["note.outline", () => palette.openOutline()],
   ["settings.open", () => void openSettings()],
   ["scale.larger", () => changeCurrentScale(1)],
   ["scale.smaller", () => changeCurrentScale(-1)],
@@ -3684,10 +3805,15 @@ async function boot(): Promise<void> {
   // `.md`); the window takes the request and shows it.
   void onFileOpened(() => void takeOpened());
   // A folder dropped on the window becomes a vault; a markdown file opens as a
-  // separate file.
-  void onDragDrop(({ over, paths }) => {
+  // separate file. An image dropped on the open note goes into the note.
+  void onDragDrop(({ over, paths, point }) => {
     dropHint.hidden = !over;
-    if (paths.length > 0) void adoptDropped(paths);
+    if (paths.length === 0) return;
+    const at = current && point ? editor.dropPosition(point.x, point.y) : null;
+    const images = at === null ? [] : paths.filter((path) => isImage(path));
+    if (at !== null && images.length > 0) void attachDropped(images, at);
+    const rest = paths.filter((path) => !images.includes(path));
+    if (rest.length > 0) void adoptDropped(rest);
   });
   // "2 min ago" gets old without any event, so the segment redraws every minute.
   window.setInterval(describeRemote, 60000);

@@ -14,6 +14,7 @@ import {
   type AgentNote,
 } from "./agent-notes";
 import type { BookmarkMark } from "./api";
+import { editorImages, insertImageLinks, type SaveImage } from "./attachments";
 import { bookmarkMenu } from "./bookmark-menu";
 import {
   bookmarkChanged,
@@ -33,7 +34,9 @@ import { codeLanguages, highlightStyle } from "./highlight";
 import { bindings } from "./actions";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
+import { headingsOf, type Heading } from "./outline";
 import { tableEditing } from "./table-editing";
+import { taskBox } from "./tasks";
 import { addNoteInCell } from "./table-widget";
 
 const theme = EditorView.theme({
@@ -234,6 +237,8 @@ export interface EditorOptions {
   onNotes?: (notes: AgentNote[]) => void;
   /** The user changed a bookmark; `marks` holds all bookmarks after it. */
   onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
+  /** Saves a pasted image; without it a paste of an image does nothing special. */
+  saveImage?: SaveImage;
 }
 
 /** A CodeMirror wrapper that exposes only the text. */
@@ -280,6 +285,7 @@ export class Editor {
         editorMenu(),
         bookmarkMenu(),
         blockSelection,
+        options.saveImage ? editorImages(options.saveImage) : [],
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,
         theme,
@@ -394,6 +400,44 @@ export class Editor {
   goToLine(line: number): void {
     goToLine(this.view, line);
     this.view.focus();
+  }
+
+  /** The headings of the current text, also with unsaved edits. */
+  getHeadings(): Heading[] {
+    return headingsOf(this.view.state);
+  }
+
+  /**
+   * Sets the task box on 1-based `line` to `done`, as one undo step.
+   * Returns `false` if the line has no box: the text changed meanwhile.
+   */
+  setTask(line: number, done: boolean): boolean {
+    const doc = this.view.state.doc;
+    if (line < 1 || line > doc.lines) return false;
+    const { from, text } = doc.line(line);
+    const box = taskBox(text);
+    if (!box) return false;
+    if (box.done !== done) {
+      this.view.dispatch({
+        changes: { from: from + box.at, to: from + box.at + 1, insert: done ? "x" : " " },
+      });
+    }
+    return true;
+  }
+
+  /**
+   * The text position under a window point, or `null` outside the editor.
+   * A hidden editor (the "Read" mode) is never under the point.
+   */
+  dropPosition(x: number, y: number): number | null {
+    const target = document.elementFromPoint(x, y);
+    if (!target || !this.view.dom.contains(target)) return null;
+    return this.view.posAtCoords({ x, y }, false);
+  }
+
+  /** Inserts image links at `at`, or in place of the selection. */
+  insertImages(links: string[], at?: number): void {
+    insertImageLinks(this.view, links, at);
   }
 
   getText(): string {

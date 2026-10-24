@@ -23,16 +23,23 @@ import type {
   SyncSettingsForm,
   SyncStatus,
   TargetKind,
+  TaskView,
   ThemeSet,
   UpdateStatus,
   VaultStats,
   VaultInfo,
   VaultView,
 } from "../api";
+import { setTaskBox, taskBox } from "../tasks";
 
 /** Source line mark, the same as the core puts into HTML. */
 function line(number: number, block = false): string {
   return `<span class="line-mark${block ? " is-block" : ""}" data-line="${number}"></span>`;
+}
+
+/** A task box, the same as the core renders it. */
+function box(done: boolean): string {
+  return `<input disabled="" type="checkbox"${done ? ' checked=""' : ""}/>\n`;
 }
 
 interface MockNote {
@@ -99,8 +106,17 @@ const notes: MockNote[] = [
     title: "Встречи",
     folder: "Работа",
     tags: [],
-    content: "# Встречи\n\nКто, когда и о чём.\n",
-    html: "<h1>Встречи</h1><p>Кто, когда и о чём.</p>",
+    // Tasks: the palette lists the open ones, and a click on a box in the
+    // preview marks it.
+    content:
+      "# Встречи\n\nКто, когда и о чём.\n\n" +
+      "- [ ] разослать итоги планёрки\n- [x] забронировать переговорку\n" +
+      "  - [ ] позвать Иру из поддержки\n",
+    html:
+      `<h1>${line(1)}Встречи</h1><p>${line(3)}Кто, когда и о чём.</p>` +
+      `<ul><li>${line(5)}${box(false)}разослать итоги планёрки</li>` +
+      `<li>${line(6)}${box(true)}забронировать переговорку<ul>` +
+      `<li>${line(7)}${box(false)}позвать Иру из поддержки</li></ul></li></ul>`,
   },
   {
     // Table with markup in cells: it shows editing and the toolbar.
@@ -387,6 +403,28 @@ function view(note: MockNote): NoteView {
 }
 
 /**
+ * Rewrites `[[old…]]` links to the new IDs and returns the number of changed
+ * notes. The core also keeps short names and Markdown links; the mock needs
+ * only enough for the status bar message. The HTML stays as it was.
+ */
+function relink(vault: MockVault, moves: [string, string][]): number {
+  let changed = 0;
+  for (const note of vault.notes) {
+    let content = note.content;
+    for (const [from, to] of moves) {
+      content = content.replace(
+        new RegExp(`(!?\\[\\[\\s*)${escapeRegExp(from)}(\\s*[\\]|#])`, "g"),
+        `$1${to}$2`,
+      );
+    }
+    if (content === note.content) continue;
+    note.content = content;
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
  * Bookmarks on lines that exist in the text, sorted and one per line, as in
  * the core. Names lose the outer spaces; an empty name is no name.
  */
@@ -628,7 +666,35 @@ let update: UpdateStatus = sessionStorage.getItem("kknow:mock:updated")
   ? { state: "idle" }
   : { state: "ready", version: "0.2.0" };
 
-export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+/**
+ * The mock `attachments/` folder: path → bytes. A repeated name gets a number,
+ * as in the core. A dropped file has no bytes in the browser, so `mockImage`
+ * draws it.
+ */
+const attachments = new Map<string, ArrayBuffer | null>();
+
+function mockAttachment(name: string, bytes: ArrayBuffer | null): string {
+  if (!isImageName(name)) throw new Error(`invalid image name: ${name}`);
+  const dot = name.lastIndexOf(".");
+  let free = name;
+  for (let n = 2; attachments.has(`attachments/${free}`); n++) {
+    free = `${name.slice(0, dot)} ${n}${name.slice(dot)}`;
+  }
+  attachments.set(`attachments/${free}`, bytes);
+  return `attachments/${free}`;
+}
+
+function isImageName(name: string): boolean {
+  return /^[^./\\][^/\\]*\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i.test(name);
+}
+
+export async function invoke<T>(
+  command: string,
+  rawArgs?: Record<string, unknown> | Uint8Array,
+  options?: { headers?: Record<string, string> },
+): Promise<T> {
+  // A raw body (`save_attachment`) has no named arguments; they come in headers.
+  const args = rawArgs instanceof Uint8Array ? undefined : rawArgs;
   const id = args?.id as string;
 
   switch (command) {
@@ -770,12 +836,60 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
         })),
       ) as T;
 
+    case "list_tasks":
+      return activeVault.notes.flatMap((note) =>
+        note.content.split("\n").flatMap<TaskView>((text, index) => {
+          const found = taskBox(text);
+          if (!found) return [];
+          return [
+            {
+              note: note.id,
+              title: note.title,
+              folder: note.folder,
+              line: index + 1,
+              text: text.slice(found.at + 2).trim(),
+              done: found.done,
+            },
+          ];
+        }),
+      ) as T;
+
+    case "set_task": {
+      const note = find(id);
+      const number = args?.line as number;
+      const done = args?.done as boolean;
+      const lines = note.content.split("\n");
+      const changed = setTaskBox(lines[number - 1] ?? "", done);
+      if (changed === null) throw new Error(`в ${note.id} на строке ${number} нет задачи`);
+      lines[number - 1] = changed;
+      note.content = lines.join("\n");
+      // The mock HTML is fixed, so only the box of that line changes.
+      note.html = note.html.replace(
+        new RegExp(`(data-line="${number}"></span>)<input[^>]*/>\\n`),
+        `$1${box(done)}`,
+      );
+      return view(note) as T;
+    }
+
     case "preview":
       return find(id).html as T;
 
     case "note_image":
-    case "file_image":
-      return mockImage(args?.target as string) as T;
+    case "file_image": {
+      const target = args?.target as string;
+      return (attachments.get(target) ?? mockImage(target)) as T;
+    }
+
+    case "save_attachment": {
+      const name = decodeURIComponent(options?.headers?.["kknow-name"] ?? "");
+      const bytes = (rawArgs as Uint8Array).slice().buffer;
+      return mockAttachment(name, bytes) as T;
+    }
+
+    case "attach_file": {
+      const source = args?.source as string;
+      return mockAttachment(source.slice(source.lastIndexOf("/") + 1), null) as T;
+    }
 
     case "create_note": {
       const name = args?.name as string;
@@ -849,7 +963,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }
       note.id = to;
       note.folder = to.includes("/") ? to.slice(0, to.lastIndexOf("/")) : null;
-      return to as T;
+      return { id: to, relinked: relink(asked, [[id as string, to]]) } as T;
     }
 
     case "duplicate_note": {
@@ -871,15 +985,17 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       const to = (args?.to as string).replace(/^\/+|\/+$/g, "");
       const prefix = `${name}/`;
       const moved = (path: string) => `${to}/${path.slice(prefix.length)}`;
+      const moves: [string, string][] = [];
       for (const note of asked.notes) {
         if (!note.id.startsWith(prefix)) continue;
+        moves.push([note.id, moved(note.id)]);
         note.id = moved(note.id);
         note.folder = note.id.slice(0, note.id.lastIndexOf("/"));
       }
       asked.folders = asked.folders.map((folder) =>
         folder === name ? to : folder.startsWith(prefix) ? moved(folder) : folder,
       );
-      return undefined as T;
+      return relink(asked, moves) as T;
     }
 
     case "list_folders": {

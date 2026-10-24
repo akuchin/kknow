@@ -203,7 +203,7 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line> [--name <name>]`.
+`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `trash`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
@@ -236,6 +236,10 @@ Short links follow the usual wiki rules. kknow tries the full path first, then
 the file name, then a path suffix. If many notes have the same name, kknow
 selects the note that is closest in the folder tree.
 
+When you rename or move a note or a folder, kknow updates the links to it in
+the other notes. A short link that still finds the note stays as it is. Links
+in code stay too. The status bar tells how many notes changed.
+
 The preview does not show raw HTML from a note. A note can come from another
 person's vault or from sync. A script in it would run with the app's
 privileges.
@@ -254,6 +258,18 @@ The preview and the editor both show an image from a note:
 A large image must not prevent reading. Thus an image is never wider than the
 text column. Its maximum height is 480 px (pixels), or 360 px in the editor.
 Click an image to show it in the full window. Press Esc to close it.
+
+To add an image, paste it from the clipboard (⌘V) or drop an image file on the
+editor. kknow saves it into the `attachments/` folder at the vault root and
+inserts a link:
+
+```markdown
+![[attachments/Pasted image 20261024153012.png]]
+```
+
+A pasted image gets the date and time in its name. A dropped file keeps its
+name. kknow never overwrites a file: it adds a number, `shot 2.png`. For a
+standalone file, the `attachments/` folder is next to the file.
 
 kknow reads only images, and only in the vault. It does not load images from the
 web (`https://…`). A note from another person's vault must not tell a
@@ -589,6 +605,13 @@ While a search is active, live preview expands such a block. When the panel
 closes, live preview collapses the block again. Otherwise a widget would hide
 the match until the "next" button reaches it.
 
+### Headings of the open note
+
+⌘⇧O opens the palette with the headings of the open note. Subheadings have an
+indent. Type to make the list shorter, then press ↵: the cursor goes to the
+heading. In "Side by side" and "Read", the preview also scrolls to it. The list
+follows unsaved edits. A `#` line in a code block is not a heading.
+
 ## Bookmarks
 
 ⌘⇧B adds a bookmark to the line with the cursor. A ribbon appears to the left
@@ -623,6 +646,43 @@ bookmark plan 12` adds or removes a bookmark. `kknow bookmark plan 12 --name
 `--name ""` removes the name. Sync does not copy the service folder `.kknow`, so
 bookmarks stay on one machine. Standalone files have no bookmarks.
 
+## Tasks
+
+A task is a list item with a box: `- [ ] text`. `- [x] text` is a done task.
+Nested items, numbered items and items in a quote are tasks too. A `- [ ]`
+inside a code block is an example, not a task.
+
+⌘⌥T opens the palette on the "Tasks" chip. The palette shows the open tasks of
+the vault with the note title. Type to make the list shorter: the palette
+looks in the task text, note titles and paths. Press Enter to open the note at
+the task line.
+
+A click on a box in the preview marks the task as done, or open again. kknow
+writes the file at once, and the editor gets the same change, so ⌘Z undoes it.
+If the line is no longer a task (someone changed the file), kknow refuses the
+click and changes nothing. In live preview, edit the `[ ]` as text.
+
+`kknow tasks` prints the open tasks as `note:line  text`. `kknow tasks --all`
+also prints the done ones, with `[x]` or `[ ]` before the text.
+
+## Trash
+
+A delete does not remove a note for good. The note or the folder goes to the
+trash in the vault, `.kknow/trash`. A note that sync removes because another
+device deleted it also goes there. Each delete is a separate entry, so two
+deletes of one note do not overwrite each other. kknow removes entries older
+than 30 days on the next delete.
+
+```bash
+kknow trash                       # entries: ID, path, age, number of notes
+kknow trash restore 1761300000    # put an entry back to its old path
+kknow trash empty                 # remove all entries for good
+```
+
+A restore does not overwrite a note. If a file of the entry is taken, nothing
+moves. The window has no trash view yet. Sync does not copy `.kknow`, so each
+machine has its own trash.
+
 ## Edits outside the app
 
 A watcher monitors each open vault. Another editor, git or sync can change a
@@ -653,6 +713,9 @@ cloud again and again.
 The manifest has no modification times. The clocks on two machines differ, and
 S3 writes its own upload time. A "newer" time often means an older content. A
 hash does not have these problems.
+
+A note that another device deleted does not disappear here for good. Sync moves
+it to the [trash](#trash): the delete on the other device can be a mistake.
 
 If both sides changed a note, by default kknow keeps both versions. The local
 version stays in place. kknow writes the other version next to it as a copy
@@ -1088,12 +1151,14 @@ event, and both windows apply it immediately.
 | Esc in the palette | close it |
 | ⌘F | search within the open note |
 | ⌘G, ⌘⇧G | next and previous match |
+| ⌘⇧O | go to a heading of the open note |
 | Esc in note search | close the search panel |
 | ⌘E | next note mode: Edit, Side by side, Read |
 | ⌘\\ | hide or show the sidebar |
 | ⌘⌥←, ⌘⌥→ | back and forward through opened notes |
 | ⌘⇧B | set or remove a bookmark on the cursor line |
 | ⌘⌥B | palette with the bookmark list |
+| ⌘⌥T | palette with the open tasks |
 | ⌘=, ⌘−, ⌘0 | open note font: larger, smaller, normal |
 | ⌘1…⌘9 | switch to a vault by its position in the list |
 | ⌘⇧S | sync the active vault |

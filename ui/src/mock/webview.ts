@@ -10,7 +10,7 @@
 /** The part of the real `onDragDropEvent` payload that the window uses. */
 type DragDropEvent =
   | { type: "enter" | "over"; paths: string[] }
-  | { type: "drop"; paths: string[] }
+  | { type: "drop"; paths: string[]; position: { x: number; y: number } }
   | { type: "leave" };
 
 type Handler = (event: { payload: DragDropEvent }) => void;
@@ -36,7 +36,10 @@ window.addEventListener("drop", (event) => {
     .map((item) => item.webkitGetAsEntry()?.name ?? item.getAsFile()?.name)
     .filter((name): name is string => Boolean(name));
 
-  emit({ type: "drop", paths: names.map((name) => `~/${name}`) });
+  // The shell gives the point in physical pixels, so the mock does too.
+  const scale = window.devicePixelRatio || 1;
+  const position = { x: event.clientX * scale, y: event.clientY * scale };
+  emit({ type: "drop", paths: names.map((name) => `~/${name}`), position });
 });
 
 export function getCurrentWebview() {

@@ -2048,6 +2048,17 @@ pre.mermaid[data-error]::after {
   color: var(--text-muted);
 }
 
+/* A task box of a vault note is enabled: a click marks the task in the file. */
+.preview li input[type="checkbox"] {
+  margin: 0 6px 0 0;
+  accent-color: var(--accent);
+  vertical-align: -1px;
+}
+
+.preview li input[type="checkbox"]:enabled {
+  cursor: pointer;
+}
+
 /* A wide table scrolls on its own, like a code block: `display: block` gives it
    its own scrollbar, and `max-width` keeps it inside the preview. */
 .preview table {
@@ -2741,6 +2752,16 @@ body[data-palette="open"] #app {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* "Go to heading" lists the open note only: the vault chips and actions hide.
+   The indent shows the heading level. */
+.palette[data-mode="outline"] :is(.palette-chips, #palette-actions-label, #palette-actions) {
+  display: none;
+}
+
+.palette[data-mode="outline"] .palette-row {
+  padding-left: calc(16px + var(--level, 0) * 18px);
 }
 
 .palette-message {

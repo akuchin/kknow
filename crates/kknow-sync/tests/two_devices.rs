@@ -133,6 +133,10 @@ fn a_delete_travels_too() {
     assert_eq!(sent.removed_remote.len(), 1);
     assert_eq!(received.removed_local.len(), 1);
     assert!(!second.has("Черновик"));
+    // The delete can be a mistake, so the note waits in the trash.
+    let trash = second.vault.trash().entries().unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].path, "Черновик.md");
     assert!(cloud.keys().iter().all(|key| !key.contains("Черновик")));
 }
 

@@ -16,8 +16,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-use kknow_core::{Note, NoteId, Vault};
-use kknow_index::{Edge, LinkGraph, ParsedNote, Resolver, SearchHit, SearchIndex};
+use kknow_core::{Note, NoteId, Trash, Vault};
+use kknow_index::{Edge, LinkGraph, ParsedNote, Relink, Resolver, SearchHit, SearchIndex, Task};
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Plan as SyncPlan, Report as SyncReport, Staged, SyncEngine,
     SyncProvider,
@@ -51,6 +51,9 @@ pub enum Error {
 
     #[error("заметка уже существует: {0}")]
     AlreadyExists(NoteId),
+
+    #[error("в {0} на строке {1} нет задачи: заметка изменилась")]
+    NotATask(NoteId, usize),
 
     #[error("хранилище не найдено: {0}")]
     UnknownVault(String),
@@ -108,6 +111,13 @@ pub enum Saved {
     /// The file changed outside. It stays as is, and the editor text goes to
     /// `copy` next to it, so no version is lost.
     Conflict { copy: NoteId, disk: String },
+}
+
+/// Links that a rename or a move rewrote in other notes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Relinked {
+    pub notes: usize,
+    pub links: usize,
 }
 
 /// Vault summary: number of notes, folders and bytes.
@@ -492,12 +502,18 @@ impl Workspace {
 
     /// Saves the note and updates the parse, graph and search.
     pub fn save(&mut self, id: &NoteId, content: &str) -> Result<()> {
-        self.vault.write(id, content)?;
-        self.ingest(id, content)?;
-        self.edit_bookmarks(|bookmarks| bookmarks.reanchor(id, content))?;
+        self.store(id, content)?;
         self.search.commit()?;
         self.rebuild_graph();
         Ok(())
+    }
+
+    /// Writes the note and parses it. The caller commits the search and
+    /// rebuilds the graph.
+    fn store(&mut self, id: &NoteId, content: &str) -> Result<()> {
+        self.vault.write(id, content)?;
+        self.ingest(id, content)?;
+        self.edit_bookmarks(|bookmarks| bookmarks.reanchor(id, content))
     }
 
     /// Saves only if the file on disk is still `base`, the text the editor
@@ -532,6 +548,30 @@ impl Workspace {
         }
     }
 
+    /// Tasks of all notes, sorted by note and then by line.
+    pub fn tasks(&self) -> Vec<(&NoteId, &Task)> {
+        self.parsed
+            .iter()
+            .flat_map(|(id, note)| note.tasks.iter().map(move |task| (id, task)))
+            .collect()
+    }
+
+    /// Marks the task on line `line` of the note as done or open and returns
+    /// the new text.
+    ///
+    /// The line number comes from an older parse, and the file can change
+    /// since then. So the text comes from disk, and a line without a task is
+    /// an error, not a guess. The same state again writes nothing.
+    pub fn set_task(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
+        let content = self.read(id)?;
+        let changed = kknow_index::parse::set_task(&content, line, done)
+            .ok_or_else(|| Error::NotATask(id.clone(), line))?;
+        if changed != content {
+            self.save(id, &changed)?;
+        }
+        Ok(changed)
+    }
+
     /// Creates an empty note with a heading from its name.
     pub fn create(&mut self, raw_name: &str) -> Result<NoteId> {
         let id = NoteId::parse(raw_name).ok_or_else(|| Error::InvalidName(raw_name.to_string()))?;
@@ -544,6 +584,8 @@ impl Workspace {
         Ok(id)
     }
 
+    /// Moves the note to the vault trash and removes it from search and
+    /// graph.
     pub fn delete(&mut self, id: &NoteId) -> Result<()> {
         self.vault.remove(id)?;
         self.parsed.remove(id);
@@ -558,22 +600,22 @@ impl Workspace {
 
     /// Moves the note to a new ID: a new name, a new folder or both.
     ///
-    /// Links in other notes are not rewritten. `[[kknow]]` resolves by file name
-    /// also after a move to another folder. A changed name shows in the graph as
-    /// a broken link: this is more honest than a silent edit of other notes.
-    pub fn rename(&mut self, from: &NoteId, to: &NoteId) -> Result<()> {
+    /// Links to the note follow it: see [`Workspace::relink`].
+    pub fn rename(&mut self, from: &NoteId, to: &NoteId) -> Result<Relinked> {
         if from == to {
-            return Ok(());
+            return Ok(Relinked::default());
         }
         if self.contains(to) {
             return Err(Error::AlreadyExists(to.clone()));
         }
         self.vault.rename(from, to)?;
         self.moved(from, to)?;
+        let moves = [(from.clone(), to.clone())];
+        self.edit_bookmarks(|bookmarks| bookmarks.rename(&moves))?;
+        let relinked = self.relink(&moves)?;
         self.search.commit()?;
         self.rebuild_graph();
-        let moves = [(from.clone(), to.clone())];
-        self.edit_bookmarks(|bookmarks| bookmarks.rename(&moves))
+        Ok(relinked)
     }
 
     /// Copies the note next to it with the first free name: `Name copy`, then
@@ -589,16 +631,74 @@ impl Workspace {
     }
 
     /// Moves a folder with all its notes; search and graph get the new IDs.
-    pub fn rename_folder(&mut self, from: &str, to: &str) -> Result<()> {
+    /// Links to the notes follow them: see [`Workspace::relink`].
+    pub fn rename_folder(&mut self, from: &str, to: &str) -> Result<Relinked> {
         let moved = self.vault.rename_folder(from, to)?;
         for (old, new) in &moved {
             self.moved(old, new)?;
         }
-        if !moved.is_empty() {
-            self.search.commit()?;
-            self.rebuild_graph();
+        self.edit_bookmarks(|bookmarks| bookmarks.rename(&moved))?;
+        if moved.is_empty() {
+            return Ok(Relinked::default());
         }
-        self.edit_bookmarks(|bookmarks| bookmarks.rename(&moved))
+        let relinked = self.relink(&moved)?;
+        self.search.commit()?;
+        self.rebuild_graph();
+        Ok(relinked)
+    }
+
+    /// Rewrites links that the moves broke or turned to a different note.
+    ///
+    /// Call it after [`Workspace::moved`] and before the graph rebuild: the old
+    /// graph and resolver tell where each link pointed. Only possible sources
+    /// are read: the moved notes, their backlinks and the backlinks of notes
+    /// with a new name. Other links cannot change their target.
+    ///
+    /// The notes go through [`Workspace::store`], so the watcher sees our own
+    /// write, and search and graph get the new text.
+    fn relink(&mut self, moves: &[(NoteId, NoteId)]) -> Result<Relinked> {
+        let map: HashMap<NoteId, NoteId> = moves.iter().cloned().collect();
+        let back: HashMap<&NoteId, &NoteId> = moves.iter().map(|(old, new)| (new, old)).collect();
+        let names: BTreeSet<String> = moves
+            .iter()
+            .map(|(_, new)| new.name().to_lowercase())
+            .collect();
+
+        let mut sources: BTreeSet<&NoteId> = moves.iter().map(|(old, _)| old).collect();
+        let namesakes = self
+            .parsed
+            .keys()
+            .filter(|id| names.contains(&id.name().to_lowercase()))
+            .map(|id| back.get(id).copied().unwrap_or(id));
+        for target in moves.iter().map(|(old, _)| old).chain(namesakes) {
+            sources.extend(self.graph.backlinks(target).iter().map(|edge| &edge.from));
+        }
+
+        let after = Resolver::new(self.parsed.keys());
+        let relink = Relink {
+            before: &self.resolver,
+            after: &after,
+            moves: &map,
+        };
+        let mut edits = Vec::new();
+        for old in sources {
+            let id = map.get(old).unwrap_or(old);
+            let Some(parsed) = self.parsed.get(id) else {
+                continue;
+            };
+            let content = self.vault.read(id)?;
+            if let Some((text, links)) = relink.apply(old, &content, parsed) {
+                edits.push((id.clone(), text, links));
+            }
+        }
+
+        let mut relinked = Relinked::default();
+        for (id, text, links) in edits {
+            self.store(&id, &text)?;
+            relinked.notes += 1;
+            relinked.links += links;
+        }
+        Ok(relinked)
     }
 
     /// Records the move of one note. The index and the graph use the ID, so
@@ -640,8 +740,8 @@ impl Workspace {
         Ok(self.vault.create_folder(raw)?)
     }
 
-    /// Deletes a folder with all its notes and removes them from search and
-    /// graph.
+    /// Moves a folder with all its notes to the vault trash and removes them
+    /// from search and graph.
     pub fn delete_folder(&mut self, raw: &str) -> Result<()> {
         let removed = self.vault.remove_folder(raw)?;
         for id in &removed {
@@ -658,6 +758,25 @@ impl Workspace {
                 bookmarks.forget(id);
             }
         })
+    }
+
+    pub fn trash(&self) -> Trash {
+        self.vault.trash()
+    }
+
+    /// Restores a trash entry and parses its notes again. Bookmarks of the
+    /// notes do not come back: the delete forgot them.
+    pub fn restore(&mut self, entry: &str) -> Result<Vec<NoteId>> {
+        let restored = self.vault.restore(entry)?;
+        for id in &restored {
+            let content = self.vault.read(id)?;
+            self.ingest(id, &content)?;
+        }
+        if !restored.is_empty() {
+            self.search.commit()?;
+            self.rebuild_graph();
+        }
+        Ok(restored)
     }
 
     pub fn backlinks(&self, id: &NoteId) -> &[Edge] {
@@ -748,6 +867,63 @@ mod tests {
             .into_iter()
             .map(|bookmark| (bookmark.note.clone(), bookmark.line))
             .collect()
+    }
+
+    #[test]
+    fn tasks_come_from_all_notes_in_order() {
+        let (dir, mut workspace) = workspace();
+        let plan = NoteId::parse("План").unwrap();
+        workspace
+            .save(&plan, "# План\n\n- [x] начать\n- [ ] закончить\n")
+            .unwrap();
+        fs::write(
+            dir.path().join("Index.md"),
+            "# Оглавление\n\n- [ ] прочитать\n",
+        )
+        .unwrap();
+        workspace.reload().unwrap();
+
+        let tasks: Vec<(&str, usize, bool)> = workspace
+            .tasks()
+            .into_iter()
+            .map(|(id, task)| (id.as_str(), task.line, task.done))
+            .collect();
+        assert_eq!(
+            tasks,
+            [("Index", 3, false), ("План", 3, true), ("План", 4, false)]
+        );
+    }
+
+    #[test]
+    fn set_task_writes_the_file_and_refuses_a_stale_line() {
+        let (dir, mut workspace) = workspace();
+        let plan = NoteId::parse("План").unwrap();
+        workspace.save(&plan, "# План\n\n- [ ] начать\n").unwrap();
+
+        let content = workspace.set_task(&plan, 3, true).unwrap();
+        assert_eq!(content, "# План\n\n- [x] начать\n");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("План.md")).unwrap(),
+            content
+        );
+        assert!(
+            workspace.tasks()[0].1.done,
+            "разбор обновился вместе с файлом"
+        );
+
+        // Someone added a line above: line 3 is now plain text.
+        fs::write(
+            dir.path().join("План.md"),
+            "# План\n\nвступление\n- [x] начать\n",
+        )
+        .unwrap();
+        let error = workspace.set_task(&plan, 3, false).unwrap_err();
+        assert!(matches!(error, Error::NotATask(_, 3)), "{error}");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("План.md")).unwrap(),
+            "# План\n\nвступление\n- [x] начать\n",
+            "файл не тронут"
+        );
     }
 
     #[test]
@@ -996,6 +1172,25 @@ mod tests {
     }
 
     #[test]
+    fn a_restored_note_returns_to_graph_and_search() {
+        let (_dir, mut workspace) = workspace();
+        let id = NoteId::parse("Projects/kknow").unwrap();
+        workspace.delete(&id).unwrap();
+
+        let entries = workspace.trash().entries().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            workspace.restore(&entries[0].id).unwrap(),
+            std::slice::from_ref(&id)
+        );
+
+        assert!(workspace.contains(&id));
+        assert!(workspace.graph().broken().is_empty());
+        assert_eq!(found(&workspace, "синхронизацию"), ["Projects/kknow"]);
+        assert!(workspace.trash().entries().unwrap().is_empty());
+    }
+
+    #[test]
     fn rename_moves_the_note_in_search_and_graph() {
         let (_dir, mut workspace) = workspace();
         let from = NoteId::parse("Projects/kknow").unwrap();
@@ -1006,9 +1201,12 @@ mod tests {
         assert!(!workspace.contains(&from));
         assert!(workspace.contains(&to));
         assert_eq!(found(&workspace, "синхронизацию"), ["Архив/kknow"]);
-        // `[[Projects/kknow]]` in the index note pointed to the path; now it is
-        // broken.
-        assert_eq!(workspace.graph().broken().len(), 1);
+        // `[[Projects/kknow]]` in the index note follows the note.
+        assert!(workspace.graph().broken().is_empty());
+        assert_eq!(
+            workspace.read(&NoteId::parse("Index").unwrap()).unwrap(),
+            "# Оглавление\n\n[[Архив/kknow]]"
+        );
     }
 
     #[test]
@@ -1017,13 +1215,16 @@ mod tests {
         let index = NoteId::parse("Index").unwrap();
         workspace.save(&index, "# Оглавление\n\n[[kknow]]").unwrap();
 
-        workspace
+        let relinked = workspace
             .rename(
                 &NoteId::parse("Projects/kknow").unwrap(),
                 &NoteId::parse("Архив/kknow").unwrap(),
             )
             .unwrap();
 
+        // The short link still finds the note, so the file stays as it was.
+        assert_eq!(relinked, Relinked::default());
+        assert_eq!(workspace.read(&index).unwrap(), "# Оглавление\n\n[[kknow]]");
         assert!(workspace.graph().broken().is_empty());
         assert_eq!(
             workspace
@@ -1031,6 +1232,63 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn rename_rewrites_links_in_every_form_but_not_in_code() {
+        let (_dir, mut workspace) = workspace();
+        let index = NoteId::parse("Index").unwrap();
+        let note = NoteId::parse("Заметки/Ссылки").unwrap();
+        workspace
+            .save(
+                &note,
+                concat!(
+                    "[[Projects/kknow|проект]] и ![[Projects/kknow#Схема]]\n\n",
+                    "[подробно](Projects/kknow.md) и [[Projects/kknow#^a1b2]]\n\n",
+                    "`[[Projects/kknow]]`\n\n```\n[[Projects/kknow]]\n```\n",
+                ),
+            )
+            .unwrap();
+
+        let relinked = workspace
+            .rename(
+                &NoteId::parse("Projects/kknow").unwrap(),
+                &NoteId::parse("Архив/Старый проект").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(relinked, Relinked { notes: 2, links: 5 });
+        assert_eq!(
+            workspace.read(&note).unwrap(),
+            concat!(
+                "[[Архив/Старый проект|проект]] и ![[Архив/Старый проект#Схема]]\n\n",
+                "[подробно](Архив/Старый%20проект.md) и [[Архив/Старый проект#^a1b2]]\n\n",
+                "`[[Projects/kknow]]`\n\n```\n[[Projects/kknow]]\n```\n",
+            )
+        );
+        let backlinks = workspace.backlinks(&NoteId::parse("Архив/Старый проект").unwrap());
+        assert_eq!(backlinks.len(), 5, "{backlinks:?}");
+        assert!(workspace.graph().broken().is_empty());
+        // The rewrite is our own write: the watcher must not report it.
+        let changes = workspace
+            .apply(&[VaultEvent::Changed(index), VaultEvent::Changed(note)])
+            .unwrap();
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn rename_folder_rewrites_links_to_its_notes() {
+        let (_dir, mut workspace) = workspace();
+        let index = NoteId::parse("Index").unwrap();
+
+        let relinked = workspace.rename_folder("Projects", "Архив").unwrap();
+
+        assert_eq!(relinked, Relinked { notes: 1, links: 1 });
+        assert_eq!(
+            workspace.read(&index).unwrap(),
+            "# Оглавление\n\n[[Архив/kknow]]"
+        );
+        assert!(workspace.graph().broken().is_empty());
     }
 
     #[test]
@@ -1163,6 +1421,11 @@ mod tests {
         assert_eq!(report.removed_local.len(), 1);
         assert_eq!(target.len(), 1);
         assert!(found(&target, "синхронизацию").is_empty());
+        // The note is not lost: it waits in the trash of this device.
+        assert_eq!(
+            target.trash().entries().unwrap()[0].path,
+            "Projects/kknow.md"
+        );
     }
 
     #[test]

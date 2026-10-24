@@ -31,6 +31,12 @@ export interface NoteSummary {
   tags: string[];
 }
 
+/** A moved note: its new ID and the number of notes with rewritten links. */
+export interface RenamedNote {
+  id: string;
+  relinked: number;
+}
+
 export interface LinkRef {
   id: string;
   title: string;
@@ -237,6 +243,17 @@ export interface BookmarkView {
   name?: string;
 }
 
+/** A task list item of a vault note: `- [ ] text`. */
+export interface TaskView {
+  note: string;
+  title: string;
+  folder: string | null;
+  /** Line number, starting at 1. */
+  line: number;
+  text: string;
+  done: boolean;
+}
+
 /** A standalone file in the sidebar: markdown opened without a vault. */
 export interface FileEntry {
   path: string;
@@ -427,11 +444,34 @@ export const api = {
     invoke<BookmarkMark[]>("set_bookmarks", { id, lines, content }),
   /** Bookmarks of the active vault, in the order they were set. */
   listBookmarks: () => invoke<BookmarkView[]>("list_bookmarks"),
+  /** Tasks of the active vault, sorted by note and line. */
+  listTasks: () => invoke<TaskView[]>("list_tasks"),
+  /**
+   * Marks the task on a note line as done or open. The core writes the file
+   * and refuses a line that is no longer a task.
+   */
+  setTask: (id: string, line: number, done: boolean) =>
+    invoke<NoteView>("set_task", { id, line, done }),
   preview: (id: string, content: string) =>
     invoke<string>("preview", { id, content }),
   /** Bytes of an image that the note links to. The core resolves the path. */
   noteImage: (id: string, target: string) =>
     invoke<ArrayBuffer | number[]>("note_image", { id, target }),
+  /**
+   * Saves a pasted image into `attachments/`: at the vault root, or next to
+   * the standalone `file`. The body is raw bytes, so the name goes in a
+   * header. Returns the path for the link.
+   */
+  saveAttachment: (name: string, bytes: Uint8Array, file: string | null) =>
+    invoke<string>("save_attachment", bytes, {
+      headers: {
+        "kknow-name": encodeURIComponent(name),
+        ...(file === null ? {} : { "kknow-file": encodeURIComponent(file) }),
+      },
+    }),
+  /** Copies an image file dropped on the editor into `attachments/`, like `saveAttachment`. */
+  attachFile: (source: string, file: string | null) =>
+    invoke<string>("attach_file", { source, file }),
   createNote: (name: string) => invoke<NoteView>("create_note", { name }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
@@ -451,15 +491,16 @@ export const api = {
     invoke<void>("open_note", { id, vault: vault ?? null }),
   /**
    * Renames or moves a note: `to` is the full path from the root.
-   * Returns the new ID.
+   * Returns the new ID and the number of notes whose links followed it.
    */
   renameNote: (id: string, to: string, vault?: string) =>
-    invoke<string>("rename_note", { id, to, vault: vault ?? null }),
+    invoke<RenamedNote>("rename_note", { id, to, vault: vault ?? null }),
   /** Makes a copy next to the note and returns the copy ID. */
   duplicateNote: (id: string, vault?: string) =>
     invoke<string>("duplicate_note", { id, vault: vault ?? null }),
+  /** Returns the number of notes whose links followed the folder. */
   renameFolder: (name: string, to: string, vault?: string) =>
-    invoke<void>("rename_folder", { name, to, vault: vault ?? null }),
+    invoke<number>("rename_folder", { name, to, vault: vault ?? null }),
   search: (query: string, limit?: number) =>
     invoke<SearchResult[]>("search", { query, limit }),
   /** Searches all vaults at once; each hit knows its vault. */
@@ -588,6 +629,8 @@ export interface DragDrop {
   over: boolean;
   /** Dropped paths; empty while dragging. */
   paths: string[];
+  /** The drop point in CSS pixels of the page; only with `paths`. */
+  point?: { x: number; y: number };
 }
 
 /**
@@ -603,7 +646,10 @@ export function onDragDrop(handler: (state: DragDrop) => void) {
     if (payload.type === "enter" || payload.type === "over") {
       handler({ over: true, paths: [] });
     } else if (payload.type === "drop") {
-      handler({ over: false, paths: payload.paths });
+      // The shell gives physical pixels; `elementFromPoint` needs CSS pixels.
+      const scale = window.devicePixelRatio || 1;
+      const point = { x: payload.position.x / scale, y: payload.position.y / scale };
+      handler({ over: false, paths: payload.paths, point });
     } else {
       handler({ over: false, paths: [] });
     }

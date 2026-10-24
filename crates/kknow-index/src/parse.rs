@@ -129,6 +129,18 @@ pub struct MarkdownLink {
     pub span: Range<usize>,
 }
 
+/// A task list item: `- [ ] text` or `- [x] text`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Task {
+    /// The item text without markup, up to a nested list.
+    pub text: String,
+    pub done: bool,
+    /// 1-based source line, frontmatter included.
+    pub line: usize,
+    /// The `[ ]` marker in the source.
+    pub span: Range<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedNote {
     pub frontmatter: Option<Frontmatter>,
@@ -136,6 +148,8 @@ pub struct ParsedNote {
     pub wiki_links: Vec<WikiLink>,
     pub markdown_links: Vec<MarkdownLink>,
     pub tags: Vec<Tag>,
+    /// Task list items in source order.
+    pub tasks: Vec<Task>,
     /// Scalar metadata: frontmatter fields and the same as
     /// `<!-- key: value -->` comments. A note uses them to pass parameters to
     /// its commands, for example an export page id.
@@ -190,6 +204,10 @@ pub fn parse(source: &str) -> ParsedNote {
 
     let mut heading: Option<(u8, Range<usize>, String)> = None;
     let mut link: Option<(String, Range<usize>, String)> = None;
+    let mut tasks = Vec::new();
+    // The task whose text is being collected.
+    let mut task: Option<Task> = None;
+    let mut lines = LineCounter::new(source);
 
     for (event, range) in Parser::new_ext(&source[body_start..], options()).into_offset_iter() {
         let range = range.start + body_start..range.end + body_start;
@@ -225,6 +243,9 @@ pub fn parse(source: &str) -> ParsedNote {
             Event::Start(MdTag::CodeBlock(_)) => skip.push(range),
             Event::Code(code) => {
                 skip.push(range);
+                if let Some(task) = task.as_mut() {
+                    task.text.push_str(&code);
+                }
                 text.push_str(&code);
             }
             Event::InlineMath(_) | Event::DisplayMath(_) => skip.push(range),
@@ -239,7 +260,30 @@ pub fn parse(source: &str) -> ParsedNote {
                 raw_html.push_str(&html);
                 skip.push(range);
             }
+            // The parser gives the marker only in a real list item, so
+            // `- [ ]` in a code block is not a task.
+            Event::TaskListMarker(done) => {
+                task = Some(Task {
+                    text: String::new(),
+                    done,
+                    line: lines.line_at(range.start),
+                    span: range,
+                });
+            }
+            // The text of a task ends with its paragraph or at a nested list.
+            Event::Start(MdTag::List(_)) | Event::End(TagEnd::Paragraph | TagEnd::Item) => {
+                if let Some(mut found) = task.take() {
+                    found.text = unwrap_wiki_links(found.text.trim());
+                    tasks.push(found);
+                }
+                if matches!(event, Event::End(_)) {
+                    text.push('\n');
+                }
+            }
             Event::Text(chunk) => {
+                if let Some(task) = task.as_mut() {
+                    task.text.push_str(&chunk);
+                }
                 if let Some((_, _, buffer)) = heading.as_mut() {
                     buffer.push_str(&chunk);
                 }
@@ -248,8 +292,12 @@ pub fn parse(source: &str) -> ParsedNote {
                 }
                 text.push_str(&chunk);
             }
-            Event::SoftBreak | Event::HardBreak => text.push('\n'),
-            Event::End(TagEnd::Paragraph | TagEnd::Item) => text.push('\n'),
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(task) = task.as_mut() {
+                    task.text.push(' ');
+                }
+                text.push('\n');
+            }
             _ => {}
         }
     }
@@ -270,8 +318,50 @@ pub fn parse(source: &str) -> ParsedNote {
         wiki_links,
         markdown_links,
         tags: tag::scan(source, &tag_skip),
+        tasks,
         fields,
         text: unwrap_wiki_links(&text),
+    }
+}
+
+/// Sets the task on 1-based line `line` to `done` and returns the new text.
+///
+/// `None` means the line has no task: the file can change after the caller
+/// got the line number. Only the marker character changes. The rest of the
+/// text stays byte for byte.
+pub fn set_task(source: &str, line: usize, done: bool) -> Option<String> {
+    let task = parse(source)
+        .tasks
+        .into_iter()
+        .find(|task| task.line == line)?;
+    let mut out = source.to_string();
+    out.replace_range(
+        task.span.start + 1..task.span.end - 1,
+        if done { "x" } else { " " },
+    );
+    Some(out)
+}
+
+/// Line numbers of growing offsets, without a recount from the start.
+struct LineCounter<'a> {
+    source: &'a str,
+    offset: usize,
+    line: usize,
+}
+
+impl<'a> LineCounter<'a> {
+    fn new(source: &'a str) -> Self {
+        LineCounter {
+            source,
+            offset: 0,
+            line: 1,
+        }
+    }
+
+    fn line_at(&mut self, offset: usize) -> usize {
+        self.line += self.source[self.offset..offset].matches('\n').count();
+        self.offset = offset;
+        self.line
     }
 }
 
@@ -333,7 +423,7 @@ fn is_external(target: &str) -> bool {
 }
 
 /// Decodes `%20` and similar sequences to plain characters.
-fn decode_target(target: &str) -> String {
+pub(crate) fn decode_target(target: &str) -> String {
     let mut decoded = String::with_capacity(target.len());
     let mut chars = target.chars();
 
@@ -555,5 +645,90 @@ mod tests {
         assert!(note.text.contains("жирным"));
         assert!(note.text.contains("кодом"));
         assert!(!note.text.contains('*'));
+    }
+
+    fn summary(note: &ParsedNote) -> Vec<(usize, bool, &str)> {
+        note.tasks
+            .iter()
+            .map(|task| (task.line, task.done, task.text.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn collects_tasks_with_lines_and_state() {
+        let source = concat!(
+            "---\nstatus: план\n---\n",
+            "# Дела\n\n",
+            "- [ ] купить **молоко**\n",
+            "- [x] позвонить [[Люди/Иван|Ивану]]\n",
+            "- обычный пункт\n",
+            "* [X] сдать `отчёт`\n",
+        );
+        let note = parse(source);
+
+        assert_eq!(
+            summary(&note),
+            [
+                (6, false, "купить молоко"),
+                (7, true, "позвонить Ивану"),
+                (9, true, "сдать отчёт"),
+            ]
+        );
+        assert_eq!(&source[note.tasks[0].span.clone()], "[ ]");
+    }
+
+    #[test]
+    fn a_task_in_a_code_block_is_an_example() {
+        let note = parse("```markdown\n- [ ] пример\n```\n\n    - [ ] отступ\n\n`- [ ] код`\n");
+
+        assert!(note.tasks.is_empty(), "{:?}", note.tasks);
+    }
+
+    #[test]
+    fn nested_tasks_keep_their_own_text() {
+        let source = concat!(
+            "1. [ ] проект\n",
+            "   продолжение\n",
+            "   - [x] шаг один\n",
+            "   - [ ] шаг два\n",
+            "\n",
+            "> - [ ] в цитате\n",
+        );
+        let note = parse(source);
+
+        assert_eq!(
+            summary(&note),
+            [
+                (1, false, "проект продолжение"),
+                (3, true, "шаг один"),
+                (4, false, "шаг два"),
+                (6, false, "в цитате"),
+            ]
+        );
+    }
+
+    #[test]
+    fn set_task_changes_only_the_marker() {
+        let source = "# Дела\n\n- [ ] один\n  - [x] два\n";
+
+        assert_eq!(
+            set_task(source, 3, true).as_deref(),
+            Some("# Дела\n\n- [x] один\n  - [x] два\n")
+        );
+        assert_eq!(
+            set_task(source, 4, false).as_deref(),
+            Some("# Дела\n\n- [ ] один\n  - [ ] два\n")
+        );
+        // The same state again is not an error: two clicks must not fail.
+        assert_eq!(set_task(source, 4, true).as_deref(), Some(source));
+    }
+
+    #[test]
+    fn set_task_refuses_a_line_without_a_task() {
+        let source = "# Дела\n\n- [ ] один\n\n```\n- [ ] пример\n```\n";
+
+        assert_eq!(set_task(source, 1, true), None, "заголовок не задача");
+        assert_eq!(set_task(source, 6, true), None, "пример в коде не задача");
+        assert_eq!(set_task(source, 40, true), None, "такой строки нет");
     }
 }

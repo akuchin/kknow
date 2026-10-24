@@ -69,6 +69,7 @@ does not treat this folder as notes. The files are:
 - `.kknow/remote.json` — the storage address and the conflict policy.
 - `.kknow/bookmarks.json` — bookmarks.
 - `.kknow/themes/*.json` — themes.
+- `.kknow/trash/<entry>/…` — deleted notes and folders.
 
 The window and the terminal share data in the app config directory
 (`vaults::config_dir`):
@@ -103,10 +104,40 @@ External edit:
   note to a new identifier, and it moves a folder. All of these operations
   refuse to overwrite a path that a file already uses. A case-insensitive disk
   does not confuse them: `Note` → `note` is the same file, not a different one.
+- `Vault::remove` and `Vault::remove_folder` do not delete files. They move the
+  item to the trash (`kknow_core::Trash`, `.kknow/trash`):
+  - Each delete gets an entry folder. Its name is the delete time in Unix
+    seconds, with `-2`, `-3`… for a second delete in the same second.
+  - Inside the entry, the item keeps its path from the vault root. A restore
+    moves each file back to that path.
+  - The move is one `rename`: the trash is on the file system of the vault.
+  - Each move to the trash first removes entries older than 30 days. This
+    costs one directory read.
+  - A restore refuses to overwrite a file. If one file of the entry is taken,
+    nothing moves.
+  - The watcher sees the old path disappear and reports `Removed`. It skips
+    the new path, because the path is hidden. `Workspace::delete` already
+    removed the note from the index, so the event changes nothing.
 - Parsing: `[[link]]`, `[[link|alias]]`, `[[link#Heading]]`,
   `[[link#^block]]`, `![[embed]]`, Markdown links, tags, frontmatter.
 - A link graph with wikilink resolution rules (full path, then file name, and
   so on) and backlinks.
+- A rename or a move rewrites the links that point to the moved notes
+  (`Relink` in `kknow-index`, `Workspace::relink` in `kknow-app`).
+  - The rule: a link must find the same note after the move. A link that still
+    finds it stays as it is. Thus `[[kknow]]` survives a move to a different
+    folder, and kknow does not touch the file.
+  - A broken link gets the full path. A link by name gets the new name if the
+    name finds the note. Else it also gets the full path.
+  - Only the target changes. The alias, `#Heading`, `#^block`, the `!` of an
+    embed and a written `.md` stay. A Markdown link keeps its angle brackets,
+    or it gets `%20` for a space.
+  - The rewrite uses the parser spans, so links in code and math stay.
+  - It reads only possible sources: the moved notes, their backlinks and the
+    backlinks of notes with the new name. A moved note can also lose its own
+    links: `[[Notes]]` can find a different nearest `Notes` from the new folder.
+  - The notes go through the normal save path (`Workspace::store`). Thus the
+    hash marks the write as our own, and search and graph get the new text.
 - `Workspace::stats` gives notes, folders and size.
 
 ## Search
@@ -168,7 +199,8 @@ External edit:
   1. `stage` makes the plan and reads the content to send. It holds the vault
      lock.
   2. `transfer` does the network work. It does **not** hold the vault.
-  3. `commit_local` writes the files. It holds the lock again.
+  3. `commit_local` writes the files. It holds the lock again. `RemoveLocal`
+     goes through `Vault::remove`, so the note goes to the trash.
 
   `run` joins the three parts for the terminal. Thus a note save does not wait
   until the sync ends.
@@ -237,6 +269,12 @@ External edit:
 - The window listens for drag and drop on the webview
   (`getCurrentWebview().onDragDropEvent`), not through `listen`. The shell sends
   `tauri://drag-*` to one specific webview.
+- An image file that you drop on the open note does not go to `adopt`. The
+  drop event has the point in physical pixels. The window changes it to CSS
+  pixels and asks the editor for the text position (`Editor.dropPosition`).
+  If the point is on the editor, the image goes into the note. The other paths
+  of the same drop go to `adoptDropped`, as before. A drop in a different
+  location keeps the old behaviour.
 
 ## Standalone files
 
@@ -752,11 +790,11 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   in
   the search and the graph.
 
-  kknow does not change links in other notes. The
-  resolver finds the note by file name and by path suffix after the move. If it
-  does not, the graph shows a broken link. This is more honest than a silent
-  edit of a different note. A duplicate goes next to the original: `Name copy`,
-  `Name copy 2`, the first free name.
+  Links follow the moved notes: see "Core: parsing, graph, files". The
+  `rename_note` and `rename_folder` commands return the number of notes with
+  changed links. The status bar shows it after "renamed": "переименовано ·
+  обновлены ссылки в 3 заметках". A duplicate goes next to the original:
+  `Name copy`, `Name copy 2`, the first free name.
 - You can see edits in a different vault. `onExternalChange` reads again the
   tree of the vault that sent the event.
 - There are three ways to add a vault, and all of them meet in `adoptVaults`:
@@ -800,6 +838,17 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   it.
 - The number in the footer depends on the content. For recent notes it is
   about the vault ("8 of 9"). For hits, it is about the hits.
+- "Go to heading" (⌘⇧O, `note.outline`) is a palette mode, not a sidebar
+  panel. `openOutline` hides the chips and the actions. The list is the
+  headings of the open note, with an indent for each level.
+  - `ui/src/outline.ts` takes ATX and setext headings from the editor syntax
+    tree. The tree knows code blocks, so a `#` line in a block is no heading.
+    The closing `---` of frontmatter is not a setext heading.
+  - The palette filters the headings itself, as it filters bookmarks.
+  - ↵ puts the editor cursor on the heading. An open preview scrolls to the
+    heading too (`scrollToLine` finds the nearest line marker). "Read" keeps
+    its mode.
+  - A standalone file gets the outline too: it uses the same editor.
 
 ### Settings window
 
@@ -988,6 +1037,21 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the full window. The `</>` button opens the source, as for a diagram. The
   parser reads `![[file.png]]` as an `Image` without a URL. Thus `addWikilinks`
   draws it, not the tree walk.
+- You can paste an image from the clipboard or drop an image file on the
+  editor (`ui/src/attachments.ts`). The core saves it into `attachments/` and
+  returns the path. The editor inserts `![[attachments/<name>]]` at the cursor
+  or at the drop point.
+  - A pasted image gets the name `Pasted image 20261024153012.png`, as in
+    Obsidian. A dropped file keeps its name. If the name is taken, the core
+    adds a number: `shot 2.png`.
+  - A paste that also has plain text stays text. A spreadsheet puts both the
+    cells and a picture of them into the clipboard.
+  - The editor blocks a file drop that gets to the page. CodeMirror would
+    insert the file bytes as text. In the window, the shell catches file drops
+    before the page.
+  - Commands: `save_attachment` for pasted bytes, `attach_file` for a dropped
+    path. The frontend gives only a file name or the dropped path. The core
+    selects the folder (`kknow_core::image::save`).
 - This is not a full live preview yet: lists stay as text.
 
 ### Tables
@@ -1391,6 +1455,46 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   line. Thus the jump switches to "Side by side", but the window does not keep
   that mode for the note.
 
+### Tasks
+
+- A task is a list item with a box: `- [ ] text`, `- [x] text`. The parser
+  finds tasks (`ParsedNote::tasks`) from the `TaskListMarker` event, not from
+  the raw text. Thus a `- [ ]` in a code block is not a task.
+  - A task has the text, the state, the 1-based source line and the range of
+    `[ ]`. The text ends at the end of the paragraph or at a nested list. Thus
+    a nested task does not get into the text of its parent.
+  - `Workspace::tasks` gives the tasks of all notes, sorted by note and line.
+    It uses the parse that `Workspace` already keeps, so a list needs no disk
+    reads.
+- `Workspace::set_task` marks the task on line N as done or open.
+  - It reads the note from disk and parses it again. If line N has no task, it
+    refuses with `NotATask`. The line number comes from an older parse, and the
+    file can change after it.
+  - It changes only the character between the brackets. It writes through
+    `Workspace::save`, so the parse, the search and the bookmarks follow.
+  - It sets a state, it does not flip it. A second click with the same state
+    writes nothing.
+- The list is the fifth chip of the palette (⌘⌥T), next to bookmarks. The
+  palette shows only open tasks and filters them itself, as it does for
+  bookmarks. The row title is the task text, the snippet is the note title.
+  Enter opens the note at the task line. "Read" switches to "Side by side",
+  as for a bookmark.
+- The preview of a vault note makes the task boxes clickable.
+  - pulldown-cmark renders a box as `<input disabled>`, and a disabled input
+    gets no clicks. The window removes `disabled` (`enableTaskBoxes`). A
+    standalone file has no line marks, so its boxes stay disabled.
+  - The box comes right after the line mark of its list item, so the mark
+    before the box gives the line (`markLine`).
+  - The click handler cancels the browser toggle. The window first saves the
+    pending edits (`flushPendingSave`), then calls `set_task`. The core sees
+    the text of the editor, and its save check does not see a conflict.
+  - After the call, the editor changes the same character (`Editor.setTask`,
+    `ui/src/tasks.ts`). It is a usual edit, so ⌘Z undoes it, and the cursor
+    stays. The editor text is again equal to the disk, so the next save
+    writes nothing.
+- Live preview draws lists as text, so it has no boxes to click. There you
+  edit `[ ]` as text.
+
 ### Hotkeys
 
 - ⌘N — new note.
@@ -1398,11 +1502,13 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - ⌘S — save now.
 - ⌘K and ⌘⇧P — search palette. Esc in it closes it.
 - ⌘F — search in the open note.
+- ⌘⇧O — go to a heading of the open note, as "Go to symbol" in VS Code.
 - ⌘E — next note mode.
 - ⌘\\ — sidebar.
 - ⌘⌥← / ⌘⌥→ — back and forward.
 - ⌘⇧B — bookmark on the cursor line (⌘B in the editor is bold).
 - ⌘⌥B — palette with bookmarks.
+- ⌘⌥T — palette with open tasks.
 - ⌘= / ⌘− / ⌘0 — note font larger, smaller, normal.
 - ⌘⇧S — sync.
 - ⌘, — settings.
@@ -1472,11 +1578,14 @@ Commands:
 - `list`, `stats`, `links`, `backlinks`, `tags`, `broken`, `orphans`;
 - `show`, `render`, `new`, `search`, `watch`, `themes`, `sync`;
 - `vaults` / `vaults add` / `vaults rm` / `vaults use`;
-- `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`.
+- `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`;
+- `trash` / `trash restore <entry>` / `trash empty`.
   - `bookmarks` prints `note:line  «name»  text`. Without a name, there is no
     `«»`.
   - `bookmark … --name` names the bookmark and sets it first if it is not
     there. An empty name removes the name.
+- `tasks [--all]` prints open tasks as `note:line  text`. `--all` also
+  prints done tasks, with `[x]` or `[ ]` before the text.
 
 - `sync` takes `--dry-run`, `--on-conflict both|local|remote`, and
   `--bucket …` or `--folder …`.
@@ -1498,6 +1607,14 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   is not part of CommonMark. pulldown-cmark can split such a sequence into
   several text events. Instead, the parser gives the code and math ranges, and
   the scanner skips them.
+- **A rename rewrites links in other notes.** Before, a moved note left broken
+  links, and the user had to fix each one by hand. Other editors (Obsidian,
+  VS Code) update links on a move, and people expect it.
+  - kknow rewrites only links that would break or find a different note. A
+    move that the short name survives changes no file, so git and sync see no
+    noise.
+  - It is not a setting (YAGNI). The status bar tells how many notes changed,
+    so the edit is not silent.
 - **kknow changes links in the Markdown before rendering.** `render.rs`
   replaces wikilink and tag spans with usual links with the `kknow://` scheme.
   The UI catches clicks on them. Thus kknow does not need to change the event
@@ -1507,9 +1624,28 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   of the app.
 - **A regular expression does the prefix search.** `word*` in tantivy does not
   give a prefix search: the tokenizer drops the asterisk.
+- **A delete moves the note to a trash in the vault.** The principle "you
+  lose no data" covers more than the cache. A wrong click, or a delete on a
+  different device that sync brings here, must not lose a note.
+  - The trash is in `.kknow`: the scanner and sync already skip it, and a
+    `rename` inside one file system is atomic.
+  - The code is in `kknow-core`, because `Vault` owns all file writes. Thus
+    the window, the CLI and sync get the trash from one place.
+  - The entry stores no metadata file. The path inside the entry is enough
+    for a restore, and the entry name gives the delete time.
+  - The period is fixed at 30 days. A setting would add a field that nobody
+    asked for.
 - **kknow finds its own writes by the content hash.** If not, the watcher would
   report the write as an external change. The UI would then load the note again
   while you type.
+- **The core changes a task box, not the window.** A click in the preview
+  calls `set_task`, and the core checks the line on disk before it writes.
+  - The preview line comes from an older render. If the window changed the
+    editor text by itself, a moved line would toggle a wrong box. The core
+    sees the file as it is now and refuses a line that is not a task.
+  - The window saves its edits before the call and repeats the change in the
+    editor after it. Thus the editor stays equal to the disk, and the edit has
+    an undo step.
 - **The window saves with a check, not blindly.**
   - `save_note` gets `base`, the text at the start of the edit.
     `Workspace::save_if_unchanged` writes only if the file did not change.
@@ -1668,6 +1804,33 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   does not give it, and kknow removes raw HTML from notes. A `![](https://…)`
   in a note from a different person's vault would tell a foreign server that
   you opened the note. This is the same reason why a theme cannot use `url(…)`.
+- **A pasted or dropped image goes to `attachments/` with a
+  `![[attachments/…]]` link.**
+  - The folder is fixed, at the vault root. A setting for it would add work
+    and give little.
+  - The link uses a wikilink embed. The renderer changes it to
+    `![](<path>)`, so spaces in the name do not break it. A plain
+    `![](attachments/Pasted image.png)` breaks on the first space. The
+    `<…>` form or `%20` are hard to read and edit by hand.
+  - The link has the path from the root, not the bare name. A bare name
+    makes the loader search all of the vault. A file with the same name
+    nearer to the root would win. The loader finds the path from the root
+    for a note in any folder.
+  - The core changes `[ ] | # ^ ? % < >` in a name to `-`. These characters
+    break a wikilink, or the loader cuts the path at them.
+  - The core refuses `..`, path separators, absolute paths, hidden names and
+    extensions that the loader cannot show. A symlink in place of
+    `attachments` is refused too: the write must not leave the vault.
+  - The write goes through a hidden temp file and `rename`. It never
+    overwrites a file: the core takes the first free name.
+  - The body of `save_attachment` is raw bytes, as in the `note_image`
+    response. Thus the name goes in a header, percent-encoded. The fallback
+    IPC path sends a JSON array of numbers, and the command accepts it too.
+  - A standalone file saves into `attachments/` next to the file. The file
+    must be in the list (`known_file`). The core gets the folder from the
+    file path, so the frontend still gives only a name. The link
+    `![[attachments/…]]` works there too: the loader looks next to the file.
+  - Sync takes only notes, so it does not send images in `attachments/`.
 - **CSS limits the image size, not the core.** An image is not wider than the
   column. It is not taller than 480 px in the preview and 360 px in the editor,
   with `object-fit: contain`. A size from the caption (`|300`, `|300x200`)
@@ -1772,6 +1935,10 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   changes while you type. A call to Rust on each key press is not worth it. The
   word count is a regular expression over the editor text, with a debounce. In
   the terminal, `kknow stats` prints the same data, and there the core counts.
+- **The window computes the note outline, not the core.** The editor already
+  has the Markdown syntax tree, also for unsaved edits. The core would need
+  the full text on each palette open and would parse it again. The CLI has
+  no outline, so the core needs no new API.
 - **Reveal in Finder is our own command, not a plugin.** `tauri-plugin-opener`
   would add an npm package and permissions for one action. Instead,
   `reveal_note` calls the system `open -R` (and `explorer`/`xdg-open` on other

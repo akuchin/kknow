@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::{Duration, SystemTime};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kknow_app::Workspace;
@@ -12,7 +13,7 @@ use kknow_app::bookmarks::clean_name;
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
-use kknow_index::{Edge, EdgeKind, Subpath};
+use kknow_index::{Edge, EdgeKind, Subpath, Task};
 use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
 use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings, SyncEngine};
 
@@ -76,6 +77,12 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
+    /// List open tasks (`- [ ]`) of all notes: `note:line  text`.
+    Tasks {
+        /// Also list done tasks, with `[x]` and `[ ]` before the text.
+        #[arg(long)]
+        all: bool,
+    },
     /// Vaults that kknow knows: the same list as in the window.
     Vaults {
         #[command(subcommand)]
@@ -115,6 +122,13 @@ enum Command {
         #[arg(long, conflicts_with_all = ["target", "kind"])]
         file: Option<PathBuf>,
     },
+    /// Deleted notes and folders: list, restore, empty.
+    ///
+    /// Entries older than 30 days go away on the next delete.
+    Trash {
+        #[command(subcommand)]
+        action: Option<TrashAction>,
+    },
     /// Watch the directory and print changes.
     Watch,
     /// Sync the vault with S3-compatible storage or a shared folder.
@@ -149,6 +163,19 @@ enum VaultAction {
     Rm { vault: String },
     /// Make a vault active: the window opens with it.
     Use { vault: String },
+}
+
+#[derive(Subcommand)]
+enum TrashAction {
+    /// List entries. The same as `kknow trash` without a subcommand.
+    List,
+    /// Put an entry back. Overwrites no note.
+    Restore {
+        /// Entry ID from `kknow trash`.
+        entry: String,
+    },
+    /// Remove all entries for good.
+    Empty,
 }
 
 /// What to run a command on. The same as `TargetKind` in the core, but with
@@ -313,6 +340,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Bookmark { note, line, name } => {
             bookmark(&mut workspace, &note, line, name.as_deref())?
         }
+        Command::Tasks { all } => tasks(&workspace, all),
         Command::Commands {
             target,
             kind,
@@ -355,6 +383,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         }
         // Handled above: this command needs no vault.
         Command::Vaults { .. } => unreachable!(),
+        Command::Trash { action } => trash(&mut workspace, action.unwrap_or(TrashAction::List))?,
         Command::Watch => watch(&mut workspace)?,
         Command::Sync {
             dry_run,
@@ -587,6 +616,36 @@ fn bookmarks(workspace: &Workspace) {
             None => println!("{place}  {text}"),
         }
     }
+}
+
+fn tasks(workspace: &Workspace, all: bool) {
+    let tasks: Vec<(&NoteId, &Task)> = workspace
+        .tasks()
+        .into_iter()
+        .filter(|(_, task)| all || !task.done)
+        .collect();
+    if tasks.is_empty() {
+        let empty = if all {
+            "задач нет"
+        } else {
+            "открытых задач нет"
+        };
+        println!("{empty}");
+        return;
+    }
+    for (id, task) in tasks {
+        println!("{}", task_row(id, task, all));
+    }
+}
+
+/// `note:line  text`. With `--all`, the box shows which tasks are done.
+fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
+    let place = format!("{id}:{}", task.line);
+    if !all {
+        return format!("{place}  {}", task.text);
+    }
+    let mark = if task.done { 'x' } else { ' ' };
+    format!("{place}  [{mark}] {}", task.text)
 }
 
 fn bookmark(
@@ -1001,7 +1060,7 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
     let counts = [
         ("выгружено", report.uploaded.len()),
         ("загружено", report.downloaded.len()),
-        ("удалено локально", report.removed_local.len()),
+        ("перемещено в корзину", report.removed_local.len()),
         ("удалено в облаке", report.removed_remote.len()),
     ];
     for (label, count) in counts.iter().filter(|(_, count)| *count > 0) {
@@ -1016,6 +1075,56 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
     }
 
     Ok(())
+}
+
+fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
+    match action {
+        TrashAction::List => {
+            let entries = workspace
+                .trash()
+                .entries()
+                .map_err(|error| error.to_string())?;
+            if entries.is_empty() {
+                println!("корзина пуста");
+            }
+            let now = SystemTime::now();
+            for entry in entries {
+                let age = now.duration_since(entry.deleted).unwrap_or_default();
+                println!(
+                    "{}  {}  ({}, заметок: {})",
+                    entry.id,
+                    entry.path,
+                    days_ago(age),
+                    entry.notes
+                );
+            }
+        }
+        TrashAction::Restore { entry } => {
+            let restored = workspace
+                .restore(&entry)
+                .map_err(|error| error.to_string())?;
+            for id in &restored {
+                println!("восстановлена {id}");
+            }
+        }
+        TrashAction::Empty => {
+            let count = workspace
+                .trash()
+                .empty()
+                .map_err(|error| error.to_string())?;
+            println!("удалено из корзины навсегда: {count}");
+        }
+    }
+    Ok(())
+}
+
+/// Age of a trash entry in whole days: the trash keeps entries for 30 days,
+/// so hours do not matter.
+fn days_ago(age: Duration) -> String {
+    match age.as_secs() / (24 * 60 * 60) {
+        0 => "сегодня".to_string(),
+        days => format!("{days} дн. назад"),
+    }
 }
 
 fn watch(workspace: &mut Workspace) -> Result<(), String> {
@@ -1052,5 +1161,24 @@ mod tests {
         assert_eq!(human_size(1536), "1.5 КБ");
         assert_eq!(human_size(12_900_000), "12.3 МБ");
         assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 ГБ");
+    }
+
+    #[test]
+    fn a_task_row_shows_the_box_only_with_all() {
+        let id = NoteId::parse("Проекты/План").unwrap();
+        let note = kknow_index::parse("# План\n\n- [x] начать\n");
+        let task = &note.tasks[0];
+
+        assert_eq!(task_row(&id, task, false), "Проекты/План:3  начать");
+        assert_eq!(task_row(&id, task, true), "Проекты/План:3  [x] начать");
+    }
+
+    #[test]
+    fn trash_age_is_in_whole_days() {
+        assert_eq!(days_ago(Duration::from_secs(60)), "сегодня");
+        assert_eq!(
+            days_ago(Duration::from_secs(3 * 24 * 60 * 60 + 5)),
+            "3 дн. назад"
+        );
     }
 }

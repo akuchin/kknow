@@ -67,6 +67,15 @@ export function lineAt(root: HTMLElement, node: Node, offset: number): number | 
   return line;
 }
 
+/**
+ * The line of the mark at or before `node`, without a refinement. A task box
+ * stands right after the mark of its list item, so this is the task line.
+ */
+export function markLine(root: HTMLElement, node: Node): number | null {
+  const mark = markBefore(root, node);
+  return mark ? Number(mark.dataset.line) : null;
+}
+
 /** The line of the first block still visible at the top of the preview. */
 export function topLine(root: HTMLElement): number | null {
   const pane = root.getBoundingClientRect();
@@ -75,6 +84,19 @@ export function topLine(root: HTMLElement): number | null {
     if (block.getBoundingClientRect().bottom > pane.top + 4) return Number(mark.dataset.line);
   }
   return null;
+}
+
+/**
+ * Scrolls the block of `line` to the top of the preview. Without a mark for
+ * the line, it takes the nearest mark above. Without marks, it does nothing.
+ */
+export function scrollToLine(root: HTMLElement, line: number): void {
+  let best: HTMLElement | null = null;
+  for (const mark of root.querySelectorAll<HTMLElement>(MARK)) {
+    if (Number(mark.dataset.line) > line) break;
+    best = mark;
+  }
+  if (best) (blockOf(best) ?? best).scrollIntoView({ block: "start" });
 }
 
 /**

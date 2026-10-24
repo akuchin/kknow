@@ -8,6 +8,7 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{Error, Result};
 use crate::note::{Note, NoteId, is_markdown_extension};
+use crate::trash::Trash;
 
 /// A folder of notes on disk.
 ///
@@ -183,12 +184,32 @@ impl Vault {
         Ok(self.notes.get(id))
     }
 
+    /// Moves the note to the [`Trash`]. Nothing leaves the disk for good.
     pub fn remove(&mut self, id: &NoteId) -> Result<()> {
         let note = self
-            .notes
-            .remove(id)
+            .get(id)
             .ok_or_else(|| Error::NoteNotFound(id.clone()))?;
-        fs::remove_file(&note.path).map_err(|source| Error::io(&note.path, source))
+        let relative = note
+            .path
+            .strip_prefix(&self.root)
+            .map_err(|_| Error::OutsideVault(note.path.clone()))?
+            .to_path_buf();
+        self.trash().put(&relative)?;
+        self.notes.remove(id);
+        Ok(())
+    }
+
+    pub fn trash(&self) -> Trash {
+        Trash::new(&self.root)
+    }
+
+    /// Restores a trash entry and returns its notes, now in the vault again.
+    pub fn restore(&mut self, entry: &str) -> Result<Vec<NoteId>> {
+        let restored = self.trash().restore(entry)?;
+        for id in &restored {
+            self.refresh(id)?;
+        }
+        Ok(restored)
     }
 
     /// Moves the note to a new id.
@@ -341,7 +362,7 @@ impl Vault {
         fs::create_dir_all(&path).map_err(|source| Error::io(&path, source))
     }
 
-    /// Removes a folder with all its content.
+    /// Moves a folder with all its content to the [`Trash`].
     ///
     /// Returns the ids of the removed notes: the vault knows nothing about
     /// search and the graph, and the caller must clean them up.
@@ -351,7 +372,7 @@ impl Vault {
         if !path.is_dir() {
             return Err(Error::NotADirectory(path));
         }
-        fs::remove_dir_all(&path).map_err(|source| Error::io(&path, source))?;
+        self.trash().put(Path::new(&key))?;
 
         let prefix = format!("{key}/");
         let removed: Vec<NoteId> = self
@@ -484,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_folder_drops_files_and_returns_note_ids() {
+    fn remove_folder_moves_files_to_the_trash_and_returns_note_ids() {
         let dir = fixture();
         let mut vault = Vault::open(dir.path()).unwrap();
 
@@ -493,11 +514,38 @@ mod tests {
         assert_eq!(ids, ["Projects/Rust/kknow"]);
         assert!(!dir.path().join("Projects").exists());
         assert!(!vault.contains(&NoteId::parse("Projects/Rust/kknow").unwrap()));
+        assert_eq!(vault.trash().entries().unwrap()[0].notes, 1);
 
         assert!(matches!(
             vault.remove_folder("Projects"),
             Err(Error::NotADirectory(_))
         ));
+    }
+
+    #[test]
+    fn remove_moves_the_note_to_the_trash() {
+        let dir = fixture();
+        let mut vault = Vault::open(dir.path()).unwrap();
+        let id = NoteId::parse("Projects/Rust/kknow").unwrap();
+
+        vault.remove(&id).unwrap();
+        assert!(!vault.contains(&id));
+        assert!(!dir.path().join("Projects/Rust/kknow.md").exists());
+
+        // The trash is hidden: a rescan does not bring the note back.
+        vault.rescan().unwrap();
+        assert!(!vault.contains(&id));
+
+        let entries = vault.trash().entries().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "Projects/Rust/kknow.md");
+
+        assert_eq!(
+            vault.restore(&entries[0].id).unwrap(),
+            std::slice::from_ref(&id)
+        );
+        assert!(vault.contains(&id));
+        assert_eq!(vault.read(&id).unwrap(), "# kknow\n");
     }
 
     #[test]

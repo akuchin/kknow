@@ -63,6 +63,10 @@ const PATHS = {
   search: ["M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14", "M16.5 16.5 21 21"],
   // Bookmark: a ribbon with a notch at the bottom.
   bookmark: ["M6 3h12v18l-6-4-6 4z"],
+  // A heading in the note outline: the Markdown hash.
+  heading: ["M5 9h15", "M4 15h15", "M10 4 8 20", "M16 4l-2 16"],
+  // A task in palette results: a box with a check mark.
+  task: ["M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", "m8 12 3 3 5-6"],
   // A note in palette results: a page with two lines of text.
   note: [
     "M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z",
