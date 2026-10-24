@@ -2030,6 +2030,12 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   has the parts "plan — network — write" for the same reason. In Tauri this
   needs `#[tauri::command(async)]`. Without it, the command would run on the
   main thread, and the window would stop responding.
+- **Almost all commands are `#[tauri::command(async)]`.** A sync command runs
+  on the main thread, so a slow disk, a lazy vault open or the network freezes
+  the window. Only getters of memory stay sync (`list_vaults`,
+  `get_settings` and a few more). The test
+  `only_memory_getters_are_sync_commands` (`src-tauri/src/lib.rs`) reads the
+  sources and fails on a new sync command that is not in its list.
 - **On timeout kknow kills the process group, not the process.**
   `sh -c 'work'` almost always runs the work as a separate process. If kknow
   killed only the shell, the work would stay alive and keep the pipe open. The

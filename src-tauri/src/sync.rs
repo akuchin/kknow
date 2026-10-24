@@ -99,7 +99,7 @@ fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
 }
 
 /// Sync settings of the vault, if sync is configured.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_settings(
     state: State<'_, AppState>,
     vault: Option<String>,
@@ -112,7 +112,7 @@ pub fn sync_settings(
 ///
 /// `secret` = `None` means "keep the stored key". The form sends an empty field
 /// each time the user does not type the key again.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_sync_settings(
     state: State<'_, AppState>,
     settings: RemoteConfig,
@@ -155,7 +155,7 @@ fn tidy_provider(provider: Provider) -> Provider {
 ///
 /// The snapshot of the last sync stays. If the user connects the storage
 /// again, it prevents treating all notes as conflicts.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn forget_sync_settings(state: State<'_, AppState>, vault: Option<String>) -> Result<()> {
     let slot = state.slot(vault.as_deref())?;
     let Some(config) = slot.read(config_of)? else {
@@ -187,7 +187,7 @@ pub fn sync_preview(state: State<'_, AppState>, vault: Option<String>) -> Result
 }
 
 /// Syncs the vault with its remote storage.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_now<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
@@ -328,7 +328,7 @@ fn failed<R: Runtime>(
 }
 
 /// Sync status of one vault; without an ID, of the active vault.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_status<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
@@ -343,7 +343,7 @@ pub fn sync_status<R: Runtime>(
 ///
 /// The status bar chip also shows conflicts in other vaults, so the window
 /// needs the full list, not only the active vault.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_statuses<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,

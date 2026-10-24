@@ -111,13 +111,13 @@ pub fn open_path(state: &AppState, path: &Path) -> Result<Opened> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_files(state: State<'_, AppState>) -> Vec<FileEntry> {
     state.files().iter().map(|path| entry(path)).collect()
 }
 
 /// Opens a file picked in the window: by dialog or drag and drop.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_file(state: State<'_, AppState>, path: String) -> Result<Opened> {
     open_path(&state, Path::new(&path))
 }
@@ -128,7 +128,7 @@ pub fn take_opened_file(state: State<'_, AppState>) -> Option<Opened> {
     state.take_pending()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_file(state: State<'_, AppState>, path: String) -> Result<FileView> {
     let path = state.known_file(&path)?;
     let content = loose::read(&path)?;
@@ -136,7 +136,7 @@ pub fn load_file(state: State<'_, AppState>, path: String) -> Result<FileView> {
 }
 
 /// Writes a loose file. `base` works as in `save_note`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_file(
     state: State<'_, AppState>,
     path: String,
@@ -183,14 +183,14 @@ pub fn save_file(
 }
 
 /// Renders unsaved text for the preview while the user types.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn preview_file(state: State<'_, AppState>, path: String, content: String) -> Result<String> {
     let path = state.known_file(&path)?;
     Ok(loose::render(&path, &content))
 }
 
 /// Image bytes for a loose file, like `note_image`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_image(state: State<'_, AppState>, path: String, target: String) -> Result<Response> {
     let path = state.known_file(&path)?;
     let image = loose::image(&path, &target).ok_or(Error::ImageNotFound(target))?;
@@ -199,14 +199,14 @@ pub fn file_image(state: State<'_, AppState>, path: String, target: String) -> R
 }
 
 /// Removes the file from the list. The file stays on disk.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn forget_file(state: State<'_, AppState>, path: String) -> Vec<FileEntry> {
     state.forget_file(Path::new(&path));
     state.files().iter().map(|path| entry(path)).collect()
 }
 
 /// Shows a loose file in the file manager.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_file(state: State<'_, AppState>, path: String) -> Result<()> {
     let path = state.known_file(&path)?;
     crate::commands::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))

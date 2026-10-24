@@ -74,7 +74,7 @@ fn target_of(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_commands(
     state: State<'_, AppState>,
     kind: String,
@@ -184,7 +184,7 @@ impl ManifestView {
 ///
 /// A missing file is not an error but an empty list. The user adds the first
 /// command in the same form, and no template on disk is necessary.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 
@@ -205,7 +205,7 @@ pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
 /// entries are saved like the others. A command without a script is
 /// unfinished, not a reason to refuse the save. Otherwise the user cannot
 /// close the form halfway.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_commands(
     state: State<'_, AppState>,
     commands: Vec<CommandSpec>,
@@ -229,7 +229,7 @@ pub fn save_commands(
 /// Users edit commands in the settings form, but the file is still there. It is
 /// useful to look at it, copy it to another machine, or fix what the form
 /// cannot show, for example an unclosed bracket in JSON.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_commands(state: State<'_, AppState>) -> Result<()> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 

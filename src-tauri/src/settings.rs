@@ -60,7 +60,7 @@ pub fn get_settings(state: State<'_, SettingsState>) -> AppSettings {
 }
 
 /// Saves the settings and sends them to both windows.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_settings<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, SettingsState>,

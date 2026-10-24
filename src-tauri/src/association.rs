@@ -41,7 +41,7 @@ fn association<R: Runtime>(app: &AppHandle<R>) -> Association {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn markdown_association<R: Runtime>(app: AppHandle<R>) -> Association {
     association(&app)
 }
@@ -51,7 +51,7 @@ pub fn markdown_association<R: Runtime>(app: AppHandle<R>) -> Association {
 /// Works only for the installed app. Launch Services knows only apps in
 /// `/Applications` (or started from there). It does not know a dev build and
 /// returns an error.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn claim_markdown<R: Runtime>(app: AppHandle<R>) -> Result<Association, String> {
     imp::set_default_handler(MARKDOWN_TYPE, &app.config().identifier)?;
     Ok(association(&app))

@@ -258,7 +258,7 @@ pub async fn check_update<R: Runtime>(app: AppHandle<R>) -> UpdateStatus {
 ///
 /// The last sync runs first, as on close: on Windows `install` quits the app
 /// at once, and the sync must not be lost.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     let updates = app.state::<Updates>();
     let Some(ready) = updates.take() else {

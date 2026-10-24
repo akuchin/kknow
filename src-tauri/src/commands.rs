@@ -240,21 +240,21 @@ pub fn list_vaults(state: State<'_, AppState>) -> Vec<VaultView> {
 }
 
 /// Adds a folder to the vault list and makes it active.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_vault(state: State<'_, AppState>, path: String) -> Result<VaultInfo> {
     let entry = state.add(path.into(), None)?;
     activate_vault(state, entry.id)
 }
 
 /// Forgets a vault. Notes stay on disk.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_vault(state: State<'_, AppState>, id: String) -> Result<Vec<VaultView>> {
     state.remove(&id)?;
     Ok(list_vaults(state))
 }
 
 /// Switches the active vault: the tree, search and status bar use it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn activate_vault(state: State<'_, AppState>, id: String) -> Result<VaultInfo> {
     let entry = state.set_active(&id)?;
     let slot = state.slot(Some(&entry.id))?;
@@ -294,7 +294,7 @@ pub fn open_settings<R: Runtime>(app: AppHandle<R>, section: Option<String>) -> 
 pub const SETTINGS_WINDOW: &str = "settings";
 
 /// Renames a vault. Notes and sync settings do not change.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_vault(
     state: State<'_, AppState>,
     id: String,
@@ -304,7 +304,7 @@ pub fn rename_vault(
     Ok(list_vaults(state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_vault_color(
     state: State<'_, AppState>,
     id: String,
@@ -318,7 +318,7 @@ pub fn set_vault_color(
 ///
 /// It counts from the open vault. So the first visit to the settings of another
 /// vault opens that vault, as a global search does.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_stats(state: State<'_, AppState>, vault: Option<String>) -> Result<VaultStatsView> {
     let slot = state.slot(vault.as_deref())?;
     slot.read(|workspace| {
@@ -338,7 +338,7 @@ pub fn vault_by_hotkey(state: State<'_, AppState>, number: usize) -> Option<Stri
 }
 
 /// Full-text search in one vault. An empty query returns an empty list.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search(
     state: State<'_, AppState>,
     query: String,
@@ -370,7 +370,7 @@ pub fn search(
 /// index, so scores from different vaults are not comparable.
 /// An unavailable vault (disk disconnected) is skipped: results from the
 /// others matter more than an error about one.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search_all(
     state: State<'_, AppState>,
     query: String,
@@ -409,14 +409,14 @@ pub fn search_all(
     Ok(found)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn current_vault(state: State<'_, AppState>) -> Option<VaultInfo> {
     let entry = state.active()?;
     let slot = state.slot(Some(&entry.id)).ok()?;
     slot.read(|workspace| Ok(info(&entry, workspace))).ok()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reload_vault(state: State<'_, AppState>, vault: Option<String>) -> Result<VaultInfo> {
     let slot = state.slot(vault.as_deref())?;
     slot.write(|workspace| {
@@ -425,7 +425,7 @@ pub fn reload_vault(state: State<'_, AppState>, vault: Option<String>) -> Result
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_notes(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<NoteSummary>> {
     state.slot(vault.as_deref())?.read(|workspace| {
         Ok(workspace
@@ -440,7 +440,7 @@ pub fn list_notes(state: State<'_, AppState>, vault: Option<String>) -> Result<V
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_note(
     state: State<'_, AppState>,
     id: String,
@@ -477,7 +477,7 @@ pub enum SaveOutcome {
 /// `bookmarks` are bookmarks as the editor sees them: lines and names. The
 /// editor moves them with edits and knows their position better than a text
 /// search.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_note(
     state: State<'_, AppState>,
     id: String,
@@ -511,7 +511,7 @@ pub fn save_note(
 }
 
 /// Renders unsaved text for the preview while the user types.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn preview(
     state: State<'_, AppState>,
     id: String,
@@ -527,7 +527,7 @@ pub fn preview(
 /// Image bytes for a note. The response is raw bytes, not JSON: a number array
 /// for a screenshot of a few megabytes takes much longer to parse than the
 /// image itself.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn note_image(
     state: State<'_, AppState>,
     id: String,
@@ -550,7 +550,7 @@ pub fn note_image(
 /// and the standalone file come in headers, percent-encoded: a header holds
 /// only ASCII. The window gives only a file name. The core selects the folder:
 /// `attachments/` at the vault root, or next to a standalone file.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Result<String> {
     let header = |key: &str| {
         let value = request.headers().get(key)?.to_str().ok()?;
@@ -574,7 +574,7 @@ pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Resu
 ///
 /// `source` comes from the shell drop event, as in `open_file`. The command
 /// only reads it, and only an image of a limited size.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn attach_file(
     state: State<'_, AppState>,
     source: String,
@@ -601,7 +601,7 @@ fn attachment_dir(state: &AppState, file: Option<&str>) -> Result<PathBuf> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_note(
     state: State<'_, AppState>,
     name: String,
@@ -619,7 +619,7 @@ pub fn create_note(
 /// The UI puts their variables into `:root`; the core already validated the
 /// values. If no vault is open, that is fine: global themes do not depend on
 /// it, and a window with loose files needs them too.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_themes(state: State<'_, AppState>, vault: Option<String>) -> Result<ThemeSet> {
     let global = state.themes_path();
     match state.slot(vault.as_deref()) {
@@ -633,7 +633,7 @@ pub fn list_themes(state: State<'_, AppState>, vault: Option<String>) -> Result<
 ///
 /// The window sends only `id`. The core builds the path and refuses an `id`
 /// that looks like a path to another folder.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn share_theme(state: State<'_, AppState>, id: String, vault: Option<String>) -> Result<()> {
     let global = state.themes_path().ok_or(Error::NoConfig)?;
     let root = state
@@ -647,7 +647,7 @@ pub fn share_theme(state: State<'_, AppState>, id: String, vault: Option<String>
 ///
 /// It opens the folder instead of selecting it: the user comes to put a file
 /// there and should not search for it inside "Application Support".
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_themes(state: State<'_, AppState>) -> Result<()> {
     let dir = state.themes_path().ok_or(Error::NoConfig)?;
     fs::create_dir_all(&dir).map_err(|error| Error::Reveal(error.to_string()))?;
@@ -662,7 +662,7 @@ pub fn reveal_themes(state: State<'_, AppState>) -> Result<()> {
 ///
 /// The core computes the path from the note ID. The frontend sends only `id`,
 /// so this command cannot open a file outside the vault.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_note(
     state: State<'_, AppState>,
     id: Option<String>,
@@ -708,7 +708,7 @@ fn run(command: &mut Command) -> std::io::Result<()> {
 }
 
 /// Opens the note file in the app that the system assigns to `.md`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_note(state: State<'_, AppState>, id: String, vault: Option<String>) -> Result<()> {
     let path = state
         .slot(vault.as_deref())?
@@ -720,7 +720,7 @@ pub fn open_note(state: State<'_, AppState>, id: String, vault: Option<String>) 
 ///
 /// The path is not taken from outside as is: it must be in the core folder
 /// list. So this command can show only what is inside the vault.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_folder(
     state: State<'_, AppState>,
     name: String,
@@ -755,7 +755,7 @@ fn open_default(path: &Path) -> std::io::Result<()> {
 /// Sets the note bookmarks to exactly these lines of `content`, with these
 /// names. The window calls this when a bookmark is added, removed or renamed;
 /// the note does not need a save.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_bookmarks(
     state: State<'_, AppState>,
     id: String,
@@ -771,7 +771,7 @@ pub fn set_bookmarks(
 }
 
 /// All vault bookmarks, in the order they were added.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_bookmarks(
     state: State<'_, AppState>,
     vault: Option<String>,
@@ -796,7 +796,7 @@ pub fn list_bookmarks(
 }
 
 /// Tasks of all vault notes, sorted by note and line.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<TaskView>> {
     state.slot(vault.as_deref())?.read(|workspace| {
         Ok(workspace
@@ -818,7 +818,7 @@ pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<V
 ///
 /// The core reads the line from disk and refuses it if it is no longer a
 /// task. The window saves its edits before the call, so the disk is current.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_task(
     state: State<'_, AppState>,
     id: String,
@@ -835,7 +835,7 @@ pub fn set_task(
 
 /// Trash entries from the newest to the oldest: the latest delete is the
 /// one to undo first.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_trash(
     state: State<'_, AppState>,
     vault: Option<String>,
@@ -863,7 +863,7 @@ pub fn list_trash(
 
 /// Puts a trash entry back and returns the restored notes. The core
 /// overwrites nothing: if a file of the entry is taken, nothing moves.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn restore_trash(
     state: State<'_, AppState>,
     entry: String,
@@ -883,7 +883,7 @@ pub fn restore_trash(
 /// Links resolve against the vault, as if the note were still at its path.
 /// The window shows the HTML read-only: the file is out of the vault, and an
 /// edit would have nowhere to go.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trash_note(
     state: State<'_, AppState>,
     entry: String,
@@ -902,7 +902,7 @@ pub fn trash_note(
 }
 
 /// Removes one trash entry for good.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_trash_entry(
     state: State<'_, AppState>,
     entry: String,
@@ -917,7 +917,7 @@ pub fn delete_trash_entry(
 }
 
 /// Removes all trash entries for good and returns their number.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<usize> {
     state
         .slot(vault.as_deref())?
@@ -929,7 +929,7 @@ pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<
 ///
 /// The new name is the full path from the root, `Folder/Name`. For the core,
 /// rename and move are one operation, so the window does not separate them.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_note(
     state: State<'_, AppState>,
     id: String,
@@ -948,7 +948,7 @@ pub fn rename_note(
 }
 
 /// Copies a note next to it and returns the copy ID.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn duplicate_note(
     state: State<'_, AppState>,
     id: String,
@@ -962,7 +962,7 @@ pub fn duplicate_note(
 
 /// Renames or moves a folder with all its notes. Returns the number of notes
 /// with rewritten links.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_folder(
     state: State<'_, AppState>,
     name: String,
@@ -974,7 +974,7 @@ pub fn rename_folder(
         .write(|workspace| Ok(workspace.rename_folder(&name, &to)?.notes))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_note(state: State<'_, AppState>, id: String, vault: Option<String>) -> Result<()> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
@@ -983,14 +983,14 @@ pub fn delete_note(state: State<'_, AppState>, id: String, vault: Option<String>
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_folders(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<String>> {
     state
         .slot(vault.as_deref())?
         .read(|workspace| Ok(workspace.folders()?))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_folder(
     state: State<'_, AppState>,
     name: String,
@@ -1001,7 +1001,7 @@ pub fn create_folder(
         .write(|workspace| Ok(workspace.create_folder(&name)?))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_folder(
     state: State<'_, AppState>,
     name: String,

@@ -78,7 +78,7 @@ pub fn get_keymap(state: State<'_, KeymapState>) -> KeymapView {
 }
 
 /// Saves the changed keys and sends them to both windows.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_keymap<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, KeymapState>,
@@ -91,7 +91,7 @@ pub fn set_keymap<R: Runtime>(
 
 /// Shows the file in Finder. A missing file is created empty first, so the
 /// user has a file to open and edit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_keymap(state: State<'_, KeymapState>) -> Result<()> {
     let path = state
         .file

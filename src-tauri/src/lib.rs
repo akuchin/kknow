@@ -393,6 +393,7 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::Path;
 
     #[test]
     fn an_opened_folder_becomes_the_active_vault() {
@@ -493,5 +494,47 @@ mod tests {
         assert!(adopt(&state, &file).is_none());
         assert_eq!(state.entries().len(), 1);
         assert_eq!(state.active().unwrap().id, known);
+    }
+
+    /// A sync command runs on the main thread, and the window does not respond
+    /// until it returns. Only a getter of memory may stay sync; any command
+    /// that touches the disk, the network or may open a vault must be async.
+    #[test]
+    fn only_memory_getters_are_sync_commands() {
+        const SYNC: &[&str] = &[
+            "list_vaults",
+            "vault_by_hotkey",
+            "take_opened_file",
+            "get_settings",
+            "get_keymap",
+            "update_status",
+        ];
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut blocking = Vec::new();
+        for file in fs::read_dir(dir).unwrap() {
+            let source = fs::read_to_string(file.unwrap().path()).unwrap();
+            let mut lines = source.lines();
+            while let Some(line) = lines.next() {
+                if line.trim() != "#[tauri::command]" {
+                    continue;
+                }
+                let signature = lines.next().unwrap_or_default();
+                if signature.contains("async fn") {
+                    continue;
+                }
+                let name = signature
+                    .split("fn ")
+                    .nth(1)
+                    .and_then(|rest| rest.split(['(', '<']).next())
+                    .unwrap_or(signature);
+                if !SYNC.contains(&name) {
+                    blocking.push(name.to_string());
+                }
+            }
+        }
+        assert!(
+            blocking.is_empty(),
+            "these commands block the window, add (async): {blocking:?}"
+        );
     }
 }
