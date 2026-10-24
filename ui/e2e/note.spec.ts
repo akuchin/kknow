@@ -125,3 +125,32 @@ test("the palette offers the commands of the open note only", async ({ page }) =
   await expect(palette.locator(".palette-action").first()).toBeVisible();
   await expect(command).toHaveCount(0);
 });
+
+test("the note toolbar counts bookmarks and repeats the last command", async ({ page }) => {
+  const count = page.locator("#bookmarks-count");
+  const run = page.locator("#run-last");
+  const command = "Отправить в Confluence";
+  await expect(count).toHaveText("");
+  await expect(run).toHaveAttribute("title", t("topbar.commands.title"));
+
+  await noteRow(page, "Rust").click();
+  await expect(count).toHaveText("2");
+
+  // Nothing to repeat yet: the button opens the menu, and a run makes the
+  // command the last one.
+  await run.click();
+  await menuItem(page, command).click();
+  await expect(statusMessage(page)).toContainText(command);
+  await expect(run).toHaveAttribute("title", t("topbar.commands.run", { name: command }));
+
+  // Another note with the same command keeps the button.
+  await noteRow(page, "Index").click();
+  await expect(page.locator("#note-title")).toHaveText("Index");
+  await expect(run).toHaveAttribute("title", t("topbar.commands.run", { name: command }));
+
+  // A bookmark from the toolbar menu shows in the count at once.
+  await editorText(page).click();
+  await page.locator("#note-bookmarks").click();
+  await menuItem(page, t("palette.action.bookmark")).click();
+  await expect(count).toHaveText("1");
+});
