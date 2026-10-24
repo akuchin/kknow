@@ -16,12 +16,13 @@
  * preview uses it. If you change the format, change both places.
  *
  * This file has the parser, the live preview highlight (called from
- * `live-preview.ts`) and the popup where the user writes and edits the
- * instruction.
+ * `live-preview.ts`), the gutter marker and the popup where the user writes
+ * and edits the instruction.
  */
 
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import {
+  RangeSet,
   StateEffect,
   StateField,
   type EditorState,
@@ -31,6 +32,7 @@ import {
 import {
   Decoration,
   EditorView,
+  GutterMarker,
   WidgetType,
   keymap,
   showTooltip,
@@ -183,6 +185,79 @@ export function addAgentNote(
       ? Decoration.replace({ widget: new DetachedWidget(note.text) }).range(from, to)
       : Decoration.replace({}).range(from, to),
   );
+}
+
+// ——— Gutter marker ———
+
+/**
+ * The icon in the gutter (`gutter.ts`) on a line with notes. A click opens the
+ * popup of the first note on the line. The highlight stays: it shows which
+ * words the note is about, and the icon shows that a long line has a note.
+ */
+class CommentMarker extends GutterMarker {
+  constructor(readonly text: string) {
+    super();
+  }
+
+  eq(other: CommentMarker): boolean {
+    return other.text === this.text;
+  }
+
+  toDOM(): Node {
+    const dom = document.createElement("span");
+    dom.className = "cm-comment-gutter";
+    dom.title = this.text;
+    dom.append(icon("comment"));
+    return dom;
+  }
+}
+
+/** Where a note shows: its words, or the comment if the words do not match. */
+function startOf(note: AgentNote): number {
+  return note.anchorFrom ?? note.from;
+}
+
+function commentMarkersOf(state: EditorState): RangeSet<GutterMarker> {
+  const lines = new Map<number, string[]>();
+  for (const note of notesOf(state)) {
+    const from = state.doc.lineAt(startOf(note)).from;
+    lines.set(from, [...(lines.get(from) ?? []), note.text]);
+  }
+  return RangeSet.of(
+    [...lines].map(([from, texts]) => new CommentMarker(texts.join("\n")).range(from)),
+    true,
+  );
+}
+
+/**
+ * The gutter asks for markers on each update, and the notes come from the
+ * syntax tree. So the markers are built again only when the text or the tree
+ * changes: a long note builds its tree in the background after opening.
+ */
+const commentMarkers = StateField.define<RangeSet<GutterMarker>>({
+  create: (state) => commentMarkersOf(state),
+  update: (value, tr) =>
+    tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)
+      ? commentMarkersOf(tr.state)
+      : value,
+});
+
+/** Note markers for the gutter. */
+export function noteMarkers(state: EditorState): RangeSet<GutterMarker> {
+  return state.field(commentMarkers, false) ?? RangeSet.empty;
+}
+
+/**
+ * Opens the popup of the first note on the line. The popup follows the
+ * cursor, so the cursor goes to the start of the note words.
+ */
+export function openNoteOnLine(view: EditorView, line: number): boolean {
+  const { from, to } = view.state.doc.line(line);
+  const note = notesOf(view.state).find((each) => startOf(each) >= from && startOf(each) <= to);
+  if (!note) return false;
+  view.dispatch({ selection: { anchor: startOf(note) } });
+  view.focus();
+  return true;
 }
 
 // ——— Popup ———
@@ -535,5 +610,5 @@ export function revealNote(view: EditorView, note: AgentNote): void {
 
 /** Popup and ⌘⇧M: add a note to the selection or edit the one under the cursor. */
 export function agentNotes(): Extension {
-  return [popupField, keymap.of([{ key: "Mod-Shift-m", run: openForm }])];
+  return [popupField, commentMarkers, keymap.of([{ key: "Mod-Shift-m", run: openForm }])];
 }

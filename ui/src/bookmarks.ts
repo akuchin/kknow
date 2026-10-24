@@ -1,5 +1,5 @@
 /**
- * Bookmarks in the editor: the line marker and how it moves with edits.
+ * Bookmarks in the editor: the gutter marker and how it moves with edits.
  *
  * The core stores bookmarks (`.kknow/bookmarks.json`), but the editor knows
  * where they are now. Edits shift lines, so the line number from the open
@@ -8,8 +8,16 @@
  * request; on save they go to the core.
  */
 
-import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, type ViewUpdate } from "@codemirror/view";
+import {
+  RangeSet,
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+} from "@codemirror/state";
+import { EditorView, GutterMarker, type ViewUpdate } from "@codemirror/view";
+
+import { t } from "./i18n";
 
 /** Replaces all bookmarks. Line numbers start at 1. */
 const setLines = StateEffect.define<number[]>();
@@ -48,29 +56,31 @@ const positions = StateField.define<number[]>({
   },
 });
 
-const mark = Decoration.line({ class: "cm-bookmark" });
+/** The ribbon in the gutter (`gutter.ts`). A click on it removes the bookmark. */
+class BookmarkMarker extends GutterMarker {
+  toDOM(): Node {
+    const dom = document.createElement("span");
+    dom.className = "cm-bookmark-gutter";
+    dom.title = t("bookmark.remove");
+    return dom;
+  }
+}
 
-const decorations = EditorView.decorations.compute([positions], (state) =>
-  Decoration.set(
-    linesOf(state).map((line) => mark.range(state.doc.line(line).from)),
-  ),
-);
+const marker = new BookmarkMarker();
 
-const theme = EditorView.baseTheme({
-  // The marker sits in the left text margin. The editor has no gutter, and
-  // adding one only for bookmarks would shift all text.
-  ".cm-line.cm-bookmark": { position: "relative" },
-  ".cm-line.cm-bookmark::before": {
-    content: '""',
-    position: "absolute",
-    left: "-18px",
-    top: "0.35em",
-    width: "8px",
-    height: "0.9em",
-    backgroundColor: "var(--accent)",
-    clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)",
-  },
+/**
+ * The gutter asks for its markers on each update, so they are kept in a field
+ * and built again only when the positions change.
+ */
+const markers = StateField.define<RangeSet<GutterMarker>>({
+  create: (state) => markersOf(state),
+  update: (value, tr) =>
+    tr.state.field(positions) === tr.startState.field(positions) ? value : markersOf(tr.state),
 });
+
+function markersOf(state: EditorState): RangeSet<GutterMarker> {
+  return RangeSet.of(linesOf(state).map((line) => marker.range(state.doc.line(line).from)));
+}
 
 function toPositions(state: EditorState, lines: number[]): number[] {
   return lines
@@ -85,7 +95,12 @@ function linesOf(state: EditorState): number[] {
 }
 
 export function bookmarks(): Extension {
-  return [enabled, positions, decorations, theme];
+  return [enabled, positions, markers];
+}
+
+/** Bookmark markers for the gutter. */
+export function bookmarkMarkers(state: EditorState): RangeSet<GutterMarker> {
+  return state.field(markers, false) ?? RangeSet.empty;
 }
 
 export function bookmarksEnabled(state: EditorState): boolean {

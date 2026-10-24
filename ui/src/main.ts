@@ -454,6 +454,7 @@ const status = new StatusBar(el.statusbar, {
   run: () => showRunOutput(el.runFloat.hidden),
   chip: (anchor) => openChipMenu(anchor),
   scale: (steps) => changeCurrentScale(steps),
+  lines: () => void toggleLineNumbers(),
   more: (anchor) => openMoreMenu(anchor),
 });
 
@@ -2938,12 +2939,29 @@ async function saveSettings(change: Partial<AppSettings>): Promise<void> {
   }
 }
 
+/**
+ * The status bar button. It changes the setting, not the editor: the settings
+ * window shows the same switch, and both learn about the change the same way.
+ */
+async function toggleLineNumbers(): Promise<void> {
+  if (!appSettings) return;
+  await saveSettings({ lineNumbers: !appSettings.lineNumbers });
+  // The event also comes here, but the mock does not send events.
+  showLineNumbers(appSettings.lineNumbers);
+}
+
+function showLineNumbers(on: boolean): void {
+  editor.setLineNumbers(on);
+  status.setLineNumbers(on);
+}
+
 /** Applies settings from the core: language, theme, preview, autosave. */
 function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
   const defaultChanged = incoming.viewMode !== appSettings?.viewMode;
   appSettings = incoming;
   saveDelay = incoming.autosaveMs;
+  showLineNumbers(incoming.lineNumbers);
 
   if (incoming.theme !== currentTheme) applyTheme(incoming.theme, { remember: false });
   // A new default affects only a note without a saved mode.
@@ -3532,6 +3550,7 @@ async function boot(): Promise<void> {
 
   if (appSettings) {
     saveDelay = appSettings.autosaveMs;
+    showLineNumbers(appSettings.lineNumbers);
     // The window language comes from settings. `i18n` reads its mirror
     // synchronously; they differ only after a manual edit of the file.
     if (appSettings.locale !== locale) {

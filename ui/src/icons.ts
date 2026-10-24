@@ -131,6 +131,15 @@ const PATHS = {
   sortDesc: ["M7 4v16", "m3 16 4 4 4-4", "M14 6h7", "M14 12h5", "M14 18h3"],
   // Transpose: a square that flips over its diagonal.
   transpose: ["M4 4h16v16H4z", "M4 4l16 16", "M9 4v5", "M15 20v-5"],
+  // Line numbers: a list with 1 and 2 in front of the lines.
+  lineNumbers: [
+    "M10 6h11",
+    "M10 12h11",
+    "M10 18h11",
+    "M4 6h1v4",
+    "M4 10h2",
+    "M6 18H4c0-1 2-2 2-3s-1-1.5-2-1",
+  ],
   // Agent note and its removal.
   comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],

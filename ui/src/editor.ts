@@ -22,6 +22,7 @@ import {
   toggleBookmark,
   toggleBookmarkAt,
 } from "./bookmarks";
+import { editorGutter, setLineNumbers } from "./gutter";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
@@ -39,7 +40,9 @@ const theme = EditorView.theme({
   ".cm-content": {
     fontFamily: "var(--font-text)",
     lineHeight: "1.65",
-    padding: "24px 28px 40vh",
+    // The left padding is smaller by the marker gutter width (`gutter.ts`):
+    // the text starts where it did before the gutter.
+    padding: "24px 28px 40vh 6px",
     caretColor: "var(--accent)",
     // Without this, a wide code block would stretch the editor content, and the
     // whole text would scroll sideways. This way only the block scrolls.
@@ -237,6 +240,8 @@ export class Editor {
    * useless, and with the result on the right, plain markdown fits the left.
    */
   private live = true;
+  /** Line numbers in the gutter: a window setting, like `live`. */
+  private lineNumbers = false;
 
   constructor(parent: HTMLElement, options: EditorOptions) {
     this.options = options;
@@ -263,6 +268,7 @@ export class Editor {
         livePreview(),
         agentNotes(),
         bookmarks(),
+        editorGutter(this.lineNumbers),
         blockSelection,
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,
@@ -393,6 +399,12 @@ export class Editor {
     if (this.live === on) return;
     this.live = on;
     this.applyLive();
+  }
+
+  setLineNumbers(on: boolean): void {
+    if (this.lineNumbers === on) return;
+    this.lineNumbers = on;
+    setLineNumbers(this.view, on);
   }
 
   private applyLive(): void {

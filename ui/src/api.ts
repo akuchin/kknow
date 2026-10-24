@@ -129,6 +129,8 @@ export interface AppSettings {
   viewMode: ViewMode;
   autosaveMs: number;
   openLastNote: boolean;
+  /** Line numbers in the editor gutter. */
+  lineNumbers: boolean;
 }
 
 /** Vault totals for the settings window. */

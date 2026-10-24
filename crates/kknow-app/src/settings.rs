@@ -75,6 +75,8 @@ pub struct AppSettings {
     pub autosave_ms: u32,
     /// Open the last note at startup.
     pub open_last_note: bool,
+    /// Line numbers in the editor gutter.
+    pub line_numbers: bool,
 }
 
 /// Defaults are written by hand: `#[derive(Default)]` gives an empty language,
@@ -88,6 +90,7 @@ impl Default for AppSettings {
             view_mode: ViewMode::Split,
             autosave_ms: DEFAULT_AUTOSAVE_MS,
             open_last_note: true,
+            line_numbers: false,
         }
     }
 }
@@ -213,6 +216,7 @@ mod tests {
         assert_eq!(settings.view_mode, ViewMode::Split);
         assert_eq!(settings.autosave_ms, 600);
         assert!(settings.open_last_note);
+        assert!(!settings.line_numbers);
     }
 
     #[test]
@@ -225,6 +229,7 @@ mod tests {
             view_mode: ViewMode::Read,
             autosave_ms: 1200,
             open_last_note: false,
+            line_numbers: true,
         };
 
         settings.save(&path).unwrap();
@@ -237,6 +242,7 @@ mod tests {
         let written = fs::read_to_string(&path).unwrap();
         assert!(written.contains(r#""autosaveMs": 1200"#), "{written}");
         assert!(written.contains(r#""viewMode": "read""#), "{written}");
+        assert!(written.contains(r#""lineNumbers": true"#), "{written}");
     }
 
     #[test]

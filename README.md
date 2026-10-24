@@ -184,8 +184,9 @@ kknow --vault Personal stats               # work with it by name
 - Notes for the agent: `words<!-- @agent «words»: task -->`. The editor
   highlights the words and hides the comment. To add a note for the agent,
   select the words and click "For agent" above the selection, or press ⌘⇧M.
-  The 💬 button in the header lists all notes for the agent in the text. Click
-  one to go to its words.
+  A line with a note has an icon on the left of the text. Click the icon to
+  see the note. The 💬 button in the header lists all notes for the agent in
+  the text. Click one to go to its words.
 
 Short links follow the usual wiki rules. kknow tries the full path first, then
 the file name, then a path suffix. If many notes have the same name, kknow
@@ -325,6 +326,8 @@ Its right side is about the note and the window:
 - the word count and the reading time;
 - the font size of the note: −, a slider, + and the value. Click the value to
   go back to 100%;
+- the line numbers button. It shows or hides the line numbers on the left of
+  the text. The "Editor" section of the settings has the same switch;
 - a gear with theme, language and "Settings" in one menu.
 
 The status bar does not show the full file path. The tooltip on the folder in
@@ -541,8 +544,11 @@ the match until the "next" button reaches it.
 
 ## Bookmarks
 
-⌘⇧B adds a bookmark to the line with the cursor. An icon appears to the left of
-the line. Press ⌘⇧B again to remove the bookmark.
+⌘⇧B adds a bookmark to the line with the cursor. A ribbon appears to the left
+of the line. Press ⌘⇧B again to remove the bookmark.
+
+You can also click to the left of a line. A click on an empty place adds a
+bookmark, and a click on the ribbon removes it.
 
 The popup above selected text can do the same. Next to "For agent", it has a
 "Bookmark" button, in the editor and in the preview. The preview also shows the
@@ -998,7 +1004,7 @@ Sections:
   - variables: the command variables and the shared variables of the file.
 - **Keys** — a table of shortcuts. For now it is only a reference, and you
   cannot change the shortcuts.
-- **Editor** — the default note mode and the autosave delay.
+- **Editor** — the default note mode, the autosave delay and line numbers.
 
 kknow keeps the language, theme and editor behavior in `settings.json` next to
 the vault list. It does not use the `localStorage` of the window. The app has

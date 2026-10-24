@@ -304,6 +304,7 @@ function readSettings(): AppSettings {
     viewMode: "split",
     autosaveMs: 600,
     openLastNote: true,
+    lineNumbers: false,
   };
 
   try {

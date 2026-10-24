@@ -524,6 +524,14 @@ function renderEditor(): void {
     ),
   );
 
+  page.append(
+    row(
+      t("settings.editor.lineNumbers"),
+      toggle(settings!.lineNumbers, (value) => void patch({ lineNumbers: value })),
+      t("settings.editor.lineNumbers.detail"),
+    ),
+  );
+
   el.body.append(page);
 }
 

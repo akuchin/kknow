@@ -590,7 +590,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     sync, then the message. Sync is a property of the vault, not of the
     window.
   - On the right are the note and window items. They are the command result,
-    a chip about a problem in a different vault, words, zoom and the gear. Zoom
+    a chip about a problem in a different vault, words, zoom, the line numbers
+    toggle and the gear. Zoom
     shows
     only when it is not 100%, and a click resets it. The gear has theme,
     language and "Settings…" in one menu.
@@ -598,6 +599,9 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     usual window the bar cut it until it was useless. "Reveal in Finder" and
     "Copy path" are in the note menu.
   - A click on sync starts a sync now.
+  - The line numbers toggle changes the `lineNumbers` setting, not the editor.
+    The settings window has the same switch. Both windows get the new value
+    from the `settings-changed` event, so the two switches always agree.
   - A different vault with a problem gets a chip, for example
     "Archive 2024 · conflict: 2 files". The chip has a "Resolve" and "Sync"
     menu.
@@ -748,7 +752,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - Vaults.
   - Commands.
   - Keys — reference.
-  - Editor — default note mode, autosave delay.
+  - Editor — default note mode, autosave delay, line numbers.
 - The "Vaults" section has a list on the left with the label, the sync state
   and a dot. On the right are:
   - the name (you can edit it in place);
@@ -1091,6 +1095,9 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - In "Read", a click in the 💬 list scrolls the preview to the highlight.
     kknow cannot find it by order, because the core does not highlight words
     inside markup. Thus it finds the highlight by the instruction text.
+- A line with a note has an icon in the gutter (see "Gutter"). The highlight
+  stays: it shows the words, and the icon shows that the line has a note even
+  when the line is long. A click on the icon opens the note popup.
 - You can also write a standalone `<!-- @agent … -->` line by hand. It has
   nothing to highlight. Such a comment stays as text in the editor, and the
   preview does not show it.
@@ -1138,6 +1145,37 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   `live-preview.ts`). It folds the block again when the panel closes. The
   decoration field also computes again when the query changes.
 
+### Gutter
+
+- The editor has a gutter on the left (`ui/src/gutter.ts`). It has a narrow
+  marker column and, if the user wants them, line numbers.
+- The marker column is always there, also on a note without markers. If it
+  came with the first bookmark, all text would jump sideways. Its width comes
+  out of the left text padding, so without line numbers the text starts where
+  it did before the gutter.
+- The column shows two kinds of markers. Other code finds them by class:
+  - `cm-bookmark-gutter` — the bookmark ribbon (`bookmarks.ts`);
+  - `cm-comment-gutter` — the agent note icon (`agent-notes.ts`). One icon
+    stands for all notes of the line, and its tooltip lists them.
+
+  On a line with both, the ribbon is on the left.
+- A left click in the column toggles the bookmark of the line. Thus a click on
+  an empty cell sets a bookmark, and a click on the ribbon removes it. A click
+  on the note icon opens the note popup: the cursor goes to the start of the
+  note words, and the popup follows the cursor. The right button and
+  Control+click are left for a context menu.
+- On hover, an empty cell shows a faint ribbon. A standalone file has no
+  bookmarks, so there the hint does not show (`data-bookmarks` on the editor).
+- The gutter asks for its markers on each update. Thus both kinds of markers
+  are in state fields and are built again only when the bookmark positions,
+  the text or the syntax tree change.
+- Line numbers are off by default. The setting is `lineNumbers` in
+  `settings.json`. They are a window setting, not part of the document, so they
+  are in a compartment. The editor turns them on and off without a new state,
+  and the undo history stays.
+- The gutter has no background and no border. Its colors are the theme
+  variables (`--text-muted`, `--accent`, `--warning`), so it fits each theme.
+
 ### Bookmarks
 
 - The model and the file are in `kknow-app/src/bookmarks.rs`, not in
@@ -1165,7 +1203,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - The match uses the line order, so a bookmark keeps its place in the full
     list.
 - You set a bookmark only through the editor (`toggleBookmarkAt`). This is
-  true for all sources of the command: ⌘⇧B, the popup button, the preview. The
+  true for all sources of the command: ⌘⇧B, the popup button, the preview, a
+  click in the gutter. The
   edit has the `toggled` effect. On it, `Editor` calls
   `onBookmark`, and the window immediately calls `set_bookmarks` with the
   current text. It does not wait for a save, because maybe there are no edits.
@@ -1197,9 +1236,9 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     the first block visible from the top (`topLine`).
   - The "Bookmark" button in the preview popup takes the line where the
     selection starts.
-- The badge is a `::before` pseudo-element on the line, in the left padding of
-  the text. The editor has no column of its own. A column for bookmarks would
-  move all the text.
+- In the editor the marker is a ribbon in the gutter (see "Gutter"). Before,
+  it was a `::before` on the line in the left text padding, and a click on it
+  did nothing.
 - A rename and a folder move take the bookmarks with them. `Bookmarks::rename`
   gets the same pairs that `Vault::rename_folder` returned. A note delete
   removes

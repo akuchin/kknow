@@ -574,6 +574,10 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--accent);
 }
 
+#status-lines[data-on="true"] {
+  color: var(--accent);
+}
+
 #status-scale-slider {
   width: 72px;
   height: 14px;
