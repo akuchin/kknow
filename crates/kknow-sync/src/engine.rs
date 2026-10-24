@@ -61,7 +61,7 @@ impl Staged {
 pub struct Fetched {
     /// Notes to write: downloaded notes and conflict copies.
     incoming: Vec<(NoteId, String)>,
-    /// Notes that disappeared from the storage.
+    /// Notes that disappeared from the storage. They go to the vault trash.
     remove_local: Vec<NoteId>,
     /// The state both sides agreed on.
     next: Manifest,
@@ -110,7 +110,7 @@ impl Report {
             .chain(self.conflicts.iter().map(|conflict| &conflict.copy))
     }
 
-    /// Notes removed from disk.
+    /// Notes removed from disk, that is, moved to the vault trash.
     pub fn local_removed(&self) -> impl Iterator<Item = &NoteId> {
         self.removed_local.iter()
     }
@@ -232,7 +232,8 @@ impl<P: SyncProvider> SyncEngine<P> {
                     fetched.report.downloaded.push(id.clone());
                 }
                 Action::RemoveLocal(id) => {
-                    // The file is removed in the local commit step, not here.
+                    // The local commit step moves the file to the trash, not
+                    // this step.
                     next.remove(id);
                     fetched.remove_local.push(id.clone());
                     fetched.report.removed_local.push(id.clone());
@@ -274,6 +275,9 @@ impl<P: SyncProvider> SyncEngine<P> {
     }
 
     /// Writes the fetched notes to disk and saves the state.
+    ///
+    /// A note that another device deleted goes to the vault trash, not away
+    /// for good: that delete can be a mistake.
     ///
     /// This is the third sync part, and the only one that needs the vault lock.
     pub fn commit_local(&self, vault: &mut Vault, fetched: Fetched) -> Result<Report> {

@@ -69,6 +69,7 @@ does not treat this folder as notes. The files are:
 - `.kknow/remote.json` — the storage address and the conflict policy.
 - `.kknow/bookmarks.json` — bookmarks.
 - `.kknow/themes/*.json` — themes.
+- `.kknow/trash/<entry>/…` — deleted notes and folders.
 
 The window and the terminal share data in the app config directory
 (`vaults::config_dir`):
@@ -103,6 +104,20 @@ External edit:
   note to a new identifier, and it moves a folder. All of these operations
   refuse to overwrite a path that a file already uses. A case-insensitive disk
   does not confuse them: `Note` → `note` is the same file, not a different one.
+- `Vault::remove` and `Vault::remove_folder` do not delete files. They move the
+  item to the trash (`kknow_core::Trash`, `.kknow/trash`):
+  - Each delete gets an entry folder. Its name is the delete time in Unix
+    seconds, with `-2`, `-3`… for a second delete in the same second.
+  - Inside the entry, the item keeps its path from the vault root. A restore
+    moves each file back to that path.
+  - The move is one `rename`: the trash is on the file system of the vault.
+  - Each move to the trash first removes entries older than 30 days. This
+    costs one directory read.
+  - A restore refuses to overwrite a file. If one file of the entry is taken,
+    nothing moves.
+  - The watcher sees the old path disappear and reports `Removed`. It skips
+    the new path, because the path is hidden. `Workspace::delete` already
+    removed the note from the index, so the event changes nothing.
 - Parsing: `[[link]]`, `[[link|alias]]`, `[[link#Heading]]`,
   `[[link#^block]]`, `![[embed]]`, Markdown links, tags, frontmatter.
 - A link graph with wikilink resolution rules (full path, then file name, and
@@ -168,7 +183,8 @@ External edit:
   1. `stage` makes the plan and reads the content to send. It holds the vault
      lock.
   2. `transfer` does the network work. It does **not** hold the vault.
-  3. `commit_local` writes the files. It holds the lock again.
+  3. `commit_local` writes the files. It holds the lock again. `RemoveLocal`
+     goes through `Vault::remove`, so the note goes to the trash.
 
   `run` joins the three parts for the terminal. Thus a note save does not wait
   until the sync ends.
@@ -1525,7 +1541,8 @@ Commands:
 - `list`, `stats`, `links`, `backlinks`, `tags`, `broken`, `orphans`;
 - `show`, `render`, `new`, `search`, `watch`, `themes`, `sync`;
 - `vaults` / `vaults add` / `vaults rm` / `vaults use`;
-- `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`.
+- `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`;
+- `trash` / `trash restore <entry>` / `trash empty`.
   - `bookmarks` prints `note:line  «name»  text`. Without a name, there is no
     `«»`.
   - `bookmark … --name` names the bookmark and sets it first if it is not
@@ -1562,6 +1579,17 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   of the app.
 - **A regular expression does the prefix search.** `word*` in tantivy does not
   give a prefix search: the tokenizer drops the asterisk.
+- **A delete moves the note to a trash in the vault.** The principle "you
+  lose no data" covers more than the cache. A wrong click, or a delete on a
+  different device that sync brings here, must not lose a note.
+  - The trash is in `.kknow`: the scanner and sync already skip it, and a
+    `rename` inside one file system is atomic.
+  - The code is in `kknow-core`, because `Vault` owns all file writes. Thus
+    the window, the CLI and sync get the trash from one place.
+  - The entry stores no metadata file. The path inside the entry is enough
+    for a restore, and the entry name gives the delete time.
+  - The period is fixed at 30 days. A setting would add a field that nobody
+    asked for.
 - **kknow finds its own writes by the content hash.** If not, the watcher would
   report the write as an external change. The UI would then load the note again
   while you type.

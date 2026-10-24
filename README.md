@@ -203,7 +203,7 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line> [--name <name>]`, `tasks [--all]`.
+`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `trash`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
@@ -649,6 +649,24 @@ click and changes nothing. In live preview, edit the `[ ]` as text.
 `kknow tasks` prints the open tasks as `note:line  text`. `kknow tasks --all`
 also prints the done ones, with `[x]` or `[ ]` before the text.
 
+## Trash
+
+A delete does not remove a note for good. The note or the folder goes to the
+trash in the vault, `.kknow/trash`. A note that sync removes because another
+device deleted it also goes there. Each delete is a separate entry, so two
+deletes of one note do not overwrite each other. kknow removes entries older
+than 30 days on the next delete.
+
+```bash
+kknow trash                       # entries: ID, path, age, number of notes
+kknow trash restore 1761300000    # put an entry back to its old path
+kknow trash empty                 # remove all entries for good
+```
+
+A restore does not overwrite a note. If a file of the entry is taken, nothing
+moves. The window has no trash view yet. Sync does not copy `.kknow`, so each
+machine has its own trash.
+
 ## Edits outside the app
 
 A watcher monitors each open vault. Another editor, git or sync can change a
@@ -679,6 +697,9 @@ cloud again and again.
 The manifest has no modification times. The clocks on two machines differ, and
 S3 writes its own upload time. A "newer" time often means an older content. A
 hash does not have these problems.
+
+A note that another device deleted does not disappear here for good. Sync moves
+it to the [trash](#trash): the delete on the other device can be a mistake.
 
 If both sides changed a note, by default kknow keeps both versions. The local
 version stays in place. kknow writes the other version next to it as a copy
