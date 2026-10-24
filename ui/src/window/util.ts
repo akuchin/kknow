@@ -41,3 +41,14 @@ export async function copyText(text: string | null): Promise<void> {
   field.remove();
   setStatus(t(copied ? "status.copied" : "status.copyFailed"), copied ? "idle" : "error");
 }
+
+/** A list of strings from browser storage; a corrupt entry reads as empty. */
+export function readList(key: string): string[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((item) => typeof item === "string") : [];
+  } catch {
+    // Silently start over on a corrupt entry: it must not break the tree.
+    return [];
+  }
+}
