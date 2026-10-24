@@ -10,6 +10,8 @@
     "ui:mock": "KKNOW_MOCK=1 pnpm --filter kknow-ui dev",
     "ui:build": "pnpm --filter kknow-ui build",
     "ui:test": "pnpm --filter kknow-ui test",
+    "ui:e2e": "pnpm --filter kknow-ui e2e",
+    "ui:e2e:webkit": "pnpm --filter kknow-ui e2e:webkit",
     "tauri": "tauri",
     "icons:mac": "python3 scripts/gen-macos-icon.py"
   },

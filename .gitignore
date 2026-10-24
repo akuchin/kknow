@@ -13,3 +13,7 @@ src-tauri/gen/
 
 .idea/
 .vscode/
+
+# Playwright output of the smoke tests.
+ui/test-results/
+ui/playwright-report/

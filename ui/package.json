@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --test \"tests/*.test.ts\""
+    "test": "node --test \"tests/*.test.ts\"",
+    "e2e": "playwright test --project=chromium",
+    "e2e:webkit": "playwright test --project=webkit"
   },
   "dependencies": {
     "@codemirror/commands": "^6",
@@ -22,6 +24,7 @@
     "mermaid": "^11.16.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.1.1",
     "typescript": "^5",
     "vite": "^7"
