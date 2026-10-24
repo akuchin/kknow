@@ -23,6 +23,7 @@ import {
   toggleBookmarkAt,
 } from "./bookmarks";
 import { editorGutter, setLineNumbers } from "./gutter";
+import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
@@ -269,6 +270,7 @@ export class Editor {
         agentNotes(),
         bookmarks(),
         editorGutter(this.lineNumbers),
+        editorMenu(),
         blockSelection,
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,

@@ -1373,7 +1373,8 @@ img.note-image {
   font-size: 0.8em;
 }
 
-/* Popup above the words: the "For agent" button, the instruction or the form.
+/* Popup above the words: the comment form in the editor, the "Comment" button
+   and the form over a preview selection.
    The selector is more specific than the CodeMirror theme; otherwise its
    border and background would override ours. */
 .cm-editor .cm-tooltip.cm-agent-popup,
@@ -1438,20 +1439,6 @@ img.note-image {
 .cm-agent-popup .icon {
   width: 14px;
   height: 14px;
-}
-
-.cm-agent-popup-label {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--warning);
-  padding-left: 4px;
-}
-
-.cm-agent-popup-text {
-  flex: 1;
-  min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .cm-agent-popup-field {

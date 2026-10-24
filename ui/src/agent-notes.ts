@@ -15,9 +15,17 @@
  * The core has the same parser (`kknow-index/src/agent_note.rs`); the
  * preview uses it. If you change the format, change both places.
  *
+ * A note can also have no words: `<!-- @agent: instruction -->` at the end of
+ * a paragraph is about the whole paragraph. The user leaves one with the
+ * cursor in the paragraph and nothing selected.
+ *
+ * The UI calls these notes "comments" ("заметки"); the marker stays `@agent`,
+ * because agents look for it.
+ *
  * This file has the parser, the live preview highlight (called from
- * `live-preview.ts`), the gutter marker and the popup where the user writes
- * and edits the instruction.
+ * `live-preview.ts`), the gutter marker and the form where the user writes
+ * and edits the instruction. The editor context menu (`editor-menu.ts`) opens
+ * the form.
  */
 
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
@@ -39,7 +47,6 @@ import {
   type Tooltip,
 } from "@codemirror/view";
 
-import { bookmarksEnabled, hasBookmark, toggleBookmarkAt } from "./bookmarks";
 import { icon } from "./icons";
 import { t } from "./i18n";
 
@@ -81,7 +88,8 @@ export function parseNote(comment: string): { anchor: string; text: string } | n
 }
 
 /**
- * Builds the comment from the words and the instruction.
+ * Builds the comment from the words and the instruction. Without words the
+ * `«»` part is left out: `<!-- @agent: instruction -->`.
  *
  * The instruction becomes one line: the comment is inside a paragraph, and an
  * empty line would split the paragraph. A `-->` would close the comment too
@@ -89,7 +97,9 @@ export function parseNote(comment: string): { anchor: string; text: string } | n
  */
 export function formatNote(anchor: string, text: string): string {
   const clean = text.replace(/\s+/g, " ").replaceAll("-->", "->").trim();
-  return `<!-- ${MARKER} «${anchor}»: ${clean} -->`;
+  return anchor === ""
+    ? `<!-- ${MARKER}: ${clean} -->`
+    : `<!-- ${MARKER} «${anchor}»: ${clean} -->`;
 }
 
 /** Whether the selected words can be an anchor: one line and no `»`. */
@@ -129,25 +139,31 @@ export function notesOf(state: EditorState): AgentNote[] {
 
 // ——— Live preview highlight ———
 
-/** Icon for a note whose words no longer match the stored ones. */
+/**
+ * Icon for a note without words: one about the whole paragraph, or one whose
+ * words no longer match the stored ones.
+ */
 class DetachedWidget extends WidgetType {
-  constructor(readonly text: string) {
+  constructor(
+    readonly text: string,
+    readonly anchored: boolean,
+  ) {
     super();
   }
 
   eq(other: DetachedWidget): boolean {
-    return other.text === this.text;
+    return other.text === this.text && other.anchored === this.anchored;
   }
 
   toDOM(): HTMLElement {
     const dom = document.createElement("span");
     dom.className = "cm-agent-note is-detached";
-    dom.title = `${t("editor.note.detached")}: ${this.text}`;
+    dom.title = this.anchored ? `${t("editor.note.detached")}: ${this.text}` : this.text;
     dom.append(icon("comment"));
     return dom;
   }
 
-  // A click puts the cursor next to it, and the note pops up.
+  // A click puts the cursor next to it, where the context menu edits the note.
   ignoreEvent(): boolean {
     return false;
   }
@@ -159,7 +175,7 @@ class DetachedWidget extends WidgetType {
  * The live preview `build` calls it on a `Comment` node. The comment opens
  * only when the selection goes inside it. A cursor at the edge is the end of
  * the highlighted words, and a long comment that pops out at each such step
- * would get in the way of typing. The popup is the better place to edit.
+ * would get in the way of typing. The note form is the better place to edit.
  */
 export function addAgentNote(
   state: EditorState,
@@ -182,7 +198,7 @@ export function addAgentNote(
   if (inside) return;
   marks.push(
     note.anchorFrom === null
-      ? Decoration.replace({ widget: new DetachedWidget(note.text) }).range(from, to)
+      ? Decoration.replace({ widget: new DetachedWidget(note.text, note.anchor !== "") }).range(from, to)
       : Decoration.replace({}).range(from, to),
   );
 }
@@ -248,207 +264,171 @@ export function noteMarkers(state: EditorState): RangeSet<GutterMarker> {
 }
 
 /**
- * Opens the popup of the first note on the line. The popup follows the
- * cursor, so the cursor goes to the start of the note words.
+ * Opens the form of the first note on the line. A cursor move closes the
+ * form, so the cursor goes to the note words first and the form opens after.
  */
 export function openNoteOnLine(view: EditorView, line: number): boolean {
   const { from, to } = view.state.doc.line(line);
   const note = notesOf(view.state).find((each) => startOf(each) >= from && startOf(each) <= to);
   if (!note) return false;
   view.dispatch({ selection: { anchor: startOf(note) } });
-  view.focus();
+  openNoteForm(view, { kind: "edit", note });
   return true;
 }
 
-// ——— Popup ———
-
-/** Opens or closes the instruction form ("For agent" button, ⌘⇧M, Esc). */
-const noteForm = StateEffect.define<boolean>();
+// ——— Form ———
 
 /**
- * What the popup shows.
+ * Where the form adds or edits a note.
  *
- * `add`: above a selection, offers a new note. `view`: the cursor is in the
- * highlighted words; shows the instruction and lets the user edit or remove it.
+ * `add`: a new note goes at `at`. With words it is the end of the selection;
+ * without words it is the end of the paragraph, and the note has no anchor:
+ * `<!-- @agent: text -->`. `edit`: the note under the cursor.
  */
-type Popup =
-  | { kind: "add"; from: number; to: number; words: string }
-  | { kind: "view"; note: AgentNote };
+export type NoteTarget =
+  | { kind: "add"; at: number; words: string; pos: number }
+  | { kind: "edit"; note: AgentNote };
 
-interface PopupState {
-  popup: Popup | null;
-  form: boolean;
+/** Opens the form for a target, or closes it with `null`. */
+const setForm = StateEffect.define<NoteTarget | null>();
+
+interface FormState {
+  target: NoteTarget | null;
   tooltip: Tooltip | null;
 }
 
-function popupFor(state: EditorState): Popup | null {
-  const range = state.selection.main;
-  const notes = notesOf(state);
-
-  if (!range.empty) {
-    const words = state.sliceDoc(range.from, range.to);
-    if (!anchorable(words)) return null;
-    // A selection that touches the comment means a manual edit of its markup.
-    if (notes.some((note) => range.to > note.from && range.from < note.to)) return null;
-    return { kind: "add", from: range.from, to: range.to, words };
-  }
-
-  const note = notes.find((note) => {
-    const start = note.anchorFrom ?? note.from;
-    return range.head >= start && range.head <= note.to;
-  });
-  return note ? { kind: "view", note } : null;
-}
-
-/** Whether it is the same popup; if so, its DOM (and typed text) stays. */
-function samePopup(a: Popup | null, b: Popup | null): boolean {
-  if (!a || !b) return a === b;
-  if (a.kind === "add" && b.kind === "add") return a.from === b.from && a.to === b.to;
-  if (a.kind === "view" && b.kind === "view") {
-    return a.note.from === b.note.from && a.note.to === b.note.to && a.note.text === b.note.text;
-  }
-  return false;
-}
-
-const popupField = StateField.define<PopupState>({
-  create: (state) => {
-    const popup = popupFor(state);
-    return { popup, form: false, tooltip: popup && tooltipFor(popup, false) };
-  },
+const formField = StateField.define<FormState>({
+  create: () => ({ target: null, tooltip: null }),
   update(value, tr) {
-    let form = value.form;
     for (const effect of tr.effects) {
-      if (effect.is(noteForm)) form = effect.value;
+      if (effect.is(setForm)) {
+        const target = effect.value;
+        return { target, tooltip: target && tooltipFor(target) };
+      }
     }
-    if (!tr.docChanged && !tr.selection && form === value.form) return value;
-
-    const popup = popupFor(tr.state);
-    if (!popup) return { popup: null, form: false, tooltip: null };
-    // Tab in a table selects the next cell to overwrite it, not to ask an
-    // agent about it: the popup would cover the table at each step.
-    if (popup.kind === "add" && tr.isUserEvent("input.table")) {
-      return { popup: null, form: false, tooltip: null };
-    }
-    const same = samePopup(popup, value.popup);
-    // The cursor moved to other words, so the open form closes.
-    if (!same) form = false;
-    if (same && form === value.form && value.tooltip) {
-      // Same popup: CodeMirror knows it by `create` and keeps the DOM, but an
-      // edit above may have moved the position.
-      return { popup, form, tooltip: { ...value.tooltip, pos: anchorOf(popup) } };
-    }
-    return { popup, form, tooltip: tooltipFor(popup, form) };
+    // The form is for one place. An edit or a move of the cursor (a click in
+    // the text) means the user went on with something else.
+    if (value.target && (tr.docChanged || tr.selection)) return { target: null, tooltip: null };
+    return value;
   },
   provide: (field) => showTooltip.from(field, (value) => value.tooltip),
 });
 
-/** The popup sits above the start of the words. */
-function anchorOf(popup: Popup): number {
-  return popup.kind === "add" ? popup.from : (popup.note.anchorFrom ?? popup.note.from);
+/**
+ * Block whose end takes a note without words: a paragraph or an ATX heading.
+ * Other blocks (code, tables, empty lines) have no place for an inline
+ * comment, and a setext heading ends with its `===` line, so a note there is
+ * not possible.
+ */
+function blockAt(state: EditorState, pos: number): { from: number; to: number } | null {
+  const tree = ensureSyntaxTree(state, pos, 200) ?? syntaxTree(state);
+  // `-1` looks at the node before the cursor, `1` at the one after: at the
+  // start or the end of a paragraph only one of them is inside it.
+  for (const side of [-1, 1] as const) {
+    const inner = tree.resolveInner(pos, side);
+    for (let node: typeof inner | null = inner; node; node = node.parent) {
+      if (node.name === "Paragraph" || /^ATXHeading\d$/.test(node.name)) {
+        return { from: node.from, to: node.to };
+      }
+    }
+  }
+  return null;
 }
 
-function tooltipFor(popup: Popup, form: boolean): Tooltip {
+/**
+ * The note under the cursor: its words or its comment contain the cursor. A
+ * note without words belongs to its whole paragraph.
+ */
+export function noteUnder(state: EditorState, pos: number): AgentNote | null {
+  const notes = notesOf(state);
+  const direct = notes.find((note) => pos >= (note.anchorFrom ?? note.from) && pos <= note.to);
+  if (direct) return direct;
+  const block = blockAt(state, pos);
+  if (!block) return null;
+  return (
+    notes.find((note) => note.anchor === "" && note.from >= block.from && note.to <= block.to) ??
+    null
+  );
+}
+
+/**
+ * What a "Comment" command does now: edits the note under the cursor, adds
+ * one to the selected words, or adds one without words to the paragraph.
+ * `null` if a note is not possible here.
+ */
+export function noteTarget(state: EditorState): NoteTarget | null {
+  const range = state.selection.main;
+  if (!range.empty) {
+    const words = state.sliceDoc(range.from, range.to);
+    if (!anchorable(words)) return null;
+    // A selection that touches the comment means a manual edit of its markup.
+    const notes = notesOf(state);
+    if (notes.some((note) => range.to > note.from && range.from < note.to)) return null;
+    return { kind: "add", at: range.to, words, pos: range.from };
+  }
+
+  const note = noteUnder(state, range.head);
+  if (note) return { kind: "edit", note };
+  const block = blockAt(state, range.head);
+  return block && { kind: "add", at: block.to, words: "", pos: range.head };
+}
+
+/** The form sits above the words, or above the cursor for a note without words. */
+function anchorOf(target: NoteTarget): number {
+  if (target.kind === "add") return target.pos;
+  return target.note.anchorFrom ?? target.note.from;
+}
+
+function tooltipFor(target: NoteTarget): Tooltip {
   return {
-    pos: anchorOf(popup),
+    pos: anchorOf(target),
     above: true,
     create: (view) => {
       const dom = document.createElement("div");
-      dom.className = "cm-agent-popup";
-      if (form) {
-        return { dom, mount: fillForm(view, dom, popup) };
-      }
-      if (popup.kind === "add") fillAdd(view, dom, popup.from);
-      else fillView(view, dom, popup.note);
-      return { dom };
+      dom.className = "cm-agent-popup is-form";
+      return { dom, mount: fillForm(view, dom, target) };
     },
   };
 }
 
-function button(
-  label: string,
-  title: string,
-  run: () => void,
-  iconName?: "comment" | "trash" | "bookmark",
-): HTMLButtonElement {
+function button(label: string, run: () => void): HTMLButtonElement {
   const dom = document.createElement("button");
   dom.type = "button";
-  dom.title = title;
-  if (iconName) dom.append(icon(iconName));
-  if (label) dom.append(label);
+  dom.textContent = label;
   // A press must not take focus or clear the editor selection.
   dom.addEventListener("mousedown", (event) => event.preventDefault());
   dom.addEventListener("click", run);
   return dom;
 }
 
-function fillAdd(view: EditorView, dom: HTMLElement, from: number): void {
-  dom.append(
-    button(t("editor.note.add"), t("editor.note.add.title"), () => openForm(view), "comment"),
-  );
-  // The bookmark goes on the line where the selection starts. It sits next to
-  // "For agent" because there is only one popup over a selection.
-  if (!bookmarksEnabled(view.state)) return;
-  const line = view.state.doc.lineAt(from).number;
-  const set = hasBookmark(view.state, line);
-  dom.append(
-    button(
-      t(set ? "bookmark.remove" : "bookmark.add"),
-      t("bookmark.toggle.title"),
-      () => {
-        toggleBookmarkAt(view, line);
-        // The button label would change only with the selection, so clear the
-        // selection; the popup goes with it, as in the preview.
-        view.dispatch({ selection: { anchor: view.state.selection.main.head } });
-      },
-      "bookmark",
-    ),
-  );
-}
-
-function fillView(view: EditorView, dom: HTMLElement, note: AgentNote): void {
-  const label = document.createElement("span");
-  label.className = "cm-agent-popup-label";
-  label.textContent = MARKER;
-
-  const text = document.createElement("span");
-  text.className = "cm-agent-popup-text";
-  text.textContent = note.text;
-
-  dom.append(
-    label,
-    text,
-    button(t("editor.note.edit"), t("editor.note.edit"), () => openForm(view)),
-    button("", t("editor.note.remove"), () => removeNote(view, note), "trash"),
-  );
-  if (note.anchorFrom === null) dom.title = t("editor.note.detached");
-}
-
-/** The instruction form. Returns `mount`, which focuses it once it is in the document. */
-function fillForm(view: EditorView, dom: HTMLElement, popup: Popup): () => void {
-  const words = popup.kind === "add" ? popup.words : popup.note.anchor;
-  dom.classList.add("is-form");
+/** The note form. Returns `mount`, which focuses it once it is in the document. */
+function fillForm(view: EditorView, dom: HTMLElement, target: NoteTarget): () => void {
+  const words = target.kind === "add" ? target.words : target.note.anchor;
 
   const field = document.createElement("textarea");
   field.className = "cm-agent-popup-field";
   field.rows = 2;
-  field.placeholder = t("editor.note.placeholder", { words });
-  if (popup.kind === "view") field.value = popup.note.text;
+  field.placeholder =
+    words === ""
+      ? t("editor.note.placeholder.block")
+      : t("editor.note.placeholder", { words });
+  if (target.kind === "edit") field.value = target.note.text;
 
   const save = (): void => {
     if (field.value.trim() === "") {
       cancel();
       return;
     }
-    if (popup.kind === "add") addNote(view, popup, field.value);
-    else editNote(view, popup.note, field.value);
+    if (target.kind === "add") addNote(view, target, field.value);
+    else editNote(view, target.note, field.value);
   };
   const cancel = (): void => {
-    view.dispatch({ effects: noteForm.of(false) });
+    view.dispatch({ effects: setForm.of(null) });
     view.focus();
   };
 
   field.addEventListener("keydown", (event) => {
-    // An instruction is one line: Enter saves, line breaks are not needed.
+    // A note is one line: Enter saves, line breaks are not needed.
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       save();
@@ -461,10 +441,7 @@ function fillForm(view: EditorView, dom: HTMLElement, popup: Popup): () => void 
 
   const actions = document.createElement("div");
   actions.className = "cm-agent-popup-actions";
-  actions.append(
-    button(t("editor.note.cancel"), t("editor.note.cancel"), cancel),
-    button(t("editor.note.save"), t("editor.note.save"), save),
-  );
+  actions.append(button(t("editor.note.cancel"), cancel), button(t("editor.note.save"), save));
   actions.lastElementChild?.classList.add("is-primary");
 
   dom.append(field, actions);
@@ -474,18 +451,25 @@ function fillForm(view: EditorView, dom: HTMLElement, popup: Popup): () => void 
   };
 }
 
+/** Opens the form for a target; the context menu and ⌘⇧M use it. */
+export function openNoteForm(view: EditorView, target: NoteTarget): void {
+  view.dispatch({ effects: setForm.of(target) });
+}
+
+/** ⌘⇧M: the form for whatever `noteTarget` finds at the cursor. */
 function openForm(view: EditorView): boolean {
-  if (!view.state.field(popupField).popup) return false;
-  view.dispatch({ effects: noteForm.of(true) });
+  const target = noteTarget(view.state);
+  if (!target) return false;
+  openNoteForm(view, target);
   return true;
 }
 
-/** Inserts the comment right after the words and puts the cursor at their end, where the note shows. */
-function addNote(view: EditorView, popup: Extract<Popup, { kind: "add" }>, text: string): void {
+/** Inserts the comment and puts the cursor where the note shows. */
+function addNote(view: EditorView, target: Extract<NoteTarget, { kind: "add" }>, text: string): void {
   view.dispatch({
-    changes: { from: popup.to, insert: formatNote(popup.words, text) },
-    selection: { anchor: popup.to },
-    effects: noteForm.of(false),
+    changes: { from: target.at, insert: formatNote(target.words, text) },
+    selection: { anchor: target.words === "" ? target.pos : target.at },
+    effects: setForm.of(null),
     userEvent: "input",
   });
   view.focus();
@@ -494,16 +478,17 @@ function addNote(view: EditorView, popup: Extract<Popup, { kind: "add" }>, text:
 function editNote(view: EditorView, note: AgentNote, text: string): void {
   view.dispatch({
     changes: { from: note.from, to: note.to, insert: formatNote(note.anchor, text) },
-    effects: noteForm.of(false),
+    effects: setForm.of(null),
     userEvent: "input",
   });
   view.focus();
 }
 
-function removeNote(view: EditorView, note: AgentNote): void {
+/** Removes the comment; the cursor goes to the end of the words it was about. */
+export function removeNote(view: EditorView, note: AgentNote): void {
   view.dispatch({
     changes: { from: note.from, to: note.to },
-    selection: { anchor: note.from },
+    selection: note.anchorFrom === null ? undefined : { anchor: note.from },
     userEvent: "delete",
   });
   view.focus();
@@ -596,8 +581,7 @@ export function insertNote(view: EditorView, to: number, words: string, text: st
 
 /**
  * Goes to a note from the list: the cursor goes to the start of its words and
- * the line to the middle of the screen. The cursor in the words opens the
- * popup, so the user sees where they are.
+ * the line to the middle of the screen.
  */
 export function revealNote(view: EditorView, note: AgentNote): void {
   const pos = note.anchorFrom ?? note.from;
@@ -608,7 +592,7 @@ export function revealNote(view: EditorView, note: AgentNote): void {
   view.focus();
 }
 
-/** Popup and ⌘⇧M: add a note to the selection or edit the one under the cursor. */
+/** The form and ⌘⇧M: add a note to the selection or paragraph, or edit the one under the cursor. */
 export function agentNotes(): Extension {
-  return [popupField, commentMarkers, keymap.of([{ key: "Mod-Shift-m", run: openForm }])];
+  return [formField, commentMarkers, keymap.of([{ key: "Mod-Shift-m", run: openForm }])];
 }

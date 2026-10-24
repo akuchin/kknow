@@ -606,10 +606,22 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     "Archive 2024 · conflict: 2 files". The chip has a "Resolve" and "Sync"
     menu.
 - The window has one menu module (`ui/src/menu.ts`). It serves the vault
-  switcher, the gear menu, the note menu and the tree-row menus. Arrows,
-  Home/End, Esc and Tab work in it. Esc and Tab close it, and the focus returns
-  to the button. A click outside and a scroll also close it. When you open a
-  second menu, the first one closes.
+  switcher, the gear menu, the note menu, the tree-row menus and the editor
+  context menu. Arrows, Home/End, Esc and Tab work in it. Esc and Tab close
+  it, and the focus returns to the button. A click outside and a scroll also
+  close it. When you open a second menu, the first one closes.
+  - The editor context menu (`ui/src/editor-menu.ts`) opens with a right click
+    in the text, at the pointer (`openMenuAt`). It has no button, so the focus
+    goes back to the text. It has the comment, the bookmark, and cut, copy and
+    paste. Each item shows its shortcut, as in the sidebar menus.
+  - A right click outside the selection moves the cursor there first, as in
+    other editors. The menu is about the place under the pointer.
+  - Clipboard items use `navigator.clipboard`, not `execCommand`. The menu
+    takes the focus from the text, and `execCommand` needs the focus there.
+  - The note editor of a table cell has the same menu, without the bookmark.
+    The cell stays open while the menu has the focus. A closed cell is a
+    widget: its selection belongs to the browser, so it gets the browser
+    menu.
 - There are three note modes (`data-mode` on `#app`):
   - "Edit" — live preview, no preview pane.
   - "Side by side" — plain Markdown and the preview.
@@ -1029,13 +1041,28 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the parser message below it through `data-error`. The message shows the line
   with the typo.
 
-### Notes for the agent
+### Comments (notes for the agent)
 
-- You can give an instruction to an agent that will read the file later. Select
-  words, then use the "For agent" button above the selection or ⌘⇧M. kknow puts
-  an HTML comment into the file directly after the words:
-  `words<!-- @agent «words»: instruction -->`. The file stays clean Markdown.
-  Other viewers do not render the comment, and the agent sees it as it is.
+- You can give an instruction to an agent that will read the file later. The
+  UI calls it a "comment" ("заметка"). The marker in the file stays `@agent`,
+  because agents look for it. Select words, then use "Add comment" in the
+  context menu or ⌘⇧M. kknow puts an HTML comment into the file directly
+  after the words: `words<!-- @agent «words»: instruction -->`. The file stays
+  clean Markdown. Other viewers do not render the comment, and the agent sees
+  it as it is.
+- A comment can have no words. With the cursor in a paragraph and no
+  selection, kknow puts `<!-- @agent: instruction -->` at the end of the
+  paragraph (or of an ATX heading). The comment is about the whole paragraph.
+  - The format did not change: the parsers already read a note without `«…»`
+    as a note without an anchor.
+  - The end of the paragraph keeps the comment inline. A comment on its own
+    line would be an HTML block, and an HTML block has no words before it.
+  - A setext heading ends with its `===` line, and a table or code has no
+    place for an inline comment. There "Add comment" is off.
+  - The editor and the preview show an icon at the end of the paragraph. The
+    💬 list shows "on the paragraph" instead of the words.
+  - A cursor anywhere in the paragraph finds this comment (`noteUnder`). Then
+    the menu offers "Edit comment", not a second comment.
 - The comment repeats the words inside `«…»` on purpose. The agent does not
   need to guess what the instruction is about. The editor and the preview do not
   need to guess how much text to highlight. kknow highlights the words directly
@@ -1060,9 +1087,11 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   cursor at the boundary is the end of the highlighted words. A long comment
   that appears there would interfere with typing.
 
-  You see and edit the
-  instruction in a popup. The popup opens when the cursor is inside the
-  highlighted words. An instruction has one line. An empty line in the comment
+  You see the instruction in the tooltip of the highlight. You edit it in a
+  form above the words: "Edit comment" in the context menu or ⌘⇧M opens it
+  when the cursor is in the words. The form closes on an edit or a cursor
+  move. Before, a popup opened by itself over each selection; it covered the
+  text and got in the way. An instruction has one line. An empty line in the comment
   would break the paragraph. kknow replaces `-->` inside with `->`, because it
   would close the comment too early.
 - All notes of the open text are in a popup under the 💬 button in the header.
@@ -1072,14 +1101,14 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - An item has the selected words on one line and the instruction on two
     lines. CSS cuts a long instruction, and the tooltip shows all of it.
   - A click puts the cursor at the start of the words. It also scrolls them to
-    the middle of the screen. A cursor in the words opens the popup
-    automatically.
+    the middle of the screen.
   - The editor gives the list (`onNotes`) on each edit and on the steps of the
     background parse. The editor finds notes through the tree. For long text,
     the tree is not complete immediately.
 - In "Read" and "Side by side" you can also add a note from the preview
-  (`ui/src/preview-notes.ts`). Select words, then use the same "For agent"
-  button or ⌘⇧M.
+  (`ui/src/preview-notes.ts`). Select words, then use the "Comment" button
+  above the selection or ⌘⇧M. The preview keeps this popup: it is not
+  editable, and it has no context menu of its own yet.
   - The preview is HTML from the core. It does not know where its text is in
     the Markdown. Thus `previewAnchor` finds the place in the source by the
     words.
@@ -1203,7 +1232,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - The match uses the line order, so a bookmark keeps its place in the full
     list.
 - You set a bookmark only through the editor (`toggleBookmarkAt`). This is
-  true for all sources of the command: ⌘⇧B, the popup button, the preview, a
+  true for all sources of the command: ⌘⇧B, the context menu, the preview, a
   click in the gutter. The
   edit has the `toggled` effect. On it, `Editor` calls
   `onBookmark`, and the window immediately calls `set_bookmarks` with the

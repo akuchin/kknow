@@ -541,6 +541,18 @@ mod tests {
     }
 
     #[test]
+    fn agent_note_without_words_leaves_a_marker_at_the_paragraph_end() {
+        let html = render("Весь абзац целиком.<!-- @agent: переписать короче -->", &[]);
+
+        assert!(html.contains("Весь абзац целиком.<span"), "{html}");
+        assert!(
+            html.contains(r#"class="agent-note is-detached" title="переписать короче""#),
+            "{html}"
+        );
+        assert!(!html.contains("<mark"), "{html}");
+    }
+
+    #[test]
     fn agent_note_after_formatting_is_detached_not_broken() {
         let html = render("**жирно**<!-- @agent «жирно»: x -->", &[]);
 
