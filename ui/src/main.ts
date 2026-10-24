@@ -13,7 +13,6 @@ import {
 } from "./api";
 import { matches, matchesKey, useKeymap, vaultKey, type Action, type Keymap } from "./actions";
 import { locale, t } from "./i18n";
-import { openMenu, type MenuItem } from "./menu";
 import { nextMode } from "./note-mode";
 import "./styles.css";
 import {
@@ -33,20 +32,11 @@ import {
   initNote,
   onEdit,
   openFileView,
-  openNote,
   setMode,
   syncWithDisk,
   travel,
 } from "./window/note";
-import {
-  commandItems,
-  currentTarget,
-  editCommandsSection,
-  initCommands,
-  lastCommand,
-  runCommand,
-  showRunOutput,
-} from "./window/commands";
+import { initCommands, showRunOutput } from "./window/commands";
 import { describeRemote, initSync, openChipMenu, runSync, takeStatus } from "./window/sync";
 import {
   initNotesFloat,
@@ -58,7 +48,6 @@ import {
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
 import {
   initFiles,
-  openFileMenu,
   pickFile,
   refreshFiles,
   savePastedImage,
@@ -66,7 +55,7 @@ import {
   takeOpened,
 } from "./window/files";
 import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
-import { openBookmark, rememberOpened, saveBookmarks, toggleCurrentBookmark } from "./window/marks";
+import { rememberOpened, saveBookmarks, toggleCurrentBookmark } from "./window/marks";
 import { closeTrashView, initTrash } from "./window/trash";
 import {
   initVaults,
@@ -78,6 +67,7 @@ import {
   refreshVaults,
 } from "./window/vaults";
 import { initPalette, palette, resolveConflicts } from "./window/palette";
+import { initToolbar } from "./window/toolbar";
 import {
   initTree,
   refreshTree,
@@ -135,116 +125,7 @@ initNote({
   opened: rememberOpened,
   switchVault,
 });
-el.noteMenu.onclick = () => openNoteMenu();
-
-/**
- * Menu of the open note. It is the same as its tree row menu: commands,
- * rename, clipboard, Finder. One menu for two places keeps them in
- * sync. A separate file uses its row menu from the file list.
- */
-function openNoteMenu(): void {
-  if (!state.note) return;
-  if (state.note.file) {
-    const path = state.note.id;
-    const entry = state.files.find((candidate) => candidate.path === path);
-    if (entry) void openFileMenu(el.noteMenu, entry);
-    return;
-  }
-  if (!state.vault) return;
-  void openCommandMenu(el.noteMenu, { kind: "note", name: state.note.id, vault: state.vault.id });
-}
-
-/**
- * Bookmarks of the open note: a jump to each, then the toggle and the list of
- * all bookmarks. The toolbar has no line of its own, so the toggle works on
- * the cursor line, as ⌘⇧B does.
- */
-function openBookmarksMenu(): void {
-  if (!state.note || state.note.file) return;
-  const id = state.note.id;
-  const marks = editor.getBookmarkMarks();
-  const text = editor.getText().split("\n");
-
-  const jumps: MenuItem[] =
-    marks.length > 0
-      ? marks.map(({ line, name }, index) => ({
-          label: name ?? bookmarkLabel(text[line - 1] ?? ""),
-          detail: t("topbar.bookmarks.line", { line }),
-          glyph: "bookmark",
-          key: index < 9 ? String(index + 1) : undefined,
-          run: () => void openBookmark(id, line),
-        }))
-      : [{ label: t("topbar.bookmarks.none"), disabled: true, run: () => {} }];
-
-  openMenu(el.noteBookmarks, [
-    { title: t("topbar.bookmarks.here"), items: jumps },
-    {
-      items: [
-        {
-          label: t("palette.action.bookmark"),
-          glyph: "bookmark",
-          action: "bookmark.toggle",
-          run: () => toggleCurrentBookmark(),
-        },
-        {
-          label: t("topbar.bookmarks.all"),
-          glyph: "search",
-          action: "bookmark.list",
-          run: () => palette.open("", "bookmarks"),
-        },
-      ],
-    },
-  ]);
-}
-
-/**
- * A bookmark line as a menu label: the text without the markdown marker and
- * without agent notes, which are HTML comments in the text.
- */
-function bookmarkLabel(line: string): string {
-  const text = line
-    .replace(/<!--.*?(-->|$)/g, "")
-    .replace(/^\s*(#{1,6}\s+|[-*+]\s+(\[.\]\s+)?|\d+[.)]\s+|>\s*)/, "")
-    .trim();
-  return text || t("topbar.bookmarks.blank");
-}
-
-/** Commands of the open note, the same list as in its menu. */
-async function openRunMenu(): Promise<void> {
-  const target = currentTarget();
-  if (!target) return;
-  const items = await commandItems(target);
-  if (!items) return;
-  openMenu(el.runMenu, [{ title: t("commands.title"), items }, editCommandsSection()]);
-}
-
-/** Notes that link to the open one. The panel under the preview lists them too. */
-function openBacklinksMenu(): void {
-  if (!state.note) return;
-  openMenu(el.noteBacklinks, [
-    {
-      title: t("panel.backlinks.title"),
-      items: state.note.backlinks.map((link, index) => ({
-        label: link.title,
-        detail: link.label ? `«${link.label}»` : undefined,
-        glyph: "note",
-        key: index < 9 ? String(index + 1) : undefined,
-        run: () => void openNote(link.id),
-      })),
-    },
-  ]);
-}
-
-el.noteBookmarks.onclick = () => openBookmarksMenu();
-el.runLast.onclick = () => {
-  const last = lastCommand();
-  const target = currentTarget();
-  // Nothing to repeat yet: the menu shows what can run.
-  if (last && target) void runCommand(last, target);
-  else void openRunMenu();
-};
-el.runMenu.onclick = () => void openRunMenu();
-el.noteBacklinks.onclick = () => openBacklinksMenu();
+initToolbar();
 
 initSync({ resolve: resolveConflicts });
 initVaults();
