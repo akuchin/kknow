@@ -14,9 +14,7 @@ import {
   parseLink,
   type BookmarkMark,
   type CommandTarget,
-  type FileEntry,
   type NoteSummary,
-  type Opened,
   type TrashEntryView,
   type VaultInfo,
   type VaultView,
@@ -36,8 +34,6 @@ import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
 import { paintBookmarks, scrollToLine, topLine } from "./preview-lines";
-import { imageLink } from "./attachment-name";
-import { isImage } from "./images";
 import { icon } from "./icons";
 import { describeError, locale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
@@ -65,7 +61,6 @@ import {
   changeCurrentScale,
   closeNote,
   defaultMode,
-  fileGone,
   flushPendingSave,
   initNote,
   noteKey,
@@ -73,7 +68,6 @@ import {
   openFileView,
   openFound,
   openNote,
-  positionKey,
   releaseNote,
   renderNoteTools,
   setMode,
@@ -102,6 +96,15 @@ import {
   tableNotes,
 } from "./window/notes-float";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
+import {
+  initFiles,
+  openFileMenu,
+  pickFile,
+  refreshFiles,
+  savePastedImage,
+  takeDrop,
+  takeOpened,
+} from "./window/files";
 import { emptyItem, markActive, rowActions, rowMenu } from "./window/rows";
 import { copyText, openSettings } from "./window/util";
 import { state } from "./window/state";
@@ -1566,18 +1569,7 @@ async function revealVault(id: string): Promise<void> {
   }
 }
 
-/**
- * "Drop here" hint while a folder is dragged over the window.
- *
- * It lives in `body`, not `#app`: `#app` is a grid, and the hint needs the
- * whole window, not a grid cell. Pointer events pass through it: the shell
- * handles the drag, and the hint has nothing to click.
- */
-const dropHint = document.createElement("div");
-dropHint.className = "drop-hint";
-dropHint.textContent = t("sidebar.vault.drop");
-dropHint.hidden = true;
-document.body.append(dropHint);
+initFiles({ refreshVaults, adoptVaults });
 
 /** Shows a vault: tree, themes, sync and its last note. */
 async function useVault(info: VaultInfo): Promise<void> {
@@ -1672,225 +1664,6 @@ async function adoptVaults(paths: string[]): Promise<void> {
     renderTree();
   }
   if (problem) setStatus(problem, "error");
-}
-
-/** Extensions the window opens as a separate file. They match the vault ones. */
-const MARKDOWN = /\.(md|markdown|mdown)$/i;
-
-/** Reloads the separate file list. The core forgets missing files on the way. */
-async function refreshFiles(): Promise<void> {
-  try {
-    state.setFiles(await api.listFiles());
-  } catch (error) {
-    fail(error);
-  }
-  renderFiles();
-}
-
-/**
- * Separate files as a flat list in open order.
- *
- * Rows show the file name, not the title: titles would need a disk read per
- * file, and people know `README.md` by its name. The folder on the second
- * line tells two `README.md` files apart.
- */
-function renderFiles(): void {
-  el.fileList.replaceChildren(...state.files.map(fileItem));
-  markActive(state.note?.id ?? null);
-}
-
-function fileItem(entry: FileEntry): HTMLLIElement {
-  const item = document.createElement("li");
-  const button = document.createElement("button");
-  button.className = "note";
-  button.dataset.path = entry.path;
-  button.title = entry.path;
-  button.onclick = () => void openFileView(entry.path);
-
-  const name = document.createElement("span");
-  name.className = "note-title";
-  name.textContent = entry.name;
-  const folder = document.createElement("span");
-  folder.className = "file-folder";
-  folder.textContent = entry.folder;
-  button.append(name, folder);
-
-  const more = rowMenu(t("sidebar.file.menu", { name: entry.name }), (anchor) =>
-    openFileMenu(anchor, entry),
-  );
-
-  const row = document.createElement("div");
-  row.className = "tree-row note-row";
-  row.append(button, rowActions(more));
-  row.oncontextmenu = (event) => {
-    event.preventDefault();
-    void openFileMenu(more, entry);
-  };
-  item.append(row);
-  return item;
-}
-
-/**
- * Menu of a standalone file. It has the note commands too: a file is a note
- * without a vault. The order is the same as in the note menu.
- */
-async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void> {
-  const target: CommandTarget = { kind: "note", file: entry.path };
-  const items = await commandItems(target);
-  if (!items) return;
-
-  openMenu(anchor, [
-    {
-      title: entry.name,
-      items: [
-        {
-          label: t("commands.reveal"),
-          glyph: "folder",
-          key: "S",
-          run: () =>
-            void api.revealFile(entry.path).catch((error) => {
-              void fileGone(entry.path).then((gone) => gone || fail(error));
-            }),
-        },
-        {
-          label: t("commands.copyPath"),
-          glyph: "copy",
-          key: "C",
-          run: () => void copyText(entry.path),
-        },
-      ],
-    },
-    { title: t("commands.title"), items },
-    {
-      items: [
-        {
-          label: t("sidebar.vault.remove"),
-          glyph: "unlink",
-          detail: t("sidebar.file.remove.detail"),
-          key: "⌫",
-          run: () => void forgetFile(entry),
-        },
-      ],
-    },
-    editCommandsSection(),
-  ]);
-}
-
-/** Removes a file from the list. An open file closes; the file on disk stays. */
-async function forgetFile(entry: FileEntry): Promise<void> {
-  if (state.note?.id === entry.path) {
-    await flushPendingSave();
-    closeNote();
-    localStorage.removeItem(LAST_FILE);
-  }
-  try {
-    state.setFiles(await api.forgetFile(entry.path));
-    renderFiles();
-    setStatus(t("sidebar.file.removed", { name: entry.name }));
-  } catch (error) {
-    fail(error);
-  }
-}
-
-/**
- * Shows what the user asked to open: a file from a known vault opens as its
- * note, anything else as a separate file.
- */
-async function openPath(opened: Opened): Promise<void> {
-  if (opened.kind === "note") {
-    await refreshVaults();
-    await openFound(opened.id, opened.vault);
-    return;
-  }
-  await refreshFiles();
-  await openFileView(opened.path);
-}
-
-/** An open request from Finder. The core holds it until the window takes it. */
-async function takeOpened(): Promise<boolean> {
-  try {
-    const opened = await api.takeOpenedFile();
-    if (!opened) return false;
-    await openPath(opened);
-    return true;
-  } catch (error) {
-    fail(error);
-    return false;
-  }
-}
-
-/** "Open file…": the dialog, ⌘O and the button above the file list. */
-async function pickFile(): Promise<void> {
-  const picked = await open({
-    multiple: false,
-    filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdown"] }],
-  });
-  if (typeof picked !== "string") return;
-  await openFiles([picked]);
-}
-
-/**
- * Opens files by path, from the dialog or drag and drop. All go into the list,
- * the last one opens, and a bad path does not cancel the others.
- */
-async function openFiles(paths: string[]): Promise<void> {
-  let last: Opened | null = null;
-  let problem: string | null = null;
-  for (const path of paths) {
-    try {
-      last = await api.openFile(path);
-    } catch (error) {
-      problem ??= describeError(error);
-    }
-  }
-
-  if (last) await openPath(last);
-  else await refreshFiles();
-  if (problem) setStatus(problem, "error");
-}
-
-/** Dropped paths: folders become vaults, markdown files open. */
-async function adoptDropped(paths: string[]): Promise<void> {
-  const markdown = paths.filter((path) => MARKDOWN.test(path));
-  const folders = paths.filter((path) => !MARKDOWN.test(path));
-  if (folders.length > 0) await adoptVaults(folders);
-  if (markdown.length > 0) await openFiles(markdown);
-}
-
-/**
- * Saves a pasted image of the open note. The core puts it into `attachments/`
- * of the vault, or next to a standalone file. Returns the path for the link.
- */
-async function savePastedImage(name: string, bytes: Uint8Array): Promise<string | null> {
-  if (!state.note) return null;
-  try {
-    return await api.saveAttachment(name, bytes, state.note.file ? state.note.id : null);
-  } catch (error) {
-    setStatus(t("image.saveFailed", { error: describeError(error) }), "error");
-    return null;
-  }
-}
-
-/**
- * Image files dropped on the editor: the core copies them into `attachments/`,
- * and the links go to the drop point. The note can change during the copy;
- * then the links have no place to go.
- */
-async function attachDropped(paths: string[], at: number): Promise<void> {
-  const note = state.note;
-  if (!note) return;
-  const saved: string[] = [];
-  let problem: string | null = null;
-  for (const path of paths) {
-    try {
-      saved.push(await api.attachFile(path, note.file ? note.id : null));
-    } catch (error) {
-      problem ??= describeError(error);
-    }
-  }
-  if (!state.note || positionKey(state.note) !== positionKey(note)) return;
-  editor.insertImages(saved.map(imageLink), at);
-  if (problem) setStatus(t("image.saveFailed", { error: problem }), "error");
 }
 
 async function createNote(name: string): Promise<void> {
@@ -2181,8 +1954,6 @@ function currentFolderPrefix(): string {
   return parts.length > 0 ? `${parts.join("/")}/` : "";
 }
 
-el.openFile.onclick = () => void pickFile();
-
 /**
  * Sidebar buttons and ⌘N. A second click on the same button hides the form.
  * The form is in the sidebar, so a collapsed sidebar opens first.
@@ -2467,17 +2238,8 @@ async function boot(): Promise<void> {
   // The core already stored a file opened from outside (a double click on
   // `.md`); the window takes the request and shows it.
   void onFileOpened(() => void takeOpened());
-  // A folder dropped on the window becomes a vault; a markdown file opens as a
-  // separate file. An image dropped on the open note goes into the note.
-  void onDragDrop(({ over, paths, point }) => {
-    dropHint.hidden = !over;
-    if (paths.length === 0) return;
-    const at = state.note && point ? editor.dropPosition(point.x, point.y) : null;
-    const images = at === null ? [] : paths.filter((path) => isImage(path));
-    if (at !== null && images.length > 0) void attachDropped(images, at);
-    const rest = paths.filter((path) => !images.includes(path));
-    if (rest.length > 0) void adoptDropped(rest);
-  });
+  // Folders and files dropped on the window; see `takeDrop`.
+  void onDragDrop(takeDrop);
   // "2 min ago" gets old without any event, so the segment redraws every minute.
   window.setInterval(describeRemote, 60000);
 
