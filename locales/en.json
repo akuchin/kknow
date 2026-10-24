@@ -424,6 +424,8 @@
   "status.folderDeleted": "folder moved to the trash",
   "status.renamed": "renamed",
   "status.moved": "moved",
+  "status.relinked_one": "updated links in {{count}} note",
+  "status.relinked_other": "updated links in {{count}} notes",
   "status.duplicated": "copy created",
   "status.copied": "copied",
   "status.copyFailed": "could not copy to the clipboard",

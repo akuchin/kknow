@@ -122,6 +122,22 @@ External edit:
   `[[link#^block]]`, `![[embed]]`, Markdown links, tags, frontmatter.
 - A link graph with wikilink resolution rules (full path, then file name, and
   so on) and backlinks.
+- A rename or a move rewrites the links that point to the moved notes
+  (`Relink` in `kknow-index`, `Workspace::relink` in `kknow-app`).
+  - The rule: a link must find the same note after the move. A link that still
+    finds it stays as it is. Thus `[[kknow]]` survives a move to a different
+    folder, and kknow does not touch the file.
+  - A broken link gets the full path. A link by name gets the new name if the
+    name finds the note. Else it also gets the full path.
+  - Only the target changes. The alias, `#Heading`, `#^block`, the `!` of an
+    embed and a written `.md` stay. A Markdown link keeps its angle brackets,
+    or it gets `%20` for a space.
+  - The rewrite uses the parser spans, so links in code and math stay.
+  - It reads only possible sources: the moved notes, their backlinks and the
+    backlinks of notes with the new name. A moved note can also lose its own
+    links: `[[Notes]]` can find a different nearest `Notes` from the new folder.
+  - The notes go through the normal save path (`Workspace::store`). Thus the
+    hash marks the write as our own, and search and graph get the new text.
 - `Workspace::stats` gives notes, folders and size.
 
 ## Search
@@ -768,11 +784,11 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   in
   the search and the graph.
 
-  kknow does not change links in other notes. The
-  resolver finds the note by file name and by path suffix after the move. If it
-  does not, the graph shows a broken link. This is more honest than a silent
-  edit of a different note. A duplicate goes next to the original: `Name copy`,
-  `Name copy 2`, the first free name.
+  Links follow the moved notes: see "Core: parsing, graph, files". The
+  `rename_note` and `rename_folder` commands return the number of notes with
+  changed links. The status bar shows it after "renamed": "переименовано ·
+  обновлены ссылки в 3 заметках". A duplicate goes next to the original:
+  `Name copy`, `Name copy 2`, the first free name.
 - You can see edits in a different vault. `onExternalChange` reads again the
   tree of the vault that sent the event.
 - There are three ways to add a vault, and all of them meet in `adoptVaults`:
@@ -1570,6 +1586,14 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   is not part of CommonMark. pulldown-cmark can split such a sequence into
   several text events. Instead, the parser gives the code and math ranges, and
   the scanner skips them.
+- **A rename rewrites links in other notes.** Before, a moved note left broken
+  links, and the user had to fix each one by hand. Other editors (Obsidian,
+  VS Code) update links on a move, and people expect it.
+  - kknow rewrites only links that would break or find a different note. A
+    move that the short name survives changes no file, so git and sync see no
+    noise.
+  - It is not a setting (YAGNI). The status bar tells how many notes changed,
+    so the edit is not silent.
 - **kknow changes links in the Markdown before rendering.** `render.rs`
   replaces wikilink and tag spans with usual links with the `kknow://` scheme.
   The UI catches clicks on them. Thus kknow does not need to change the event

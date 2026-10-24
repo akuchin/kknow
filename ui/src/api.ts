@@ -31,6 +31,12 @@ export interface NoteSummary {
   tags: string[];
 }
 
+/** A moved note: its new ID and the number of notes with rewritten links. */
+export interface RenamedNote {
+  id: string;
+  relinked: number;
+}
+
 export interface LinkRef {
   id: string;
   title: string;
@@ -470,15 +476,16 @@ export const api = {
     invoke<void>("open_note", { id, vault: vault ?? null }),
   /**
    * Renames or moves a note: `to` is the full path from the root.
-   * Returns the new ID.
+   * Returns the new ID and the number of notes whose links followed it.
    */
   renameNote: (id: string, to: string, vault?: string) =>
-    invoke<string>("rename_note", { id, to, vault: vault ?? null }),
+    invoke<RenamedNote>("rename_note", { id, to, vault: vault ?? null }),
   /** Makes a copy next to the note and returns the copy ID. */
   duplicateNote: (id: string, vault?: string) =>
     invoke<string>("duplicate_note", { id, vault: vault ?? null }),
+  /** Returns the number of notes whose links followed the folder. */
   renameFolder: (name: string, to: string, vault?: string) =>
-    invoke<void>("rename_folder", { name, to, vault: vault ?? null }),
+    invoke<number>("rename_folder", { name, to, vault: vault ?? null }),
   search: (query: string, limit?: number) =>
     invoke<SearchResult[]>("search", { query, limit }),
   /** Searches all vaults at once; each hit knows its vault. */
