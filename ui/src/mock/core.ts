@@ -319,7 +319,6 @@ function readSettings(): AppSettings {
     locale: localStorage.getItem("kknow:locale") ?? "ru",
     theme: "light",
     viewMode: "split",
-    autosaveMs: 600,
     openLastNote: true,
     lineNumbers: true,
     noteScale: 100,

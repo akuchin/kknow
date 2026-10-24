@@ -115,11 +115,11 @@ mod tests {
             .unwrap();
 
         let next = AppSettings {
-            autosave_ms: 1000,
+            line_numbers: false,
             ..AppSettings::default()
         };
         set_settings(app.handle().clone(), app.state(), next.clone()).unwrap();
 
-        assert_eq!(get_settings(app.state()).autosave_ms, 1000);
+        assert!(!get_settings(app.state()).line_numbers);
     }
 }

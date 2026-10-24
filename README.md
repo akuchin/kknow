@@ -577,7 +577,8 @@ the same time.
 - Press ⌘G and ⌘⇧G to go to the next and the previous match.
 - Press Esc to close the panel.
 - Use replace for one match or for all matches. The normal autosave saves the
-  result.
+  result: 1 s after the last edit, or at once when you go to a different
+  window or note.
 
 If you select text before you press ⌘F, the selection becomes the query. To find
 more of a word, select it and press ⌘F. Checkboxes in the panel turn on case
@@ -1061,7 +1062,7 @@ Sections:
   - variables: the command variables and the shared variables of the file.
 - **Keys** — the shortcuts of all actions. You can change them: see
   "Changing the shortcuts" below.
-- **Editor** — the default note mode, the autosave delay and line numbers.
+- **Editor** — the default note mode and line numbers.
 
 kknow keeps the language, theme and editor behavior in `settings.json` next to
 the vault list. It does not use the `localStorage` of the window. The app has

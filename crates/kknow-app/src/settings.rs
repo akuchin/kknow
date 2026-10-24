@@ -23,13 +23,6 @@ pub const SETTINGS_FILE: &str = "settings.json";
 
 const DEFAULT_LOCALE: &str = "ru";
 const DEFAULT_THEME: &str = "light";
-const DEFAULT_AUTOSAVE_MS: u32 = 600;
-
-/// Autosave delay limits.
-///
-/// The lower limit stops each key press from going to disk. The upper limit
-/// keeps "saves by itself" true, not a promise for half a minute.
-const AUTOSAVE_MS: RangeInclusive<u32> = 100..=5000;
 
 /// Note font size limits and step in percents, the same as in
 /// `ui/src/note-scale.ts`: below 70% the text is unreadable, above 200% a line
@@ -78,8 +71,6 @@ pub struct AppSettings {
     /// Mode for a note that does not have its own mode yet.
     #[serde(deserialize_with = "lenient_mode")]
     pub view_mode: ViewMode,
-    /// Autosave delay in milliseconds.
-    pub autosave_ms: u32,
     /// Open the last note at startup.
     pub open_last_note: bool,
     /// Line numbers in the editor gutter.
@@ -92,7 +83,7 @@ pub struct AppSettings {
 }
 
 /// Defaults are written by hand: `#[derive(Default)]` gives an empty language,
-/// a zero delay and no last note. With such settings the app needs repair at
+/// no theme and no last note. With such settings the app needs repair at
 /// startup.
 impl Default for AppSettings {
     fn default() -> Self {
@@ -100,7 +91,6 @@ impl Default for AppSettings {
             locale: DEFAULT_LOCALE.to_string(),
             theme: DEFAULT_THEME.to_string(),
             view_mode: ViewMode::Split,
-            autosave_ms: DEFAULT_AUTOSAVE_MS,
             open_last_note: true,
             line_numbers: true,
             note_scale: DEFAULT_NOTE_SCALE,
@@ -198,8 +188,7 @@ impl AppSettings {
     /// Repairs the values that were read.
     ///
     /// People edit the file by hand, so repair it instead of failing to start.
-    /// An empty language leaves the UI without labels, and `autosave_ms: 0`
-    /// writes to disk on each key press.
+    /// An empty language leaves the UI without labels.
     fn tidy(&mut self) {
         if self.locale.trim().is_empty() {
             self.locale = DEFAULT_LOCALE.to_string();
@@ -207,9 +196,6 @@ impl AppSettings {
         if self.theme.trim().is_empty() {
             self.theme = DEFAULT_THEME.to_string();
         }
-        self.autosave_ms = self
-            .autosave_ms
-            .clamp(*AUTOSAVE_MS.start(), *AUTOSAVE_MS.end());
         // The slider has only whole steps: 125% would put it between marks.
         let stepped = (self.note_scale + NOTE_SCALE_STEP / 2) / NOTE_SCALE_STEP * NOTE_SCALE_STEP;
         self.note_scale = stepped.clamp(*NOTE_SCALE.start(), *NOTE_SCALE.end());
@@ -231,7 +217,6 @@ mod tests {
         assert_eq!(settings.locale, "ru");
         assert_eq!(settings.theme, "light");
         assert_eq!(settings.view_mode, ViewMode::Split);
-        assert_eq!(settings.autosave_ms, 600);
         assert!(settings.open_last_note);
         assert!(settings.line_numbers);
         assert_eq!(settings.note_scale, 100);
@@ -246,7 +231,6 @@ mod tests {
             locale: "en".to_string(),
             theme: "night".to_string(),
             view_mode: ViewMode::Read,
-            autosave_ms: 1200,
             open_last_note: false,
             line_numbers: false,
             note_scale: 130,
@@ -261,7 +245,6 @@ mod tests {
         assert!(!home.path().join("settings.json.tmp").exists());
 
         let written = fs::read_to_string(&path).unwrap();
-        assert!(written.contains(r#""autosaveMs": 1200"#), "{written}");
         assert!(written.contains(r#""viewMode": "read""#), "{written}");
         assert!(written.contains(r#""lineNumbers": false"#), "{written}");
         assert!(written.contains(r#""autoUpdate": false"#), "{written}");
@@ -306,7 +289,6 @@ mod tests {
         assert!(loaded.problem.is_none(), "разобрался — претензий нет");
         assert_eq!(loaded.settings.locale, "ru");
         assert_eq!(loaded.settings.theme, "light");
-        assert_eq!(loaded.settings.autosave_ms, 100, "меньше границы");
         assert_eq!(
             loaded.settings.view_mode,
             ViewMode::Edit,
@@ -323,14 +305,20 @@ mod tests {
     }
 
     #[test]
-    fn a_wild_autosave_delay_is_clamped_from_above() {
+    fn an_old_autosave_delay_in_the_file_is_ignored() {
+        // The delay was a setting before. A file from that time must still
+        // load with all its other values.
         let home = dir();
         let path = AppSettings::path(home.path());
-        fs::write(&path, r#"{"autosaveMs":600000}"#).unwrap();
+        fs::write(&path, r#"{"locale":"en","autosaveMs":1200}"#).unwrap();
 
         let loaded = AppSettings::load(&path).unwrap();
 
-        assert_eq!(loaded.settings.autosave_ms, 5000);
+        assert!(loaded.problem.is_none());
+        assert_eq!(loaded.settings.locale, "en");
+        loaded.settings.save(&path).unwrap();
+        let resaved = fs::read_to_string(&path).unwrap();
+        assert!(!resaved.contains("autosaveMs"), "{resaved}");
     }
 
     #[test]

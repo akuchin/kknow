@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   api,
+  onCloseRequested,
   onDragDrop,
   onFileOpened,
   onKeymapChanged,
@@ -63,10 +64,11 @@ import "./styles.css";
 /**
  * Delay after the last key press before the file is written.
  *
- * It comes from the settings, so it is `let`, not a constant: the settings
- * window changes it live, without a restart of the main window.
+ * It is not a setting: nobody tunes it, and leaving the window or the note
+ * writes at once anyway (see `flushPendingSave`). A short pause keeps a crash
+ * from losing more than a second and keeps sync and the CLI near the editor.
  */
-let saveDelay = 600;
+const SAVE_DELAY = 1000;
 const PREVIEW_DELAY = 180;
 /** The word count does not need to update on every key press. */
 const WORDS_DELAY = 300;
@@ -515,7 +517,7 @@ function onEdit(text: string): void {
   scheduleWords(text);
 
   window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void save(text), saveDelay);
+  saveTimer = window.setTimeout(() => void save(text), SAVE_DELAY);
 
   window.clearTimeout(previewTimer);
   // Skip a hidden preview: each refresh is a core call on every edit.
@@ -3013,13 +3015,12 @@ function showLineNumbers(on: boolean): void {
   status.setLineNumbers(on);
 }
 
-/** Applies settings from the core: language, theme, preview, autosave. */
+/** Applies settings from the core: language, theme, preview, line numbers. */
 function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
   const defaultChanged = incoming.viewMode !== appSettings?.viewMode;
   const scaleChanged = incoming.noteScale !== appSettings?.noteScale;
   appSettings = incoming;
-  saveDelay = incoming.autosaveMs;
   showLineNumbers(incoming.lineNumbers);
   // A new default size affects only a file without its own size.
   if (scaleChanged) {
@@ -3614,7 +3615,6 @@ async function boot(): Promise<void> {
   }
 
   if (appSettings) {
-    saveDelay = appSettings.autosaveMs;
     showLineNumbers(appSettings.lineNumbers);
     setDefaultScale(appSettings.noteScale);
     // The window language comes from settings. `i18n` reads its mirror
@@ -3642,6 +3642,12 @@ async function boot(): Promise<void> {
   // The watcher can miss an edit (laptop sleep, network disk), so the note is
   // checked against the disk again when the window gets focus.
   window.addEventListener("focus", () => void syncWithDisk());
+  // The user went to another app: the note goes to disk now, not after the
+  // timer. Sync, git and the CLI then see what the user sees.
+  window.addEventListener("blur", () => void flushPendingSave());
+  // A close does not wait for the timer either. The handler runs before the
+  // window goes away; a failed save must not keep the window open.
+  void onCloseRequested(() => flushPendingSave().catch(fail));
   // A hand edit of `keybindings.json` shows when the user comes back.
   window.addEventListener("focus", () => void refreshKeymap());
   void onKeymapChanged(({ keys }) => void applyKeymap(keys));

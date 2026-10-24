@@ -22,6 +22,7 @@ export default defineConfig({
           "@tauri-apps/api/core": resolvePath("./src/mock/core.ts"),
           "@tauri-apps/api/event": resolvePath("./src/mock/event.ts"),
           "@tauri-apps/api/webview": resolvePath("./src/mock/webview.ts"),
+          "@tauri-apps/api/window": resolvePath("./src/mock/window.ts"),
           "@tauri-apps/plugin-dialog": resolvePath("./src/mock/dialog.ts"),
         }
       : {},

@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Window permissions: main and settings",
   "windows": ["main", "settings"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy",
+    "dialog:default"
+  ]
 }

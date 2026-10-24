@@ -808,7 +808,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - Vaults.
   - Commands.
   - Keys — reference.
-  - Editor — default note mode, autosave delay, line numbers.
+  - Editor — default note mode, line numbers.
 - The "Vaults" section has a list on the left with the label, the sync state
   and a dot. On the right are:
   - the name (you can edit it in place);
@@ -1506,6 +1506,18 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
     the first one as an edit by someone else.
   - On window focus, kknow compares the open note with the disk again, because
     the watcher can miss an event.
+- **Autosave has a fixed delay and is not a setting.** The window writes 1 s
+  after the last key press. It also writes at once when the window loses
+  focus, when it closes, and before it leaves the note. Nobody tuned the delay,
+  so we removed it from the settings; an old `autosaveMs` in `settings.json`
+  is ignored.
+  - We did not save only on focus loss. Then a crash would lose all text since
+    the last switch, and auto-sync, git and the CLI would see an old file.
+    A long unsaved edit also makes a conflict copy more likely.
+  - A save with the same text as the disk writes nothing, so a focus change
+    without edits does not touch the file.
+  - A close waits for the save: Tauri keeps the window open while the JS
+    `onCloseRequested` handler runs. This needs `core:window:allow-destroy`.
 - **The search index is in memory.** For 5000 notes (20 MB), an open with
   indexing takes about 0.25 s. A persistent index would need schema versions
   and a cleanup of old documents. We postponed this on purpose.

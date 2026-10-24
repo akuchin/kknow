@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** An open vault: what the window shows after a switch. */
 export interface VaultInfo {
@@ -127,7 +128,6 @@ export interface AppSettings {
   theme: string;
   /** The mode for a note that has no mode of its own yet. */
   viewMode: ViewMode;
-  autosaveMs: number;
   openLastNote: boolean;
   /** Line numbers in the editor gutter. */
   lineNumbers: boolean;
@@ -604,6 +604,15 @@ export function onDragDrop(handler: (state: DragDrop) => void) {
       handler({ over: false, paths: [] });
     }
   });
+}
+
+/**
+ * Runs `handler` before the window closes and waits for it.
+ *
+ * Tauri keeps the window open while a JS listener runs, then closes it.
+ */
+export function onCloseRequested(handler: () => Promise<void>) {
+  return getCurrentWindow().onCloseRequested(() => handler());
 }
 
 /** Subscribes to sync state: progress, conflicts, errors. */
