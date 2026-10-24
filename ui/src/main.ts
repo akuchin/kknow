@@ -110,8 +110,6 @@ const trashes = new Map<string, TrashEntryView[]>();
  * different notes.
  */
 const positions = new Map<string, { editor: EditorPosition; preview: number }>();
-/** Active vault: the tree, the editor and the status bar work with it. */
-let vault: VaultInfo | null = null;
 /** Separate files in open order. The core keeps this list. */
 let files: FileEntry[] = [];
 /**
@@ -331,7 +329,9 @@ function setSidebarHidden(hidden: boolean): void {
 const history = new History();
 
 function placeOf(view: NoteView): Place {
-  return view.file ? { file: true, path: view.id } : { file: false, vault: vault?.id ?? "", id: view.id };
+  return view.file
+    ? { file: true, path: view.id }
+    : { file: false, vault: state.vault?.id ?? "", id: view.id };
 }
 
 function rememberPlace(view: NoteView): void {
@@ -397,7 +397,7 @@ async function saveNow(text: string): Promise<void> {
     applyNote(outcome.note);
     // A copy of a separate file goes next to it and appears in the file list.
     if (note.file) await refreshFiles();
-    else if (vault) await refreshTree(vault.id);
+    else if (state.vault) await refreshTree(state.vault.id);
     setStatus(t("status.externalConflict", { name: outcome.copy }), "error");
   } catch (error) {
     fail(error);
@@ -501,9 +501,9 @@ function showHeading(view: NoteView | null): void {
     return;
   }
   el.noteVaultLabel.hidden = false;
-  el.noteVaultLabel.dataset.color = vault?.color ?? "blue";
-  el.noteFolderText.textContent = [vault?.name, folder].filter(Boolean).join(" / ");
-  el.noteFolder.title = vault ? `${vault.root}/${view.id}.md` : view.id;
+  el.noteVaultLabel.dataset.color = state.vault?.color ?? "blue";
+  el.noteFolderText.textContent = [state.vault?.name, folder].filter(Boolean).join(" / ");
+  el.noteFolder.title = state.vault ? `${state.vault.root}/${view.id}.md` : view.id;
 }
 
 /**
@@ -541,7 +541,9 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   state.setNote(view);
   // Before the editor text: its widgets request images for this note at once.
   setImageOwner(
-    view.file ? { file: true, path: view.id } : { file: false, vault: vault?.id ?? "", id: view.id },
+    view.file
+      ? { file: true, path: view.id }
+      : { file: false, vault: state.vault?.id ?? "", id: view.id },
   );
   if (!options.keepEditor) {
     editor.setText(view.content);
@@ -566,7 +568,7 @@ function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void
   applyScale();
   renderBacklinks(view);
   // The note can be in a collapsed branch or vault; then redraw the tree.
-  if (!view.file && vault && reveal(vault.id, view.id)) renderTree();
+  if (!view.file && state.vault && reveal(state.vault.id, view.id)) renderTree();
   markActive(view.id);
   // The palette needs this note's commands and collects actions synchronously.
   // The refresh drops the old list before its first await, so the toolbar
@@ -586,7 +588,7 @@ function stashPosition(): void {
 
 /** Position key: vault and id for a note, the path for a file. */
 function positionKey(view: NoteView): string {
-  return view.file ? `file:${view.id}` : noteKey(vault?.id ?? "", view.id);
+  return view.file ? `file:${view.id}` : noteKey(state.vault?.id ?? "", view.id);
 }
 
 /** The same key for a note that may not be open (its menu in the tree). */
@@ -652,7 +654,7 @@ function renderBacklinks(view: NoteView): void {
 function markActive(id: string | null): void {
   const file = state.note?.file === true;
   for (const button of el.noteList.querySelectorAll<HTMLButtonElement>("button.note")) {
-    const mine = !file && button.dataset.vault === vault?.id && button.dataset.id === id;
+    const mine = !file && button.dataset.vault === state.vault?.id && button.dataset.id === id;
     button.classList.toggle("active", mine);
   }
   for (const button of el.fileList.querySelectorAll<HTMLButtonElement>("button.note")) {
@@ -1220,7 +1222,7 @@ function rowPlus(title: string, vaultId: string, folder: string): HTMLButtonElem
   plus.setAttribute("aria-label", title);
   plus.append(icon("plus"));
   plus.onclick = async () => {
-    if (vaultId !== vault?.id) await switchVault(vaultId);
+    if (vaultId !== state.vault?.id) await switchVault(vaultId);
     openNewNoteForm(folder ? `${folder}/` : "", "note");
   };
   return plus;
@@ -1361,7 +1363,7 @@ function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
  * after it, not in parallel.
  */
 async function openFound(id: string, from?: string): Promise<void> {
-  if (from && from !== vault?.id) {
+  if (from && from !== state.vault?.id) {
     await switchVault(from);
   }
   await openNote(id);
@@ -1514,16 +1516,16 @@ function goToHeading(heading: Heading): void {
 let recent: string[] = [];
 
 function rememberOpened(id: string): void {
-  if (!vault) return;
+  if (!state.vault) return;
   recent = [id, ...recent.filter((other) => other !== id)].slice(0, RECENT_LIMIT);
-  localStorage.setItem(`kknow:recent:${vault.id}`, JSON.stringify(recent));
+  localStorage.setItem(`kknow:recent:${state.vault.id}`, JSON.stringify(recent));
   // A vault reopens where it was closed: remember the last note.
-  localStorage.setItem(`kknow:note:${vault.id}`, id);
+  localStorage.setItem(`kknow:note:${state.vault.id}`, id);
 }
 
 /** Notes of the active vault, for the palette and the counter. */
 function activeNotes(): NoteSummary[] {
-  return vault ? (trees.get(vault.id) ?? []) : [];
+  return state.vault ? (trees.get(state.vault.id) ?? []) : [];
 }
 
 /**
@@ -1649,7 +1651,7 @@ async function openCommandMenu(anchor: HTMLElement, target: CommandTarget): Prom
   if (target.kind === "folder" && target.name && vaultId) {
     const folder = target.name;
     const inMine = async (mode: "note" | "folder") => {
-      if (vaultId !== vault?.id) await switchVault(vaultId);
+      if (vaultId !== state.vault?.id) await switchVault(vaultId);
       openNewNoteForm(`${folder}/`, mode);
     };
     creation.push({
@@ -1933,7 +1935,7 @@ async function refreshNoteCommands(): Promise<void> {
 function currentTarget(): CommandTarget | null {
   if (!state.note) return null;
   if (state.note.file) return { kind: "note", file: state.note.id };
-  return vault ? { kind: "note", name: state.note.id, vault: vault.id } : null;
+  return state.vault ? { kind: "note", name: state.note.id, vault: state.vault.id } : null;
 }
 
 /** Label colors. The theme sets the actual values (`--label-*`). */
@@ -1972,7 +1974,7 @@ function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
           disabled: !entry.available,
           run: () =>
             void (async () => {
-              if (entry.id !== vault?.id) await switchVault(entry.id);
+              if (entry.id !== state.vault?.id) await switchVault(entry.id);
               openNewNoteForm("", "folder");
             })(),
         },
@@ -2125,9 +2127,9 @@ async function renameVault(id: string, name: string): Promise<void> {
   try {
     vaults = await api.renameVault(id, name);
     // The status bar also shows the active vault name.
-    if (vault?.id === id) {
-      vault = { ...vault, name };
-      status.setVault(name, vault.color);
+    if (state.vault?.id === id) {
+      state.setVault({ ...state.vault, name });
+      status.setVault(name, state.vault.color);
     }
   } catch (error) {
     fail(error);
@@ -2195,7 +2197,7 @@ async function renameNote(
   vaultId: string,
   done: "status.renamed" | "status.moved",
 ): Promise<void> {
-  const isCurrent = vaultId === vault?.id && state.note?.id === id;
+  const isCurrent = vaultId === state.vault?.id && state.note?.id === id;
   if (isCurrent) await flushPendingSave();
 
   try {
@@ -2218,7 +2220,8 @@ async function renameFolder(
   done: "status.renamed" | "status.moved",
 ): Promise<void> {
   const prefix = `${name}/`;
-  const inside = vaultId === vault?.id && state.note?.id.startsWith(prefix) ? state.note.id : null;
+  const inside =
+    vaultId === state.vault?.id && state.note?.id.startsWith(prefix) ? state.note.id : null;
   if (inside) await flushPendingSave();
 
   try {
@@ -2277,7 +2280,9 @@ async function revealFolder(name: string, vaultId: string): Promise<void> {
 /** Absolute path inside a vault, for the clipboard. */
 function absolutePath(vaultId: string, relative: string): string | null {
   const root =
-    vaultId === vault?.id ? vault.root : vaults.find((entry) => entry.id === vaultId)?.path;
+    vaultId === state.vault?.id
+      ? state.vault.root
+      : vaults.find((entry) => entry.id === vaultId)?.path;
   return root ? `${root}/${relative}` : null;
 }
 
@@ -2313,9 +2318,9 @@ async function copyText(text: string | null): Promise<void> {
 async function recolorVault(id: string, color: string): Promise<void> {
   try {
     vaults = await api.setVaultColor(id, color);
-    if (vault?.id === id) {
-      vault = { ...vault, color };
-      status.setVault(vault.name, color);
+    if (state.vault?.id === id) {
+      state.setVault({ ...state.vault, color });
+      status.setVault(state.vault.name, color);
     }
   } catch (error) {
     fail(error);
@@ -2339,12 +2344,12 @@ async function forgetVault(entry: VaultView): Promise<void> {
   rememberExpanded();
 
   // If the active vault was removed, the core already picked another; open it.
-  if (entry.id === vault?.id) {
+  if (entry.id === state.vault?.id) {
     const info = await api.currentVault().catch(() => null);
     if (info) {
       await useVault(info);
     } else {
-      vault = null;
+      state.setVault(null);
       state.setNote(null);
       status.setVault(null);
       showHeading(null);
@@ -2382,7 +2387,7 @@ document.body.append(dropHint);
 async function useVault(info: VaultInfo): Promise<void> {
   // The position key includes the old vault, so save before the switch.
   stashPosition();
-  vault = info;
+  state.setVault(info);
   state.setNote(null);
   status.setVault(info.name, info.color);
 
@@ -2418,7 +2423,7 @@ async function useVault(info: VaultInfo): Promise<void> {
 
 /** Switches the active vault: ⌘1…⌘9, the menu, or a result from another vault. */
 async function switchVault(id: string): Promise<void> {
-  if (vault?.id === id) return;
+  if (state.vault?.id === id) return;
   await flushPendingSave();
 
   try {
@@ -2706,10 +2711,10 @@ async function attachDropped(paths: string[], at: number): Promise<void> {
 }
 
 async function createNote(name: string): Promise<void> {
-  if (!vault) return;
+  if (!state.vault) return;
   try {
     const view = await api.createNote(name);
-    await refreshTree(vault.id);
+    await refreshTree(state.vault.id);
     applyNote(view);
     rememberOpened(view.id);
     editor.focus();
@@ -2720,10 +2725,10 @@ async function createNote(name: string): Promise<void> {
 }
 
 async function createFolder(name: string): Promise<void> {
-  if (!vault) return;
+  if (!state.vault) return;
   try {
     await api.createFolder(name);
-    await refreshTree(vault.id);
+    await refreshTree(state.vault.id);
     setStatus(t("status.folderCreated"));
   } catch (error) {
     fail(error);
@@ -2736,7 +2741,7 @@ async function removeNote(id: string, vaultId: string): Promise<void> {
 
   // Drop pending edits of the deleted note: a save after the delete would
   // create the file again.
-  const isCurrent = vaultId === vault?.id && state.note?.id === id;
+  const isCurrent = vaultId === state.vault?.id && state.note?.id === id;
   if (isCurrent) saves.cancel();
 
   try {
@@ -2754,7 +2759,7 @@ async function removeFolder(name: string, vaultId: string): Promise<void> {
   if (!window.confirm(t("confirm.deleteFolder", { name }))) return;
 
   const prefix = `${name}/`;
-  const isCurrent = vaultId === vault?.id && state.note?.id.startsWith(prefix);
+  const isCurrent = vaultId === state.vault?.id && state.note?.id.startsWith(prefix);
   if (isCurrent) saves.cancel();
 
   try {
@@ -2900,7 +2905,7 @@ const syncWords: SyncWords = { t, shortcut, withShortcut, describeError };
 
 /** Shows the sync state of the active vault in the status bar and the chip. */
 function describeRemote(): void {
-  const own = vault ? statuses.get(vault.id) : undefined;
+  const own = state.vault ? statuses.get(state.vault.id) : undefined;
   showChip();
   const segment = syncSegment(own, syncWords);
   status.setSync(segment.text, segment.tone, segment.title);
@@ -2915,7 +2920,7 @@ function describeRemote(): void {
  */
 function showChip(): void {
   const other = [...statuses.values()]
-    .filter((entry) => entry.vault !== vault?.id)
+    .filter((entry) => entry.vault !== state.vault?.id)
     .find((entry) => entry.state === "conflict" || entry.state === "error");
 
   if (!other) {
@@ -2935,7 +2940,7 @@ function showChip(): void {
 /** Chip menu: go to the vault with the problem and resolve it. */
 function openChipMenu(anchor: HTMLElement): void {
   const other = [...statuses.values()]
-    .filter((entry) => entry.vault !== vault?.id)
+    .filter((entry) => entry.vault !== state.vault?.id)
     .find((entry) => entry.state === "conflict" || entry.state === "error");
   if (!other) return;
 
@@ -3071,8 +3076,8 @@ function openNoteMenu(): void {
     if (entry) void openFileMenu(el.noteMenu, entry);
     return;
   }
-  if (!vault) return;
-  void openCommandMenu(el.noteMenu, { kind: "note", name: state.note.id, vault: vault.id });
+  if (!state.vault) return;
+  void openCommandMenu(el.noteMenu, { kind: "note", name: state.note.id, vault: state.vault.id });
 }
 
 /**
@@ -3228,11 +3233,11 @@ el.collapseAll.onclick = () => {
 };
 
 async function reloadVault(): Promise<void> {
-  if (!vault) return;
+  if (!state.vault) return;
   await flushPendingSave();
   try {
     const info = await api.reload();
-    await refreshTree(vault.id);
+    await refreshTree(state.vault.id);
     setStatus(t("status.notes", { count: info.noteCount }));
     if (state.note && !state.note.file) applyNote(await api.loadNote(state.note.id));
   } catch (error) {
@@ -3347,13 +3352,13 @@ const palette = new Palette({
   // Search all vaults at once: the user wants the note, the vault is secondary.
   // The active vault comes first; results from others carry their vault label.
   search: (query) => api.searchAll(query),
-  bookmarks: () => (vault ? api.listBookmarks() : Promise.resolve([])),
+  bookmarks: () => (state.vault ? api.listBookmarks() : Promise.resolve([])),
   openBookmark: (id, line) => void openBookmark(id, line),
-  tasks: () => (vault ? api.listTasks() : Promise.resolve([])),
+  tasks: () => (state.vault ? api.listTasks() : Promise.resolve([])),
   openTask: (id, line) => void openTask(id, line),
   recent: recentNotes,
   total: () => activeNotes().length,
-  activeVault: () => vault?.id ?? null,
+  activeVault: () => state.vault?.id ?? null,
   open: (id, from) => void openFound(id, from),
   create: (name) => void createNote(name),
   // The editor has the text of a standalone file too, so it gets the outline.
@@ -3630,7 +3635,7 @@ async function onExternalChange(
   // Each open vault has a watcher, and the sidebar shows all vaults: an edit
   // in another vault must show in its branch.
   await refreshTree(changedVault);
-  if (changedVault !== vault?.id || !state.note || state.note.file) return;
+  if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
 
   if (removed.includes(state.note.id)) {
     setStatus(t("status.noteRemoved"), "error");
