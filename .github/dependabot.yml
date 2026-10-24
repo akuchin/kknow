@@ -1,0 +1,20 @@
+# Weekly update PRs for the Actions in the workflows and for the Rust crates.
+# Minor and patch updates come as one PR per ecosystem, so the queue stays
+# short. A major update gets its own PR: it can break the build.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        update-types: [minor, patch]
