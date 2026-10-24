@@ -179,13 +179,21 @@ export interface NoteView {
   backlinks: LinkRef[];
   outgoing: LinkRef[];
   tags: string[];
-  /** Bookmarked lines, starting at 1. Standalone files have no bookmarks. */
-  bookmarks?: number[];
+  /** Bookmarks of the text. Standalone files have no bookmarks. */
+  bookmarks?: BookmarkMark[];
   /**
    * A standalone file, not a vault note. Then `id` is an absolute path, and
    * the `*_file` commands read and write it.
    */
   file?: boolean;
+}
+
+/** A bookmark as the editor sees it: a line of the open text and a name. */
+export interface BookmarkMark {
+  /** Line number, starting at 1. */
+  line: number;
+  /** The name the user gave it. Never empty: no name means no field. */
+  name?: string;
 }
 
 /** A bookmark in the palette: a note of the active vault and a line in it. */
@@ -197,6 +205,7 @@ export interface BookmarkView {
   line: number;
   /** Line text at the time the bookmark was set or the note was saved. */
   text: string;
+  name?: string;
 }
 
 /** A standalone file in the sidebar: markdown opened without a vault. */
@@ -372,14 +381,14 @@ export const api = {
    * `base` is the text the edit started from. With it the core does not
    * overwrite an outside change; it saves our text as a copy instead.
    */
-  saveNote: (id: string, content: string, base: string | null, bookmarks?: number[]) =>
+  saveNote: (id: string, content: string, base: string | null, bookmarks?: BookmarkMark[]) =>
     invoke<SaveOutcome>("save_note", { id, content, base, bookmarks: bookmarks ?? null }),
   /**
    * Sets note bookmarks on these lines of `content` without saving the note.
    * Returns the lines as the core understood them.
    */
-  setBookmarks: (id: string, lines: number[], content: string) =>
-    invoke<number[]>("set_bookmarks", { id, lines, content }),
+  setBookmarks: (id: string, lines: BookmarkMark[], content: string) =>
+    invoke<BookmarkMark[]>("set_bookmarks", { id, lines, content }),
   /** Bookmarks of the active vault, in the order they were set. */
   listBookmarks: () => invoke<BookmarkView[]>("list_bookmarks"),
   preview: (id: string, content: string) =>

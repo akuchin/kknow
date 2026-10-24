@@ -8,6 +8,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kknow_app::Workspace;
+use kknow_app::bookmarks::clean_name;
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
@@ -61,13 +62,19 @@ enum Command {
     },
     /// List themes found in the directory and their problems.
     Themes,
-    /// List vault bookmarks: `note:line  line text`.
+    /// List vault bookmarks: `note:line  «name»  line text`.
     Bookmarks,
     /// Add or remove a bookmark on a note line: `kknow bookmark plan 12`.
+    ///
+    /// With `--name`, names the bookmark instead and sets it if needed:
+    /// `kknow bookmark plan 12 --name "итоги"`. An empty name removes the name.
     Bookmark {
         note: String,
         /// Line number, starting from 1.
         line: usize,
+        /// Bookmark name.
+        #[arg(long)]
+        name: Option<String>,
     },
     /// Vaults that kknow knows: the same list as in the window.
     Vaults {
@@ -303,7 +310,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Search { query, limit } => search(&workspace, &query.join(" "), limit)?,
         Command::Themes => themes(&workspace),
         Command::Bookmarks => bookmarks(&workspace),
-        Command::Bookmark { note, line } => bookmark(&mut workspace, &note, line)?,
+        Command::Bookmark { note, line, name } => {
+            bookmark(&mut workspace, &note, line, name.as_deref())?
+        }
         Command::Commands {
             target,
             kind,
@@ -571,11 +580,21 @@ fn bookmarks(workspace: &Workspace) {
         return;
     }
     for bookmark in bookmarks {
-        println!("{}:{}  {}", bookmark.note, bookmark.line, bookmark.text.trim());
+        let place = format!("{}:{}", bookmark.note, bookmark.line);
+        let text = bookmark.text.trim();
+        match &bookmark.name {
+            Some(name) => println!("{place}  «{name}»  {text}"),
+            None => println!("{place}  {text}"),
+        }
     }
 }
 
-fn bookmark(workspace: &mut Workspace, note: &str, line: usize) -> Result<(), String> {
+fn bookmark(
+    workspace: &mut Workspace,
+    note: &str,
+    line: usize,
+    name: Option<&str>,
+) -> Result<(), String> {
     let id = find(workspace, note)?.clone();
     let lines = workspace
         .read(&id)
@@ -585,6 +604,9 @@ fn bookmark(workspace: &mut Workspace, note: &str, line: usize) -> Result<(), St
     if line == 0 || line > lines {
         return Err(format!("в {id} нет строки {line}: строк всего {lines}"));
     }
+    if let Some(name) = name {
+        return name_bookmark(workspace, &id, line, name);
+    }
     let set = workspace
         .toggle_bookmark(&id, line)
         .map_err(|error| error.to_string())?;
@@ -592,6 +614,31 @@ fn bookmark(workspace: &mut Workspace, note: &str, line: usize) -> Result<(), St
         println!("закладка поставлена: {id}:{line}");
     } else {
         println!("закладка снята: {id}:{line}");
+    }
+    Ok(())
+}
+
+/// `--name`: a name for the bookmark on the line. The bookmark is set first if
+/// there is none, so one command is enough.
+fn name_bookmark(
+    workspace: &mut Workspace,
+    id: &NoteId,
+    line: usize,
+    name: &str,
+) -> Result<(), String> {
+    let error = |error: kknow_app::Error| error.to_string();
+    if !workspace
+        .name_bookmark(id, line, Some(name))
+        .map_err(error)?
+    {
+        workspace.toggle_bookmark(id, line).map_err(error)?;
+        workspace
+            .name_bookmark(id, line, Some(name))
+            .map_err(error)?;
+    }
+    match clean_name(Some(name)) {
+        Some(name) => println!("закладка {id}:{line} названа «{name}»"),
+        None => println!("у закладки {id}:{line} больше нет имени"),
     }
     Ok(())
 }

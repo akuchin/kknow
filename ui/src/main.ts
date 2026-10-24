@@ -10,6 +10,7 @@ import {
   onVaultOpened,
   parseLink,
   type AppSettings,
+  type BookmarkMark,
   type CommandTarget,
   type CommandView,
   type FileEntry,
@@ -26,6 +27,7 @@ import {
   type VaultView,
   type ViewMode,
 } from "./api";
+import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
 import { paintBookmarks, topLine } from "./preview-lines";
@@ -339,7 +341,7 @@ let agentNotes: AgentNote[] = [];
 const editor = new Editor(el.editor, {
   onChange: onEdit,
   onNotes: showNotes,
-  onBookmark: (lines, set) => void saveBookmarks(lines, set),
+  onBookmark: (marks, change) => void saveBookmarks(marks, change),
 });
 
 /** Agent notes from the preview: in "Read" mode the editor is hidden. */
@@ -637,7 +639,7 @@ async function saveNow(text: string): Promise<void> {
   try {
     const outcome = note.file
       ? await api.saveFile(note.id, text, note.content)
-      : await api.saveNote(note.id, text, note.content, editor.getBookmarks());
+      : await api.saveNote(note.id, text, note.content, editor.getBookmarkMarks());
     // The window can switch to another note during the write.
     if (current?.id !== note.id) return;
 
@@ -1423,17 +1425,25 @@ function toggleCurrentBookmark(): void {
   editor.toggleBookmarkLine(line);
 }
 
+const BOOKMARK_STATUS: Record<BookmarkChange, Key> = {
+  set: "status.bookmarkSet",
+  removed: "status.bookmarkRemoved",
+  named: "status.bookmarkNamed",
+  unnamed: "status.bookmarkUnnamed",
+};
+
 /**
- * A bookmark was set or removed (shortcut, popup button, preview). It goes to
- * the core at once, without a note save: there can be no edits.
+ * A bookmark was set, removed or renamed (shortcut, popup button, preview,
+ * marker menu). It goes to the core at once, without a note save: there can
+ * be no edits.
  */
-async function saveBookmarks(lines: number[], set: boolean): Promise<void> {
+async function saveBookmarks(marks: BookmarkMark[], change: BookmarkChange): Promise<void> {
   if (!current || current.file) return;
-  paintBookmarks(el.preview, lines);
+  paintBookmarks(el.preview, marks.map((mark) => mark.line));
   renderNoteTools();
   try {
-    await api.setBookmarks(current.id, lines, editor.getText());
-    setStatus(t(set ? "status.bookmarkSet" : "status.bookmarkRemoved"));
+    await api.setBookmarks(current.id, marks, editor.getText());
+    setStatus(t(BOOKMARK_STATUS[change]));
   } catch (error) {
     fail(error);
   }
@@ -3057,13 +3067,13 @@ function renderNoteTools(): void {
 function openBookmarksMenu(): void {
   if (!current || current.file) return;
   const id = current.id;
-  const lines = editor.getBookmarks();
+  const marks = editor.getBookmarkMarks();
   const text = editor.getText().split("\n");
 
   const jumps: MenuItem[] =
-    lines.length > 0
-      ? lines.map((line, index) => ({
-          label: bookmarkLabel(text[line - 1] ?? ""),
+    marks.length > 0
+      ? marks.map(({ line, name }, index) => ({
+          label: name ?? bookmarkLabel(text[line - 1] ?? ""),
           detail: t("topbar.bookmarks.line", { line }),
           glyph: "bookmark",
           key: index < 9 ? String(index + 1) : undefined,

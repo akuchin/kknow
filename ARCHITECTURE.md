@@ -1213,7 +1213,12 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the CLI sees them as the window does. `Workspace` writes the file immediately
   after each change, and only if something changed (`edit_bookmarks`). Thus a
   save of a note without bookmarks does not touch the file.
-- A bookmark is a note, a **line number** and the **line text**.
+- A bookmark is a note, a **line number**, the **line text** and an optional
+  **name**.
+  - The `name` field is optional in the file. Old files without names load as
+    before, so the format version stays 1. A bookmark without a name has no
+    field. An empty name or a name of spaces becomes no name
+    (`bookmarks::clean_name`).
   - It is a number, not an offset. CodeMirror counts offsets in UTF-16 units,
     Rust counts them in bytes. On Cyrillic text they are different.
   - The text helps to find the line again after an edit outside the window
@@ -1226,17 +1231,34 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - Its state holds positions, not numbers. Each edit maps them with
     `assoc = 1`. Enter at the start of a bookmarked line moves the bookmark with
     the text. It does not stay on the new empty line.
-  - On save, the editor computes numbers from positions and sends them to
-    `save_note` (`bookmarks`). `Bookmarks::place` puts the bookmarks exactly on
-    those lines.
+  - Each position carries the bookmark name. The user edits names only in
+    the editor, so the editor sends them with the lines.
+  - On save, the editor computes numbers from positions and sends them with
+    the names to `save_note` (`bookmarks`, a list of `Mark`).
+    `Bookmarks::place` puts the bookmarks exactly on those lines and takes the
+    names. If an edit merges two bookmarks into one line, the named one wins.
   - The match uses the line order, so a bookmark keeps its place in the full
     list.
 - You set a bookmark only through the editor (`toggleBookmarkAt`). This is
   true for all sources of the command: ⌘⇧B, the context menu, the preview, a
   click in the gutter. The
-  edit has the `toggled` effect. On it, `Editor` calls
+  edit has the `changed` effect. On it, `Editor` calls
   `onBookmark`, and the window immediately calls `set_bookmarks` with the
   current text. It does not wait for a save, because maybe there are no edits.
+- A right click on the bookmark marker opens its menu: add a name or rename,
+  remove the name, remove the bookmark (`ui/src/bookmark-menu.ts`). A hover
+  on the marker shows the name as the title of the editor root.
+  - The handlers use event delegation on the editor root. They find the
+    marker by the target (`.cm-bookmark-gutter`). The line comes from the
+    pointer height (`lineBlockAtHeight`).
+  - The right click listener captures the event on the root. Thus it runs
+    before other context menu handlers of the editor.
+  - `menu.ts` opens a menu at a button. A right click has no button, so an
+    empty element at the pointer (`.point-anchor`) is the anchor. When the
+    menu closes, it gives focus to the anchor, and the anchor gives it to the
+    editor.
+  - A name change also has the `changed` effect. The window sends
+    the bookmarks to the core at once (`set_bookmarks`).
 - The preview knows the source lines from markers that the core renderer puts
   (`LINE_MARK_CLASS` in `kknow-index/src/render.rs`).
   - An empty `<span class="line-mark" data-line="N">` is at the start of a
@@ -1275,8 +1297,9 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   forget it. They only do not show it, because git can remove a file for a
   short time.
 - The list is the fourth chip of the palette. It is not a search index field.
-  There are few bookmarks, and the palette filters them itself by title, path
-  and line text.
+  There are few bookmarks, and the palette filters them itself by name, title,
+  path and line text. A named bookmark shows the name as the row title and
+  the note title in the snippet.
 
   A number from the list can be old. Thus the jump goes to the
   bookmark of the open note that is nearest to it. In "Read" you cannot see the
@@ -1310,7 +1333,11 @@ Commands:
 - `list`, `stats`, `links`, `backlinks`, `tags`, `broken`, `orphans`;
 - `show`, `render`, `new`, `search`, `watch`, `themes`, `sync`;
 - `vaults` / `vaults add` / `vaults rm` / `vaults use`;
-- `commands`, `run`, `bookmarks`, `bookmark <note> <line>`.
+- `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`.
+  - `bookmarks` prints `note:line  «name»  text`. Without a name, there is no
+    `«»`.
+  - `bookmark … --name` names the bookmark and sets it first if it is not
+    there. An empty name removes the name.
 
 - `sync` takes `--dry-run`, `--on-conflict both|local|remote`, and
   `--bucket …` or `--folder …`.

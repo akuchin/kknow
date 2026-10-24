@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use kknow_app::bookmarks::Mark;
 use kknow_app::theme::{self, ThemeSet};
 use kknow_app::vaults::VaultEntry;
 use kknow_app::{Saved, Workspace};
@@ -98,8 +99,8 @@ pub struct NoteView {
     backlinks: Vec<LinkRef>,
     outgoing: Vec<LinkRef>,
     tags: Vec<String>,
-    /// Bookmarked lines in this text, 1-based.
-    bookmarks: Vec<usize>,
+    /// Bookmarks in this text: 1-based lines with optional names.
+    bookmarks: Vec<Mark>,
 }
 
 /// A bookmark in the palette list.
@@ -111,6 +112,8 @@ pub struct BookmarkView {
     folder: Option<String>,
     line: usize,
     text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 fn info(entry: &VaultEntry, workspace: &Workspace) -> VaultInfo {
@@ -152,7 +155,7 @@ fn link_ref(workspace: &Workspace, id: &NoteId, label: Option<&String>) -> LinkR
 
 fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> NoteView {
     let parsed = workspace.parsed(id);
-    let bookmarks = workspace.bookmark_lines(id, &content);
+    let bookmarks = workspace.note_bookmarks(id, &content);
 
     NoteView {
         id: id.as_str().to_string(),
@@ -436,22 +439,23 @@ pub enum SaveOutcome {
 /// replaces only the same file content, never an outside edit. Without it, the
 /// write is unconditional.
 ///
-/// `bookmarks` are bookmark lines as the editor sees them. The editor moves them
-/// with edits and knows their position better than a text search.
+/// `bookmarks` are bookmarks as the editor sees them: lines and names. The
+/// editor moves them with edits and knows their position better than a text
+/// search.
 #[tauri::command]
 pub fn save_note(
     state: State<'_, AppState>,
     id: String,
     content: String,
     base: Option<String>,
-    bookmarks: Option<Vec<usize>>,
+    bookmarks: Option<Vec<Mark>>,
     vault: Option<String>,
 ) -> Result<SaveOutcome> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
         let written = |workspace: &mut Workspace, content: String| -> Result<SaveOutcome> {
-            if let Some(lines) = &bookmarks {
-                workspace.set_bookmarks(&id, lines, &content)?;
+            if let Some(marks) = &bookmarks {
+                workspace.set_bookmarks(&id, marks, &content)?;
             }
             Ok(SaveOutcome::Saved {
                 note: note_view(workspace, &id, content),
@@ -656,21 +660,21 @@ fn open_default(path: &Path) -> std::io::Result<()> {
     run(Command::new("xdg-open").arg(path))
 }
 
-/// Sets the note bookmarks to exactly these lines of `content`. The window
-/// calls this when a bookmark is added or removed; the note does not need a
-/// save.
+/// Sets the note bookmarks to exactly these lines of `content`, with these
+/// names. The window calls this when a bookmark is added, removed or renamed;
+/// the note does not need a save.
 #[tauri::command]
 pub fn set_bookmarks(
     state: State<'_, AppState>,
     id: String,
-    lines: Vec<usize>,
+    lines: Vec<Mark>,
     content: String,
     vault: Option<String>,
-) -> Result<Vec<usize>> {
+) -> Result<Vec<Mark>> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
         workspace.set_bookmarks(&id, &lines, &content)?;
-        Ok(workspace.bookmark_lines(&id, &content))
+        Ok(workspace.note_bookmarks(&id, &content))
     })
 }
 
@@ -692,6 +696,7 @@ pub fn list_bookmarks(
                     note: bookmark.note.clone(),
                     line: bookmark.line,
                     text: bookmark.text.clone(),
+                    name: bookmark.name.clone(),
                 })
             })
             .collect())
@@ -829,16 +834,21 @@ mod tests {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        let lines = set_bookmarks(
+        let marks = set_bookmarks(
             app.state(),
             "Index".into(),
-            vec![3],
+            vec![Mark::new(3, Some("проект"))],
             "# Оглавление\n\n[[Projects/kknow|мой проект]]\n".into(),
             None,
         )
         .unwrap();
-        assert_eq!(lines, [3]);
-        assert_eq!(load_note(app.state(), "Index".into(), None).unwrap().bookmarks, [3]);
+        assert_eq!(marks, [Mark::new(3, Some("проект"))]);
+        assert_eq!(
+            load_note(app.state(), "Index".into(), None)
+                .unwrap()
+                .bookmarks,
+            [Mark::new(3, Some("проект"))]
+        );
 
         // The editor moved the bookmark with the inserted line.
         let SaveOutcome::Saved { note } = save_note(
@@ -846,19 +856,20 @@ mod tests {
             "Index".into(),
             "# Оглавление\n\nновая строка\n[[Projects/kknow|мой проект]]\n".into(),
             None,
-            Some(vec![4]),
+            Some(vec![Mark::new(4, Some("проект"))]),
             None,
         )
         .unwrap() else {
             panic!("без base сохранение безусловное");
         };
-        assert_eq!(note.bookmarks, [4]);
+        assert_eq!(note.bookmarks, [Mark::new(4, Some("проект"))]);
 
         let listed = list_bookmarks(app.state(), None).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].title, "Оглавление");
         assert_eq!(listed[0].line, 4);
         assert_eq!(listed[0].text, "[[Projects/kknow|мой проект]]");
+        assert_eq!(listed[0].name.as_deref(), Some("проект"));
     }
 
     #[test]

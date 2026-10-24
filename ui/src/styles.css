@@ -729,6 +729,31 @@ button.status-item.chip[data-tone="warning"]:hover {
   background: var(--border);
 }
 
+/* An empty anchor at the pointer: a right-click menu has no button to open at. */
+.point-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  outline: none;
+}
+
+/* The bookmark name field opens where the marker menu was. */
+.bookmark-name {
+  padding: 4px;
+}
+
+.bookmark-name-field {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
 .menu-item {
   display: flex;
   align-items: center;

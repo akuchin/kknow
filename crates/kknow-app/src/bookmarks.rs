@@ -10,6 +10,9 @@
 //!
 //! Lines move when text is added above them, so the bookmark also stores the
 //! line text. It uses that text to find its place again ([`Bookmark::locate`]).
+//!
+//! A bookmark can have a name. Files from before names have no `name` field
+//! and still load: the field is optional, so the format version stays 1.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,6 +37,35 @@ pub struct Bookmark {
     pub line: usize,
     /// Text of the line when the bookmark was set or last updated.
     pub text: String,
+    /// Name that the user gave the bookmark. Never empty: no name is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// A bookmark as the editor sees it: a line of the open text and a name.
+/// The window gets these with the note and sends them back on save.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mark {
+    /// Line number, starting from 1.
+    pub line: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl Mark {
+    pub fn new(line: usize, name: Option<&str>) -> Self {
+        Mark {
+            line,
+            name: clean_name(name),
+        }
+    }
+}
+
+/// A name without the outer spaces, or `None` if nothing is left.
+pub fn clean_name(name: Option<&str>) -> Option<String> {
+    let name = name?.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// All bookmarks of a vault, in the order they were set.
@@ -187,9 +219,27 @@ impl Bookmarks {
                     note: note.as_str().to_string(),
                     line,
                     text: text.to_string(),
+                    name: None,
                 });
                 true
             }
+        }
+    }
+
+    /// Gives the bookmark on line `line` of the note a name, or removes the
+    /// name (`None` or only spaces). Returns `false` if there is no bookmark on
+    /// that line.
+    pub fn rename_mark(&mut self, note: &NoteId, line: usize, name: Option<&str>) -> bool {
+        let found = self
+            .bookmarks
+            .iter_mut()
+            .find(|bookmark| bookmark.belongs_to(note) && bookmark.line == line);
+        match found {
+            Some(bookmark) => {
+                bookmark.name = clean_name(name);
+                true
+            }
+            None => false,
         }
     }
 
@@ -204,22 +254,26 @@ impl Bookmarks {
         }
     }
 
-    /// The window reports the current bookmark lines of the note. It moves them
-    /// with the edits, so it knows them better than a text search.
+    /// The window reports the current bookmarks of the note. It moves them
+    /// with the edits, so it knows them better than a text search. The names
+    /// also come from the window: it is where the user edits them.
     ///
     /// Bookmarks match in line order: the first old one gets the first new line,
     /// and so on. So each bookmark keeps its place in the full list. Extra old
     /// ones are removed (their lines merged), extra new ones go to the end.
-    /// Numbers that are not in the text are dropped.
-    pub fn place(&mut self, note: &NoteId, lines: &[usize], content: &str) {
-        let mut lines: Vec<usize> = lines
+    /// Numbers that are not in the text are dropped. If two marks have the same
+    /// line, the first one with a name wins.
+    pub fn place(&mut self, note: &NoteId, marks: &[Mark], content: &str) {
+        let mut marks: Vec<Mark> = marks
             .iter()
-            .copied()
-            .filter(|&line| line_text(content, line).is_some())
+            .filter(|mark| line_text(content, mark.line).is_some())
+            .map(|mark| Mark::new(mark.line, mark.name.as_deref()))
             .collect();
-        lines.sort_unstable();
-        lines.dedup();
-        let mut lines = lines.into_iter();
+        // A stable sort keeps the order of marks on one line, and named ones
+        // go first, so `dedup` keeps the name.
+        marks.sort_by_key(|mark| (mark.line, mark.name.is_none()));
+        marks.dedup_by_key(|mark| mark.line);
+        let mut marks = marks.into_iter();
 
         let mut slots: Vec<usize> = (0..self.bookmarks.len())
             .filter(|&index| self.bookmarks[index].belongs_to(note))
@@ -228,11 +282,14 @@ impl Bookmarks {
 
         let mut gone = Vec::new();
         for index in slots {
-            match lines.next() {
-                Some(line) => {
+            match marks.next() {
+                Some(mark) => {
                     let bookmark = &mut self.bookmarks[index];
-                    bookmark.line = line;
-                    bookmark.text = line_text(content, line).unwrap_or_default().to_string();
+                    bookmark.text = line_text(content, mark.line)
+                        .unwrap_or_default()
+                        .to_string();
+                    bookmark.line = mark.line;
+                    bookmark.name = mark.name;
                 }
                 None => gone.push(index),
             }
@@ -242,11 +299,14 @@ impl Bookmarks {
         for index in gone.into_iter().rev() {
             self.bookmarks.remove(index);
         }
-        for line in lines {
+        for mark in marks {
             self.bookmarks.push(Bookmark {
                 note: note.as_str().to_string(),
-                line,
-                text: line_text(content, line).unwrap_or_default().to_string(),
+                line: mark.line,
+                text: line_text(content, mark.line)
+                    .unwrap_or_default()
+                    .to_string(),
+                name: mark.name,
             });
         }
     }
@@ -282,7 +342,20 @@ mod tests {
             note: note.to_string(),
             line,
             text: text.to_string(),
+            name: None,
         }
+    }
+
+    fn named(note: &str, line: usize, text: &str, name: &str) -> Bookmark {
+        Bookmark {
+            name: Some(name.to_string()),
+            ..mark(note, line, text)
+        }
+    }
+
+    /// Marks without names, as the editor sends them for plain bookmarks.
+    fn lines(lines: &[usize]) -> Vec<Mark> {
+        lines.iter().map(|&line| Mark::new(line, None)).collect()
     }
 
     const PLAN: &str = "# План\n\nвыучить владение\nпотрогать tantivy\n";
@@ -312,8 +385,14 @@ mod tests {
     fn toggle_outside_the_text_changes_nothing() {
         let mut bookmarks = Bookmarks::default();
 
-        assert!(!bookmarks.toggle(&id("план"), 0, PLAN), "строки считаются с единицы");
-        assert!(!bookmarks.toggle(&id("план"), 5, PLAN), "в плане четыре строки");
+        assert!(
+            !bookmarks.toggle(&id("план"), 0, PLAN),
+            "строки считаются с единицы"
+        );
+        assert!(
+            !bookmarks.toggle(&id("план"), 5, PLAN),
+            "в плане четыре строки"
+        );
 
         assert!(bookmarks.all().is_empty());
     }
@@ -445,7 +524,7 @@ mod tests {
         bookmarks.toggle(&id("другая"), 1, "текст\n");
         let edited = "# План\n\nпро кофе\nвыучить заимствование\n";
 
-        bookmarks.place(&id("план"), &[4], edited);
+        bookmarks.place(&id("план"), &lines(&[4]), edited);
 
         assert_eq!(
             bookmarks.all(),
@@ -464,10 +543,10 @@ mod tests {
         bookmarks.toggle(&id("план"), 3, PLAN);
 
         // Two bookmarks merged into one; 9 and 0 are outside the text.
-        bookmarks.place(&id("план"), &[3, 3, 0, 9], PLAN);
+        bookmarks.place(&id("план"), &lines(&[3, 3, 0, 9]), PLAN);
         assert_eq!(bookmarks.all(), [mark("план", 3, "выучить владение")]);
 
-        bookmarks.place(&id("план"), &[3, 4], PLAN);
+        bookmarks.place(&id("план"), &lines(&[3, 4]), PLAN);
         assert_eq!(
             bookmarks.all(),
             [
@@ -478,6 +557,66 @@ mod tests {
 
         bookmarks.place(&id("план"), &[], PLAN);
         assert!(bookmarks.all().is_empty());
+    }
+
+    #[test]
+    fn place_takes_names_from_the_window() {
+        let mut bookmarks = Bookmarks::default();
+        bookmarks.toggle(&id("план"), 3, PLAN);
+        bookmarks.toggle(&id("план"), 4, PLAN);
+
+        bookmarks.place(
+            &id("план"),
+            &[Mark::new(3, Some("  владение ")), Mark::new(4, Some("   "))],
+            PLAN,
+        );
+
+        assert_eq!(
+            bookmarks.all(),
+            [
+                named("план", 3, "выучить владение", "владение"),
+                mark("план", 4, "потрогать tantivy"),
+            ],
+            "пробелы по краям срезаны, пустое имя — нет имени"
+        );
+    }
+
+    #[test]
+    fn of_merged_marks_the_named_one_wins() {
+        let mut bookmarks = Bookmarks::default();
+
+        bookmarks.place(
+            &id("план"),
+            &[Mark::new(3, None), Mark::new(3, Some("владение"))],
+            PLAN,
+        );
+
+        assert_eq!(
+            bookmarks.all(),
+            [named("план", 3, "выучить владение", "владение")]
+        );
+    }
+
+    // --- rename_mark ---
+
+    #[test]
+    fn rename_mark_sets_and_removes_a_name() {
+        let mut bookmarks = Bookmarks::default();
+        bookmarks.toggle(&id("план"), 3, PLAN);
+
+        assert!(bookmarks.rename_mark(&id("план"), 3, Some("владение")));
+        assert_eq!(
+            bookmarks.all(),
+            [named("план", 3, "выучить владение", "владение")]
+        );
+
+        assert!(bookmarks.rename_mark(&id("план"), 3, Some(" ")));
+        assert_eq!(bookmarks.all(), [mark("план", 3, "выучить владение")]);
+
+        assert!(
+            !bookmarks.rename_mark(&id("план"), 4, Some("tantivy")),
+            "на строке 4 закладки нет"
+        );
     }
 
     // --- rename / forget ---
@@ -499,7 +638,10 @@ mod tests {
             .iter()
             .map(|bookmark| bookmark.note.as_str())
             .collect();
-        assert_eq!(notes, ["учёба/rust/владение", "учёба/rust/трейты", "рецепты"]);
+        assert_eq!(
+            notes,
+            ["учёба/rust/владение", "учёба/rust/трейты", "рецепты"]
+        );
     }
 
     #[test]
@@ -510,7 +652,11 @@ mod tests {
         bookmarks.toggle(&id("план"), 3, PLAN);
 
         assert_eq!(bookmarks.forget(&id("план")), 2);
-        assert_eq!(bookmarks.forget(&id("план")), 0, "второй раз забывать нечего");
+        assert_eq!(
+            bookmarks.forget(&id("план")),
+            0,
+            "второй раз забывать нечего"
+        );
 
         assert_eq!(bookmarks.all(), [mark("другая", 1, "текст")]);
     }
@@ -559,6 +705,49 @@ mod tests {
         assert!(loaded.bookmarks.all().is_empty());
         assert!(loaded.problem.is_some());
         assert!(path.with_extension("json.broken").exists());
+    }
+
+    #[test]
+    fn a_file_without_names_still_loads() {
+        let vault = tempfile::tempdir().unwrap();
+        let path = Bookmarks::path(vault.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"{ "version": 1, "bookmarks": [{ "note": "план", "line": 3, "text": "выучить владение" }] }"#,
+        )
+        .unwrap();
+
+        let loaded = Bookmarks::load(&path).unwrap();
+
+        assert!(loaded.problem.is_none());
+        assert_eq!(
+            loaded.bookmarks.all(),
+            [mark("план", 3, "выучить владение")]
+        );
+    }
+
+    #[test]
+    fn a_name_goes_to_the_file_only_when_there_is_one() {
+        let vault = tempfile::tempdir().unwrap();
+        let path = Bookmarks::path(vault.path());
+        let mut bookmarks = Bookmarks::default();
+        bookmarks.toggle(&id("план"), 3, PLAN);
+        bookmarks.toggle(&id("план"), 4, PLAN);
+        bookmarks.rename_mark(&id("план"), 3, Some("владение"));
+
+        bookmarks.save(&path).unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+
+        assert_eq!(
+            json["bookmarks"],
+            serde_json::json!([
+                { "note": "план", "line": 3, "text": "выучить владение", "name": "владение" },
+                { "note": "план", "line": 4, "text": "потрогать tantivy" },
+            ])
+        );
+        assert_eq!(Bookmarks::load(&path).unwrap().bookmarks, bookmarks);
     }
 
     #[test]

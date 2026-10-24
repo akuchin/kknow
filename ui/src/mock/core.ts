@@ -4,6 +4,7 @@
  */
 import type {
   AppSettings,
+  BookmarkMark,
   BookmarkView,
   CommandList,
   CommandManifest,
@@ -39,8 +40,8 @@ interface MockNote {
   tags: string[];
   content: string;
   html: string;
-  /** Bookmark lines: the mock simply stores them on the note. */
-  bookmarks?: number[];
+  /** Bookmarks: the mock simply stores them on the note. */
+  bookmarks?: BookmarkMark[];
 }
 
 const notes: MockNote[] = [
@@ -57,7 +58,7 @@ const notes: MockNote[] = [
     title: "Rust",
     folder: null,
     tags: ["rust", "учёба"],
-    bookmarks: [5],
+    bookmarks: [{ line: 3 }, { line: 5, name: "владение" }],
     content:
       "# Rust\n\nЯзык, на котором пишу [[Projects/kknow]]. #rust #учёба\n\n" +
       "Владение и заимствование<!-- @agent «заимствование»: добавить пример с &mut --> пока даются тяжело.\n\n" +
@@ -367,10 +368,21 @@ function view(note: MockNote): NoteView {
   };
 }
 
-/** Lines that exist in the text, sorted and without duplicates, as in the core. */
-function bookmarkLines(lines: number[], content: string): number[] {
+/**
+ * Bookmarks on lines that exist in the text, sorted and one per line, as in
+ * the core. Names lose the outer spaces; an empty name is no name.
+ */
+function bookmarkLines(marks: BookmarkMark[], content: string): BookmarkMark[] {
   const count = content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
-  return [...new Set(lines)].filter((line) => line >= 1 && line <= count).sort((a, b) => a - b);
+  const byLine = new Map<number, BookmarkMark>();
+  for (const { line, name } of marks) {
+    if (line < 1 || line > count) continue;
+    const wanted = name?.trim();
+    const known = byLine.get(line);
+    if (!known) byLine.set(line, wanted ? { line, name: wanted } : { line });
+    else if (!known.name && wanted) known.name = wanted;
+  }
+  return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
 function find(id: string): MockNote {
@@ -697,25 +709,26 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "save_note": {
       const note = find(id);
       note.content = args?.content as string;
-      const lines = args?.bookmarks as number[] | null;
+      const lines = args?.bookmarks as BookmarkMark[] | null;
       if (lines) note.bookmarks = bookmarkLines(lines, note.content);
       return { status: "saved", note: view(note) } as T;
     }
 
     case "set_bookmarks": {
       const note = find(id);
-      note.bookmarks = bookmarkLines(args?.lines as number[], args?.content as string);
+      note.bookmarks = bookmarkLines(args?.lines as BookmarkMark[], args?.content as string);
       return note.bookmarks as T;
     }
 
     case "list_bookmarks":
       return activeVault.notes.flatMap((note) =>
-        (note.bookmarks ?? []).map<BookmarkView>((line) => ({
+        (note.bookmarks ?? []).map<BookmarkView>(({ line, name }) => ({
           note: note.id,
           title: note.title,
           folder: note.folder,
           line,
           text: note.content.split("\n")[line - 1] ?? "",
+          ...(name ? { name } : {}),
         })),
       ) as T;
 
