@@ -69,6 +69,24 @@ yourself:
 xattr -dr com.apple.quarantine /Applications/kknow.app
 ```
 
+### Scoop (Windows)
+
+On Windows, you can install the app and the CLI with [Scoop](https://scoop.sh)
+from the [akuchin/scoop-kknow](https://github.com/akuchin/scoop-kknow) bucket:
+
+```powershell
+scoop bucket add kknow https://github.com/akuchin/scoop-kknow
+```
+
+```powershell
+scoop install kknow/kknow kknow/kknow-cli
+```
+
+Update them with `scoop update kknow kknow-cli`. The app updates itself with
+the MSI installer, and the installer puts a second copy into `Program Files`.
+Thus, with Scoop, turn off **Settings → General → Update automatically**, and
+update only through Scoop.
+
 ### Prebuilt binaries
 
 The [Releases](https://github.com/akuchin/kknow/releases) page has prebuilt
@@ -127,6 +145,10 @@ cask. For this, the repository needs the `HOMEBREW_TAP_TOKEN` secret: a
 fine-grained token with "Contents: Read and write" access to
 `akuchin/homebrew-kknow` only. Without the secret, the release still works, and
 you update the cask by hand.
+
+The workflow also puts the new version and checksums into the Scoop manifests.
+For this, it needs the `SCOOP_BUCKET_TOKEN` secret: the same kind of token, for
+`akuchin/scoop-kknow` only. Without it, you update the manifests by hand.
 
 The update archives need a signing key. Make it one time:
 

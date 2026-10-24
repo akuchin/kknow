@@ -8,7 +8,7 @@
 # Builds the app (macOS Apple Silicon only, Linux, Windows) and the `kknow` CLI,
 # and uploads them to the GitHub Release for the tag. The app is not signed.
 # The README "Installation" section tells how to open it on macOS. At the end,
-# the Homebrew cask gets the new version and checksum.
+# the Homebrew cask and the Scoop manifests get the new version and checksum.
 #
 # Auto-update: the build signs the update archives with the
 # TAURI_SIGNING_PRIVATE_KEY secret (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD),
@@ -229,6 +229,57 @@ jobs:
 
           if git diff --quiet; then
             echo "the cask already has $version"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "kknow $version"
+          git push origin HEAD
+
+  # Updates the manifests in akuchin/scoop-kknow, as `update-tap` does for the
+  # cask. This needs the SCOOP_BUCKET_TOKEN secret: a fine-grained token with
+  # "Contents: read and write" on that repository only.
+  update-bucket:
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+    steps:
+      - name: Update the manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$BUCKET_TOKEN" ]]; then
+            echo "::warning::no SCOOP_BUCKET_TOKEN secret; update the Scoop manifests by hand"
+            exit 0
+          fi
+
+          version="${TAG#v}"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          git clone --depth 1 \
+            "https://x-access-token:${BUCKET_TOKEN}@github.com/akuchin/scoop-kknow.git" bucket
+
+          # The manifest name and its release file.
+          for pair in \
+            "kknow:kknow_${version}_x64_en-US.msi" \
+            "kknow-cli:kknow-cli-$TAG-x86_64-pc-windows-msvc.zip"; do
+            manifest="bucket/bucket/${pair%%:*}.json"
+            file="${pair#*:}"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$file"
+            sha="$(sha256sum "$file" | cut -d' ' -f1)"
+            # Scoop formats manifests with 4 spaces, as `jq --indent 4` does.
+            jq --indent 4 \
+              --arg version "$version" --arg url "$base/$file" --arg hash "$sha" \
+              '.version = $version
+                | .architecture."64bit".url = $url
+                | .architecture."64bit".hash = $hash' \
+              "$manifest" > manifest.json
+            mv manifest.json "$manifest"
+          done
+
+          cd bucket
+          if git diff --quiet; then
+            echo "the manifests already have $version"
             exit 0
           fi
           git config user.name "github-actions[bot]"
