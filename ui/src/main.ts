@@ -42,7 +42,7 @@ import { icon, iconMarkup, type IconName } from "./icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
 import { MODES, modeOf, moveMode, nextMode, rememberMode } from "./note-mode";
-import { moveScale, scaleOf, stepScale } from "./note-scale";
+import { defaultScale, moveScale, scaleOf, setDefaultScale, stepScale } from "./note-scale";
 import { Palette } from "./palette";
 import { StatusBar, countWords } from "./statusbar";
 import "./styles.css";
@@ -867,11 +867,11 @@ function noteKey(vaultId: string, id: string): string {
 
 /** Applies the font size of the open file to the editor and the preview. */
 function applyScale(): void {
-  const scale = current ? scaleOf(positionKey(current)) : 1;
+  const scale = current ? scaleOf(positionKey(current)) : defaultScale();
   editor.setScale(scale);
   el.preview.style.fontSize = scale === 1 ? "" : `${scale * 100}%`;
   // Without an open file there is nothing to scale: the control hides.
-  status.setScale(current ? scale : null);
+  status.setScale(current ? scale : null, defaultScale());
 }
 
 /**
@@ -2992,9 +2992,15 @@ function showLineNumbers(on: boolean): void {
 function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
   const defaultChanged = incoming.viewMode !== appSettings?.viewMode;
+  const scaleChanged = incoming.noteScale !== appSettings?.noteScale;
   appSettings = incoming;
   saveDelay = incoming.autosaveMs;
   showLineNumbers(incoming.lineNumbers);
+  // A new default size affects only a file without its own size.
+  if (scaleChanged) {
+    setDefaultScale(incoming.noteScale);
+    applyScale();
+  }
 
   if (incoming.theme !== currentTheme) applyTheme(incoming.theme, { remember: false });
   // A new default affects only a note without a saved mode.
@@ -3584,6 +3590,7 @@ async function boot(): Promise<void> {
   if (appSettings) {
     saveDelay = appSettings.autosaveMs;
     showLineNumbers(appSettings.lineNumbers);
+    setDefaultScale(appSettings.noteScale);
     // The window language comes from settings. `i18n` reads its mirror
     // synchronously; they differ only after a manual edit of the file.
     if (appSettings.locale !== locale) {

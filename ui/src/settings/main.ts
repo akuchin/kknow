@@ -36,6 +36,7 @@ import {
 import { iconMarkup } from "../icons";
 import { LOCALE_NAMES, locale, locales, setLocale, t, type Key } from "../i18n";
 import { MODES } from "../note-mode";
+import { SCALE_PERCENT } from "../note-scale";
 import "../styles.css";
 import "./settings.css";
 
@@ -220,6 +221,59 @@ function chips(
     group.append(chip);
   }
 
+  return group;
+}
+
+/**
+ * Default font size: − / slider / + / value, as in the status bar. The value
+ * resets to 100%.
+ *
+ * The slider writes on release, not on each step: a write renders the page
+ * again, and a new slider under the pointer would stop the drag.
+ */
+function scaleControl(percent: number, onPick: (percent: number) => void): HTMLElement {
+  const group = document.createElement("div");
+  group.className = "settings-scale";
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", t("settings.editor.scale"));
+
+  const smaller = document.createElement("button");
+  smaller.className = "ghost";
+  smaller.type = "button";
+  smaller.textContent = "−";
+  smaller.title = t("statusbar.scale.smaller");
+  smaller.disabled = percent <= SCALE_PERCENT.min;
+  smaller.onclick = () => onPick(percent - SCALE_PERCENT.step);
+
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.className = "scale-slider";
+  slider.min = String(SCALE_PERCENT.min);
+  slider.max = String(SCALE_PERCENT.max);
+  slider.step = String(SCALE_PERCENT.step);
+  slider.value = String(percent);
+  slider.setAttribute("aria-label", t("settings.editor.scale"));
+
+  const larger = document.createElement("button");
+  larger.className = "ghost";
+  larger.type = "button";
+  larger.textContent = "+";
+  larger.title = t("statusbar.scale.larger");
+  larger.disabled = percent >= SCALE_PERCENT.max;
+  larger.onclick = () => onPick(percent + SCALE_PERCENT.step);
+
+  const value = document.createElement("button");
+  value.className = "ghost settings-scale-value";
+  value.type = "button";
+  value.textContent = `${percent}%`;
+  value.title = t("settings.editor.scale.reset");
+  value.dataset.changed = String(percent !== 100);
+  value.onclick = () => onPick(100);
+
+  slider.oninput = () => (value.textContent = `${slider.value}%`);
+  slider.onchange = () => onPick(Number(slider.value));
+
+  group.append(smaller, slider, larger, value);
   return group;
 }
 
@@ -608,6 +662,14 @@ function renderEditor(): void {
       t("settings.editor.lineNumbers"),
       toggle(settings!.lineNumbers, (value) => void patch({ lineNumbers: value })),
       t("settings.editor.lineNumbers.detail"),
+    ),
+  );
+
+  page.append(
+    row(
+      t("settings.editor.scale"),
+      scaleControl(settings!.noteScale, (value) => void patch({ noteScale: value })),
+      t("settings.editor.scale.detail"),
     ),
   );
 

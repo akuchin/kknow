@@ -31,6 +31,13 @@ const DEFAULT_AUTOSAVE_MS: u32 = 600;
 /// keeps "saves by itself" true, not a promise for half a minute.
 const AUTOSAVE_MS: RangeInclusive<u32> = 100..=5000;
 
+/// Note font size limits and step in percents, the same as in
+/// `ui/src/note-scale.ts`: below 70% the text is unreadable, above 200% a line
+/// holds three words.
+const NOTE_SCALE: RangeInclusive<u32> = 70..=200;
+const NOTE_SCALE_STEP: u32 = 10;
+const DEFAULT_NOTE_SCALE: u32 = 100;
+
 /// How a note is shown: where the markup is drawn and if it can be edited.
 ///
 /// The window remembers the mode per note. This value is for notes that do not
@@ -77,6 +84,8 @@ pub struct AppSettings {
     pub open_last_note: bool,
     /// Line numbers in the editor gutter.
     pub line_numbers: bool,
+    /// Font size in percents for a note that does not have its own size yet.
+    pub note_scale: u32,
     /// Check for a new version in the background and download it. The new
     /// version starts after a restart. A developer build never checks.
     pub auto_update: bool,
@@ -94,6 +103,7 @@ impl Default for AppSettings {
             autosave_ms: DEFAULT_AUTOSAVE_MS,
             open_last_note: true,
             line_numbers: true,
+            note_scale: DEFAULT_NOTE_SCALE,
             auto_update: true,
         }
     }
@@ -200,6 +210,9 @@ impl AppSettings {
         self.autosave_ms = self
             .autosave_ms
             .clamp(*AUTOSAVE_MS.start(), *AUTOSAVE_MS.end());
+        // The slider has only whole steps: 125% would put it between marks.
+        let stepped = (self.note_scale + NOTE_SCALE_STEP / 2) / NOTE_SCALE_STEP * NOTE_SCALE_STEP;
+        self.note_scale = stepped.clamp(*NOTE_SCALE.start(), *NOTE_SCALE.end());
     }
 }
 
@@ -221,6 +234,7 @@ mod tests {
         assert_eq!(settings.autosave_ms, 600);
         assert!(settings.open_last_note);
         assert!(settings.line_numbers);
+        assert_eq!(settings.note_scale, 100);
         assert!(settings.auto_update);
     }
 
@@ -235,6 +249,7 @@ mod tests {
             autosave_ms: 1200,
             open_last_note: false,
             line_numbers: false,
+            note_scale: 130,
             auto_update: false,
         };
 
@@ -250,6 +265,7 @@ mod tests {
         assert!(written.contains(r#""viewMode": "read""#), "{written}");
         assert!(written.contains(r#""lineNumbers": false"#), "{written}");
         assert!(written.contains(r#""autoUpdate": false"#), "{written}");
+        assert!(written.contains(r#""noteScale": 130"#), "{written}");
     }
 
     #[test]
@@ -315,6 +331,18 @@ mod tests {
         let loaded = AppSettings::load(&path).unwrap();
 
         assert_eq!(loaded.settings.autosave_ms, 5000);
+    }
+
+    #[test]
+    fn a_wild_note_scale_is_clamped_and_snapped_to_a_step() {
+        let home = dir();
+        let path = AppSettings::path(home.path());
+
+        for (raw, expected) in [(5, 70), (1000, 200), (124, 120), (125, 130)] {
+            fs::write(&path, format!(r#"{{"noteScale":{raw}}}"#)).unwrap();
+            let loaded = AppSettings::load(&path).unwrap();
+            assert_eq!(loaded.settings.note_scale, expected, "из {raw}");
+        }
     }
 
     #[test]

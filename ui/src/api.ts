@@ -131,6 +131,8 @@ export interface AppSettings {
   openLastNote: boolean;
   /** Line numbers in the editor gutter. */
   lineNumbers: boolean;
+  /** Font size in percents for a file without its own size. */
+  noteScale: number;
   /** Check for a new version in the background and download it. */
   autoUpdate: boolean;
 }

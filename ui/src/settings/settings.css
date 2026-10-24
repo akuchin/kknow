@@ -111,6 +111,32 @@
 }
 
 /* Toggle switch: it shows its state, not only a label next to it. */
+/* Default font size: the same − / slider / + / value as in the status bar. */
+.settings-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The general row input look would draw a field box around the slider. */
+.settings-row input.scale-slider {
+  width: 120px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* Fixed width: from 90% to 100% the slider must not move. */
+.settings-scale-value {
+  justify-content: flex-end;
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-scale-value[data-changed="true"] {
+  color: var(--accent);
+}
+
 .settings-toggle {
   position: relative;
   width: 38px;

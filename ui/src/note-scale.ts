@@ -8,6 +8,9 @@
  *
  * The key is the same as for the remembered position: for a note in a vault,
  * the vault key; for a separate file, its path.
+ *
+ * A file without its own size takes the default size. It is in the core
+ * settings (`noteScale`), because the settings window changes it.
  */
 
 const STORAGE = "kknow:note-scale";
@@ -20,7 +23,10 @@ const MAX = 2;
 /** The same bounds in percents, for the status bar slider. */
 export const SCALE_PERCENT = { min: MIN * 100, max: MAX * 100, step: STEP * 100 };
 
-/** Only scales other than 100% are stored: new files have no entry anyway. */
+/**
+ * Only scales other than the default are stored: new files have no entry
+ * anyway. A file at the default size thus follows a new default.
+ */
 function load(): Record<string, number> {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
@@ -32,6 +38,18 @@ function load(): Record<string, number> {
 
 const scales = load();
 
+/** The size of a file without its own size, from the settings. */
+let fallback = 1;
+
+/** Takes the default size from the settings, in percents. */
+export function setDefaultScale(percent: number): void {
+  fallback = Math.min(MAX * 100, Math.max(MIN * 100, Math.round(percent))) / 100;
+}
+
+export function defaultScale(): number {
+  return fallback;
+}
+
 function store(): void {
   try {
     localStorage.setItem(STORAGE, JSON.stringify(scales));
@@ -40,23 +58,25 @@ function store(): void {
   }
 }
 
-/** 1 is the normal size. */
+/** 1 is 100%; a file without its own size gets the default. */
 export function scaleOf(key: string): number {
   const scale = scales[key];
-  return typeof scale === "number" && scale >= MIN && scale <= MAX ? scale : 1;
+  return typeof scale === "number" && scale >= MIN && scale <= MAX ? scale : fallback;
 }
 
 /**
- * Moves the scale by `steps` steps (0 resets it) and stores it.
+ * Moves the scale by `steps` steps (0 resets it to the default) and stores it.
  *
  * The math uses whole percents: with 0.1 steps, errors like
  * 1.2000000000000002 add up, and a reset would not find exactly 1.
  */
 export function stepScale(key: string, steps: number): number {
   const percent =
-    steps === 0 ? 100 : Math.round(scaleOf(key) * 100) + Math.round(steps * STEP * 100);
+    steps === 0
+      ? Math.round(fallback * 100)
+      : Math.round(scaleOf(key) * 100) + Math.round(steps * STEP * 100);
   const scale = Math.min(MAX * 100, Math.max(MIN * 100, percent)) / 100;
-  if (scale === 1) delete scales[key];
+  if (scale === fallback) delete scales[key];
   else scales[key] = scale;
   store();
   return scale;

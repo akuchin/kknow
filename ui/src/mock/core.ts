@@ -307,6 +307,7 @@ function readSettings(): AppSettings {
     autosaveMs: 600,
     openLastNote: true,
     lineNumbers: true,
+    noteScale: 100,
     autoUpdate: true,
   };
 

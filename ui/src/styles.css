@@ -585,6 +585,10 @@ button.status-item.chip[data-tone="warning"]:hover {
 
 #status-scale-slider {
   width: 72px;
+}
+
+/* The font size slider: in the status bar and in the settings window. */
+.scale-slider {
   height: 14px;
   margin: 0;
   background: transparent;
@@ -593,13 +597,13 @@ button.status-item.chip[data-tone="warning"]:hover {
   appearance: none;
 }
 
-#status-scale-slider::-webkit-slider-runnable-track {
+.scale-slider::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 2px;
   background: color-mix(in oklab, var(--text) 18%, transparent);
 }
 
-#status-scale-slider::-webkit-slider-thumb {
+.scale-slider::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
   margin-top: -4.5px;
@@ -611,13 +615,13 @@ button.status-item.chip[data-tone="warning"]:hover {
   appearance: none;
 }
 
-#status-scale-slider::-moz-range-track {
+.scale-slider::-moz-range-track {
   height: 3px;
   border-radius: 2px;
   background: color-mix(in oklab, var(--text) 18%, transparent);
 }
 
-#status-scale-slider::-moz-range-thumb {
+.scale-slider::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border: 1px solid var(--border);

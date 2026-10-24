@@ -92,7 +92,8 @@ export class StatusBar {
       <div class="status-scale" id="status-scale" role="group" hidden>
         <button class="status-item" id="status-scale-smaller">−</button>
         <input type="range" id="status-scale-slider" min="${SCALE_PERCENT.min}"
-               max="${SCALE_PERCENT.max}" step="${SCALE_PERCENT.step}" value="100" />
+               max="${SCALE_PERCENT.max}" step="${SCALE_PERCENT.step}" value="100"
+               class="scale-slider" />
         <button class="status-item" id="status-scale-larger">+</button>
         <button class="status-item" id="status-scale-value">100%</button>
       </div>
@@ -246,15 +247,15 @@ export class StatusBar {
 
   /**
    * Font size of the open note: − / slider / + / value. The value resets to
-   * 100%. `null` hides the control: nothing is open, so there is nothing to
-   * scale.
+   * the default size from the settings and is highlighted away from it. `null`
+   * hides the control: nothing is open, so there is nothing to scale.
    *
    * The control is always visible with a note open, not only away from 100%.
    * Before, the size was in the note menu and the status bar showed only a
    * changed value. A control that appears only after the first change cannot
    * be found.
    */
-  setScale(scale: number | null): void {
+  setScale(scale: number | null, normal = 1): void {
     this.scale.hidden = scale === null;
     if (scale === null) return;
     this.scalePercent = Math.round(scale * 100);
@@ -262,7 +263,7 @@ export class StatusBar {
     this.scaleValue.textContent = `${this.scalePercent}%`;
     this.scaleSmaller.disabled = this.scalePercent <= SCALE_PERCENT.min;
     this.scaleLarger.disabled = this.scalePercent >= SCALE_PERCENT.max;
-    this.scaleValue.dataset.changed = String(this.scalePercent !== 100);
+    this.scaleValue.dataset.changed = String(this.scalePercent !== Math.round(normal * 100));
   }
 
   /**

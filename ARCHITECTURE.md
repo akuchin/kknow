@@ -1184,7 +1184,11 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   as for the position memory (`vault/note` or `file:path`). It is in
   `localStorage`, not in the core settings. It is a window convenience, not a
   property of the note, and there is no reason to sync it. The window does not
-  store the normal size.
+  store the default size, so a file at the default size follows a new default.
+- The default size is `noteScale` in `settings.json`, in percents (100 by
+  default). It is a core setting, not `localStorage`: the settings window
+  changes it, and the main window learns about it from the settings event. The
+  core clamps a hand-edited value to 70–200 and snaps it to a 10% step.
 - Steps are whole percents. If not, steps of 0.1 add a small error, and ⌘0
   after some steps would not give exactly one.
 - In the editor, it is the CSS variable `--note-scale` on `.cm-editor`
@@ -1194,7 +1198,10 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   heights with the old font. The preview gets `font-size` in percent, and
   headings in `em` grow with it.
 - The control is in the status bar: −, a slider, + and the value (a click
-  resets to 100%). It is visible while a file is open, also at 100%. Before,
+  resets to the default size; the value is accent-colored away from it). The
+  "Editor" section of the settings has the same control for the default size.
+  Its slider writes on release: each write renders the page again, and a new
+  slider under the pointer would stop the drag. It is visible while a file is open, also at 100%. Before,
   the size was a section of the note menu, and the status bar showed only a
   changed value. That section made each context menu longer for a rare
   action. A control that appears only after the first change is hard to find.

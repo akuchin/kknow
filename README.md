@@ -369,7 +369,7 @@ Its right side is about the note and the window:
 - a chip about a problem in another vault;
 - the word count and the reading time;
 - the font size of the note: −, a slider, + and the value. Click the value to
-  go back to 100%;
+  go back to the default size;
 - the line numbers button. It shows or hides the line numbers on the left of
   the text. The "Editor" section of the settings has the same switch;
 - a gear with theme, language and "Settings" in one menu.
@@ -378,7 +378,9 @@ The status bar does not show the full file path. The tooltip on the folder in
 the header shows it. The note menu has "Reveal in Finder" and "Copy path".
 
 Each note and file has its own font size. Press ⌘= for larger, ⌘− for smaller
-and ⌘0 for normal. The range is 70% to 200%, in steps of 10%. The status bar
+and ⌘0 for the default size. The range is 70% to 200%, in steps of 10%. The
+default size is 100%. Change it in the "Editor" section of the settings with the
+same slider. A note that has no size of its own uses the default size. The status bar
 has the same control with a slider. The ⌘K palette also has these actions. The
 size applies to the editor and the preview together, and also in "Read" mode.
 kknow keeps the size after a restart.
