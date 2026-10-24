@@ -27,19 +27,18 @@ import {
   type TargetKind,
   type VaultStats,
   type VaultView,
-  type ViewMode,
 } from "../api";
 import { formatKey, vaultKey } from "../actions";
 import { iconMarkup } from "../icons";
 import { describeError, locale, setLocale, t, type Key } from "../i18n";
-import { MODES } from "../note-mode";
 import "../styles.css";
 import { renderAppearance } from "./appearance";
-import { chips, field, heading, row, scaleControl, select, toggle } from "./controls";
+import { chips, field, heading, row, select, toggle } from "./controls";
+import { renderEditor } from "./editor";
 import { renderGeneral, repaintUpdate, setUpdate } from "./general";
 import { initKeys, loadKeymap, renderKeys, takeKeymap } from "./keys";
 import "./settings.css";
-import { patch, state, view } from "./state";
+import { state, view } from "./state";
 
 /** Window sections: URL anchor and label. */
 const SECTIONS: { id: string; label: Key }[] = [
@@ -152,42 +151,6 @@ function render(): void {
   }
 }
 
-
-function renderEditor(): void {
-  const page = document.createElement("div");
-  page.className = "settings-page";
-  page.append(heading(t("settings.section.editor")));
-
-  page.append(
-    row(
-      t("settings.editor.mode"),
-      select(
-        MODES.map((mode) => ({ value: mode, label: t(`mode.${mode}`) })),
-        state.settings!.viewMode,
-        (value) => void patch({ viewMode: value as ViewMode }),
-      ),
-      t("settings.editor.mode.detail"),
-    ),
-  );
-
-  page.append(
-    row(
-      t("settings.editor.lineNumbers"),
-      toggle(state.settings!.lineNumbers, (value) => void patch({ lineNumbers: value })),
-      t("settings.editor.lineNumbers.detail"),
-    ),
-  );
-
-  page.append(
-    row(
-      t("settings.editor.scale"),
-      scaleControl(state.settings!.noteScale, (value) => void patch({ noteScale: value })),
-      t("settings.editor.scale.detail"),
-    ),
-  );
-
-  el.body.append(page);
-}
 
 /**
  * Commands section: the list on the left, the selected command form on the
