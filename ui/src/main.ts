@@ -51,7 +51,7 @@ import { isImage, paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
 import { cellOf } from "./table-widget";
-import { Editor, type EditorPosition } from "./editor";
+import type { EditorPosition } from "./editor";
 import { icon } from "./icons";
 import { LOCALE_NAMES, describeError, locale, locales, setLocale, t, type Key } from "./i18n";
 import { openMenu, type MenuItem, type MenuSection } from "./menu";
@@ -66,6 +66,7 @@ import "./styles.css";
 import { describeReport, syncSegment, type SyncWords } from "./sync-text";
 import { buildTree, fileName, type Folder } from "./tree-model";
 import { app, el, initDom } from "./window/dom";
+import { editor, initEditor } from "./window/editor";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
 import { state } from "./window/state";
 
@@ -129,7 +130,7 @@ let wordsTimer: number | undefined;
 /** Agent notes in the open text, listed in the float. */
 let agentNotes: AgentNote[] = [];
 
-const editor = new Editor(el.editor, {
+initEditor({
   onChange: onEdit,
   onNotes: showNotes,
   onBookmark: (marks, change) => void saveBookmarks(marks, change),
