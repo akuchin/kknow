@@ -14,6 +14,7 @@ import {
   type AgentNote,
 } from "./agent-notes";
 import type { BookmarkMark } from "./api";
+import { editorImages, insertImageLinks, type SaveImage } from "./attachments";
 import { bookmarkMenu } from "./bookmark-menu";
 import {
   bookmarkChanged,
@@ -236,6 +237,8 @@ export interface EditorOptions {
   onNotes?: (notes: AgentNote[]) => void;
   /** The user changed a bookmark; `marks` holds all bookmarks after it. */
   onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
+  /** Saves a pasted image; without it a paste of an image does nothing special. */
+  saveImage?: SaveImage;
 }
 
 /** A CodeMirror wrapper that exposes only the text. */
@@ -282,6 +285,7 @@ export class Editor {
         editorMenu(),
         bookmarkMenu(),
         blockSelection,
+        options.saveImage ? editorImages(options.saveImage) : [],
         syntaxHighlighting(highlightStyle),
         EditorView.lineWrapping,
         theme,
@@ -419,6 +423,21 @@ export class Editor {
       });
     }
     return true;
+  }
+
+  /**
+   * The text position under a window point, or `null` outside the editor.
+   * A hidden editor (the "Read" mode) is never under the point.
+   */
+  dropPosition(x: number, y: number): number | null {
+    const target = document.elementFromPoint(x, y);
+    if (!target || !this.view.dom.contains(target)) return null;
+    return this.view.posAtCoords({ x, y }, false);
+  }
+
+  /** Inserts image links at `at`, or in place of the selection. */
+  insertImages(links: string[], at?: number): void {
+    insertImageLinks(this.view, links, at);
   }
 
   getText(): string {

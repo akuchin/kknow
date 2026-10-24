@@ -269,6 +269,12 @@ External edit:
 - The window listens for drag and drop on the webview
   (`getCurrentWebview().onDragDropEvent`), not through `listen`. The shell sends
   `tauri://drag-*` to one specific webview.
+- An image file that you drop on the open note does not go to `adopt`. The
+  drop event has the point in physical pixels. The window changes it to CSS
+  pixels and asks the editor for the text position (`Editor.dropPosition`).
+  If the point is on the editor, the image goes into the note. The other paths
+  of the same drop go to `adoptDropped`, as before. A drop in a different
+  location keeps the old behaviour.
 
 ## Standalone files
 
@@ -1031,6 +1037,21 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the full window. The `</>` button opens the source, as for a diagram. The
   parser reads `![[file.png]]` as an `Image` without a URL. Thus `addWikilinks`
   draws it, not the tree walk.
+- You can paste an image from the clipboard or drop an image file on the
+  editor (`ui/src/attachments.ts`). The core saves it into `attachments/` and
+  returns the path. The editor inserts `![[attachments/<name>]]` at the cursor
+  or at the drop point.
+  - A pasted image gets the name `Pasted image 20261024153012.png`, as in
+    Obsidian. A dropped file keeps its name. If the name is taken, the core
+    adds a number: `shot 2.png`.
+  - A paste that also has plain text stays text. A spreadsheet puts both the
+    cells and a picture of them into the clipboard.
+  - The editor blocks a file drop that gets to the page. CodeMirror would
+    insert the file bytes as text. In the window, the shell catches file drops
+    before the page.
+  - Commands: `save_attachment` for pasted bytes, `attach_file` for a dropped
+    path. The frontend gives only a file name or the dropped path. The core
+    selects the folder (`kknow_core::image::save`).
 - This is not a full live preview yet: lists stay as text.
 
 ### Tables
@@ -1783,6 +1804,33 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   does not give it, and kknow removes raw HTML from notes. A `![](https://…)`
   in a note from a different person's vault would tell a foreign server that
   you opened the note. This is the same reason why a theme cannot use `url(…)`.
+- **A pasted or dropped image goes to `attachments/` with a
+  `![[attachments/…]]` link.**
+  - The folder is fixed, at the vault root. A setting for it would add work
+    and give little.
+  - The link uses a wikilink embed. The renderer changes it to
+    `![](<path>)`, so spaces in the name do not break it. A plain
+    `![](attachments/Pasted image.png)` breaks on the first space. The
+    `<…>` form or `%20` are hard to read and edit by hand.
+  - The link has the path from the root, not the bare name. A bare name
+    makes the loader search all of the vault. A file with the same name
+    nearer to the root would win. The loader finds the path from the root
+    for a note in any folder.
+  - The core changes `[ ] | # ^ ? % < >` in a name to `-`. These characters
+    break a wikilink, or the loader cuts the path at them.
+  - The core refuses `..`, path separators, absolute paths, hidden names and
+    extensions that the loader cannot show. A symlink in place of
+    `attachments` is refused too: the write must not leave the vault.
+  - The write goes through a hidden temp file and `rename`. It never
+    overwrites a file: the core takes the first free name.
+  - The body of `save_attachment` is raw bytes, as in the `note_image`
+    response. Thus the name goes in a header, percent-encoded. The fallback
+    IPC path sends a JSON array of numbers, and the command accepts it too.
+  - A standalone file saves into `attachments/` next to the file. The file
+    must be in the list (`known_file`). The core gets the folder from the
+    file path, so the frontend still gives only a name. The link
+    `![[attachments/…]]` works there too: the loader looks next to the file.
+  - Sync takes only notes, so it does not send images in `attachments/`.
 - **CSS limits the image size, not the core.** An image is not wider than the
   column. It is not taller than 480 px in the preview and 360 px in the editor,
   with `object-fit: contain`. A size from the caption (`|300`, `|300x200`)

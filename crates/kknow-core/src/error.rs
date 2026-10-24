@@ -27,6 +27,9 @@ pub enum Error {
     #[error("file is too large: {0}")]
     TooLarge(PathBuf),
 
+    #[error("invalid image name: {0}")]
+    InvalidImageName(String),
+
     #[error("io error at {path}: {source}")]
     Io {
         path: PathBuf,

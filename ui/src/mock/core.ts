@@ -666,7 +666,35 @@ let update: UpdateStatus = sessionStorage.getItem("kknow:mock:updated")
   ? { state: "idle" }
   : { state: "ready", version: "0.2.0" };
 
-export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+/**
+ * The mock `attachments/` folder: path → bytes. A repeated name gets a number,
+ * as in the core. A dropped file has no bytes in the browser, so `mockImage`
+ * draws it.
+ */
+const attachments = new Map<string, ArrayBuffer | null>();
+
+function mockAttachment(name: string, bytes: ArrayBuffer | null): string {
+  if (!isImageName(name)) throw new Error(`invalid image name: ${name}`);
+  const dot = name.lastIndexOf(".");
+  let free = name;
+  for (let n = 2; attachments.has(`attachments/${free}`); n++) {
+    free = `${name.slice(0, dot)} ${n}${name.slice(dot)}`;
+  }
+  attachments.set(`attachments/${free}`, bytes);
+  return `attachments/${free}`;
+}
+
+function isImageName(name: string): boolean {
+  return /^[^./\\][^/\\]*\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i.test(name);
+}
+
+export async function invoke<T>(
+  command: string,
+  rawArgs?: Record<string, unknown> | Uint8Array,
+  options?: { headers?: Record<string, string> },
+): Promise<T> {
+  // A raw body (`save_attachment`) has no named arguments; they come in headers.
+  const args = rawArgs instanceof Uint8Array ? undefined : rawArgs;
   const id = args?.id as string;
 
   switch (command) {
@@ -847,8 +875,21 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return find(id).html as T;
 
     case "note_image":
-    case "file_image":
-      return mockImage(args?.target as string) as T;
+    case "file_image": {
+      const target = args?.target as string;
+      return (attachments.get(target) ?? mockImage(target)) as T;
+    }
+
+    case "save_attachment": {
+      const name = decodeURIComponent(options?.headers?.["kknow-name"] ?? "");
+      const bytes = (rawArgs as Uint8Array).slice().buffer;
+      return mockAttachment(name, bytes) as T;
+    }
+
+    case "attach_file": {
+      const source = args?.source as string;
+      return mockAttachment(source.slice(source.lastIndexOf("/") + 1), null) as T;
+    }
 
     case "create_note": {
       const name = args?.name as string;

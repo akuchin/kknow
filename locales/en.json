@@ -463,6 +463,7 @@
   "image.missing": "image not found: {{target}}",
   "image.external": "images from the web are not loaded: {{target}}",
   "image.broken": "could not display the image: {{target}}",
+  "image.saveFailed": "could not save the image: {{error}}",
   "editor.table.rowAdd": "Add a row below",
   "editor.table.rowRemove": "Remove the rows",
   "editor.table.columnAdd": "Add a column to the right",

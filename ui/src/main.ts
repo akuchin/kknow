@@ -47,7 +47,8 @@ import type { BookmarkChange } from "./bookmarks";
 import { renderDiagrams, setDiagramBase } from "./diagram";
 import { paintCodeBlocks } from "./highlight";
 import { markLine, paintBookmarks, scrollToLine, topLine } from "./preview-lines";
-import { paintImages, setImageOwner } from "./images";
+import { imageLink } from "./attachment-name";
+import { isImage, paintImages, setImageOwner } from "./images";
 import type { AgentNote } from "./agent-notes";
 import { PreviewNotes } from "./preview-notes";
 import { cellOf } from "./table-widget";
@@ -364,6 +365,7 @@ const editor = new Editor(el.editor, {
   onChange: onEdit,
   onNotes: showNotes,
   onBookmark: (marks, change) => void saveBookmarks(marks, change),
+  saveImage: savePastedImage,
 });
 
 /** Agent notes from the preview: in "Read" mode the editor is hidden. */
@@ -2741,6 +2743,42 @@ async function adoptDropped(paths: string[]): Promise<void> {
   if (markdown.length > 0) await openFiles(markdown);
 }
 
+/**
+ * Saves a pasted image of the open note. The core puts it into `attachments/`
+ * of the vault, or next to a standalone file. Returns the path for the link.
+ */
+async function savePastedImage(name: string, bytes: Uint8Array): Promise<string | null> {
+  if (!current) return null;
+  try {
+    return await api.saveAttachment(name, bytes, current.file ? current.id : null);
+  } catch (error) {
+    setStatus(t("image.saveFailed", { error: String(error) }), "error");
+    return null;
+  }
+}
+
+/**
+ * Image files dropped on the editor: the core copies them into `attachments/`,
+ * and the links go to the drop point. The note can change during the copy;
+ * then the links have no place to go.
+ */
+async function attachDropped(paths: string[], at: number): Promise<void> {
+  const note = current;
+  if (!note) return;
+  const saved: string[] = [];
+  let problem: string | null = null;
+  for (const path of paths) {
+    try {
+      saved.push(await api.attachFile(path, note.file ? note.id : null));
+    } catch (error) {
+      problem ??= String(error);
+    }
+  }
+  if (!current || positionKey(current) !== positionKey(note)) return;
+  editor.insertImages(saved.map(imageLink), at);
+  if (problem) setStatus(t("image.saveFailed", { error: problem }), "error");
+}
+
 async function createNote(name: string): Promise<void> {
   if (!vault) return;
   try {
@@ -3767,10 +3805,15 @@ async function boot(): Promise<void> {
   // `.md`); the window takes the request and shows it.
   void onFileOpened(() => void takeOpened());
   // A folder dropped on the window becomes a vault; a markdown file opens as a
-  // separate file.
-  void onDragDrop(({ over, paths }) => {
+  // separate file. An image dropped on the open note goes into the note.
+  void onDragDrop(({ over, paths, point }) => {
     dropHint.hidden = !over;
-    if (paths.length > 0) void adoptDropped(paths);
+    if (paths.length === 0) return;
+    const at = current && point ? editor.dropPosition(point.x, point.y) : null;
+    const images = at === null ? [] : paths.filter((path) => isImage(path));
+    if (at !== null && images.length > 0) void attachDropped(images, at);
+    const rest = paths.filter((path) => !images.includes(path));
+    if (rest.length > 0) void adoptDropped(rest);
   });
   // "2 min ago" gets old without any event, so the segment redraws every minute.
   window.setInterval(describeRemote, 60000);

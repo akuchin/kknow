@@ -259,6 +259,18 @@ A large image must not prevent reading. Thus an image is never wider than the
 text column. Its maximum height is 480 px (pixels), or 360 px in the editor.
 Click an image to show it in the full window. Press Esc to close it.
 
+To add an image, paste it from the clipboard (⌘V) or drop an image file on the
+editor. kknow saves it into the `attachments/` folder at the vault root and
+inserts a link:
+
+```markdown
+![[attachments/Pasted image 20261024153012.png]]
+```
+
+A pasted image gets the date and time in its name. A dropped file keeps its
+name. kknow never overwrites a file: it adds a number, `shot 2.png`. For a
+standalone file, the `attachments/` folder is next to the file.
+
 kknow reads only images, and only in the vault. It does not load images from the
 web (`https://…`). A note from another person's vault must not tell a
 third-party server that you opened it.
