@@ -120,11 +120,6 @@ let remote: SyncSettings | null = null;
 let syncing = false;
 /** Sync state per vault: the active one shows in the status bar, others as a chip. */
 let statuses = new Map<string, SyncStatus>();
-/**
- * Mode of the open note: "Live preview" (markup in the text, no preview),
- * "Side by side" (markdown and preview) or "Read" (full-width preview only).
- */
-let mode: ViewMode = "split";
 /** Sidebar collapsed state; it persists between runs. */
 const SIDEBAR = "kknow:sidebar";
 let sidebarHidden = localStorage.getItem(SIDEBAR) === "hidden";
@@ -145,7 +140,7 @@ const editor = new Editor(el.editor, {
 
 /** Agent notes from the preview: in "Read" mode the editor is hidden. */
 const previewNotes = new PreviewNotes(el.preview, {
-  enabled: () => mode !== "edit" && state.note !== null,
+  enabled: () => state.mode !== "edit" && state.note !== null,
   add: (words, index, total, text) => editor.addNoteFromPreview(words, index, total, text),
   fail: (message) => setStatus(message, "error"),
   bookmarkable: () => state.note !== null && !state.note.file,
@@ -158,7 +153,7 @@ const previewNotes = new PreviewNotes(el.preview, {
  * the browser, not to the editor: it gets the same popup as the preview.
  */
 const tableNotes = new PreviewNotes(editor.scroller, {
-  enabled: () => mode === "edit" && state.note !== null,
+  enabled: () => state.mode === "edit" && state.note !== null,
   scope: cellOf,
   add: (words, index, total, text, cell) => editor.addNoteInCell(cell, words, index, total, text),
   fail: (message) => setStatus(message, "error"),
@@ -227,7 +222,7 @@ function renderNotes(): void {
  * markup.
  */
 function revealNote(note: AgentNote): void {
-  if (mode !== "read") {
+  if (state.mode !== "read") {
     editor.revealNote(note);
     return;
   }
@@ -267,7 +262,7 @@ function onEdit(text: string): void {
 
   window.clearTimeout(previewTimer);
   // Skip a hidden preview: each refresh is a core call on every edit.
-  if (mode !== "edit") {
+  if (state.mode !== "edit") {
     previewTimer = window.setTimeout(() => void refreshPreview(text), PREVIEW_DELAY);
   }
 }
@@ -285,8 +280,8 @@ function onEdit(text: string): void {
  * open the preview arrives anyway.
  */
 function setMode(next: ViewMode, options: { remember?: boolean; refresh?: boolean } = {}): void {
-  const wasHidden = mode === "edit";
-  mode = next;
+  const wasHidden = state.mode === "edit";
+  state.setMode(next);
   previewNotes.hide();
   tableNotes.hide();
   if (options.remember !== false && state.note) rememberMode(positionKey(state.note), next);
@@ -454,7 +449,7 @@ async function refreshPreview(text: string): Promise<void> {
  * paints them.
  */
 function showPreview(html: string): void {
-  if (mode === "edit") return;
+  if (state.mode === "edit") return;
   el.preview.innerHTML = html;
   enableTaskBoxes();
   paintBookmarks(el.preview, editor.getBookmarks());
@@ -1389,7 +1384,7 @@ function toggleCurrentBookmark(): void {
     setStatus(t("status.bookmarkFile"), "error");
     return;
   }
-  if (mode !== "read") {
+  if (state.mode !== "read") {
     editor.toggleBookmark();
     return;
   }
@@ -1437,7 +1432,7 @@ async function openBookmark(id: string, line: number): Promise<void> {
   if (state.note?.id !== id || state.note.file) await openNote(id);
   if (state.note?.id !== id) return;
   // "Read" mode hides the editor, but the line must be visible.
-  if (mode === "read") setMode("split", { remember: false });
+  if (state.mode === "read") setMode("split", { remember: false });
   const nearest = editor
     .getBookmarks()
     .reduce<number | null>(
@@ -1453,7 +1448,7 @@ async function openTask(id: string, line: number): Promise<void> {
   if (state.note?.id !== id || state.note.file) await openNote(id);
   if (state.note?.id !== id) return;
   // "Read" mode hides the editor, but the line must be visible.
-  if (mode === "read") setMode("split", { remember: false });
+  if (state.mode === "read") setMode("split", { remember: false });
   editor.goToLine(line);
 }
 
@@ -1500,7 +1495,7 @@ async function setTask(line: number, done: boolean): Promise<void> {
  */
 function goToHeading(heading: Heading): void {
   editor.goToLine(heading.line);
-  if (mode !== "edit") scrollToLine(el.preview, heading.line);
+  if (state.mode !== "edit") scrollToLine(el.preview, heading.line);
 }
 
 /**
@@ -2813,7 +2808,7 @@ async function emptyTrash(target: VaultView): Promise<void> {
 function showSyncPanel(summary: string, items: HTMLLIElement[]): void {
   // The sync result lives in the right pane, so the pane must be visible.
   // The mode is not saved for the note: the user did not pick it.
-  if (mode === "edit") setMode("split", { remember: false });
+  if (state.mode === "edit") setMode("split", { remember: false });
   el.syncSummary.textContent = summary;
   el.syncList.replaceChildren(...items);
   el.syncPanel.hidden = false;
@@ -3529,7 +3524,7 @@ const windowActions: [Action, () => boolean | void][] = [
   ["note.save", () => void flushPendingSave()],
   // In the editor its own keymap handles the key; here it is for a preview selection.
   ["note.comment", () => previewNotes.openForm() || tableNotes.openForm()],
-  ["note.mode", () => setMode(nextMode(mode))],
+  ["note.mode", () => setMode(nextMode(state.mode))],
   // ⌘B is bold in the editor, so the bookmark uses Shift.
   ["bookmark.toggle", () => toggleCurrentBookmark()],
   ["bookmark.list", () => palette.open("", "bookmarks")],
