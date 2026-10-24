@@ -103,25 +103,31 @@ mod tests {
 
         let slot = app.state::<AppState>().slot(None).unwrap();
         watch(app.handle().clone(), slot.clone());
-        // FSEvents does not start listening at once. It misses a write made at
-        // the same moment, so the test would catch a race, not the watcher.
-        std::thread::sleep(Duration::from_millis(800));
 
-        fs::write(dir.path().join("Извне.md"), "# Извне\n\nсоздано снаружи\n").unwrap();
-
+        // FSEvents does not start listening at once, and nothing tells when it
+        // does. A write made before that is lost, and a fixed pause (800 ms
+        // before) was sometimes too short on a loaded machine. So the editor
+        // "outside" saves again until the watcher sees the note: a later save
+        // always comes after the start.
+        let file = dir.path().join("Извне.md");
         let id = NoteId::parse("Извне").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saves = 0;
         while Instant::now() < deadline {
-            let seen = slot
-                .read(|workspace| Ok(workspace.contains(&id)))
-                .unwrap_or(false);
-            if seen {
-                return;
+            saves += 1;
+            fs::write(&file, format!("# Извне\n\nсохранение {saves}\n")).unwrap();
+            for _ in 0..5 {
+                let seen = slot
+                    .read(|workspace| Ok(workspace.contains(&id)))
+                    .unwrap_or(false);
+                if seen {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(100));
             }
-            std::thread::sleep(Duration::from_millis(100));
         }
 
-        panic!("наблюдатель не подхватил новый файл за 5 секунд");
+        panic!("наблюдатель не подхватил новый файл за 10 секунд");
     }
 
     /// There is one watcher per vault. An edit in one vault must not arrive as

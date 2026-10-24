@@ -798,21 +798,42 @@ mod tests {
         );
     }
 
+    /// The kill must not lose what the command printed before it.
+    ///
+    /// The output can be checked only if the shell got to the `echo` before
+    /// the timeout. On a loaded machine (a full `cargo test` right after a
+    /// build) the start sometimes took more than a second, and the test failed
+    /// for a reason that has nothing to do with the kill. The script leaves a
+    /// mark after the `echo`. Without the mark, the run repeats with a longer
+    /// timeout.
     #[test]
     fn a_hanging_command_is_cut_off() {
         let dir = tempfile::tempdir().unwrap();
-        let mut hanging = spec("echo начали; sleep 30");
-        hanging.timeout_seconds = 1;
+        let mark = dir.path().join("начали");
+        let script = format!("echo начали; touch '{}'; sleep 30", mark.display());
 
-        let outcome = run(&hanging, &note(dir.path())).unwrap();
+        for timeout in [1, 3, 10] {
+            let mut hanging = spec(&script);
+            hanging.timeout_seconds = timeout;
 
-        assert!(outcome.timed_out);
-        assert_eq!(outcome.code, None, "процесс убит, кода возврата у него нет");
-        assert!(outcome.millis < 5000, "ждали не дольше отпущенного");
-        assert!(
-            outcome.stdout.contains("начали"),
-            "успевшее напечататься — есть"
-        );
+            let outcome = run(&hanging, &note(dir.path())).unwrap();
+
+            assert!(outcome.timed_out, "{outcome:?}");
+            assert_eq!(outcome.code, None, "процесс убит, кода возврата у него нет");
+            assert!(
+                outcome.millis < timeout * 1000 + 4000,
+                "ждали не дольше отпущенного: {outcome:?}"
+            );
+            if !mark.exists() {
+                continue;
+            }
+            assert!(
+                outcome.stdout.contains("начали"),
+                "успевшее напечататься — есть: {outcome:?}"
+            );
+            return;
+        }
+        panic!("оболочка не дошла до echo и за 10 секунд");
     }
 
     #[test]
