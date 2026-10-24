@@ -860,17 +860,34 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - A strip at the edge marks the open note in the list, not only a background.
 - Status bar segments have `aria-label`, because their label is a value, not a
   purpose. The message has `role="status"`, and the chip has `aria-haspopup`.
-- All window labels are in `ui/src/i18n.ts`. The Russian dictionary is also the
-  template: the code derives the `Dict` type from it. Thus a different locale
-  cannot miss a key or add an extra one: that is a build error.
+- All labels are in `locales/<locale>.json` at the repository root: one flat
+  file per language, in the i18next JSON v4 format. The code uses only keys.
+  The window (`ui/src/i18n.ts`) and the macOS menu (`src-tauri/src/menu.rs`)
+  read the same files. We do not use the i18next library: the format is
+  enough for translation tools (Weblate, Crowdin, Lokalise, i18n Ally), and
+  our `t()` is 20 lines.
 
-  Substitution is
-  simple, `{name}`. `Intl.PluralRules` computes plurals. The labels of the
-  CodeMirror search panel come from the same dictionary. Their key is the
-  English phrase from the CodeMirror sources.
+  The keys are flat and contain dots. Nesting is not possible:
+  `statusbar.vault.empty` and `statusbar.vault.empty.title` are both texts.
+  Thus a tool must use the flat key style (in i18n Ally,
+  `"i18n-ally.keystyle": "flat"`).
+
+  Substitution is `{{name}}`, as in i18next. Plurals are keys with a suffix
+  from `Intl.PluralRules`: `statusbar.words_one`, `_few`, `_other`. The code
+  asks for `statusbar.words` with `count`. A missing form falls back to
+  `_other`, and a missing key falls back to the Russian file.
+
+  The Russian file is the reference. The `Key` type comes from it, so a typo
+  in a key is a build error. `ui/tests/i18n.test.ts` compares the other files
+  with it: the same keys, the same placeholders, and only the plural forms
+  that the language has. The labels of the CodeMirror search panel come from
+  the same files.
 - There are two locales: `ru` and `en`. You select the language in the status
-  bar and in the settings. Language names are in their own languages
-  (`LOCALE_NAMES`), and they are not part of the dictionaries.
+  bar and in the settings. Each file has its own name in its own language
+  (`locale.name`), so "Русский" stays "Русский" in the English list.
+- To add a language, add `locales/<code>.json` and one line in `LOCALES` in
+  `src-tauri/src/menu.rs`. The window finds the file itself
+  (`import.meta.glob`). A Rust test fails if a file is not in `LOCALES`.
 
 ## Editor
 

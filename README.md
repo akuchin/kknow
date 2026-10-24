@@ -816,11 +816,15 @@ replaces the built-in theme.
 
 ## Interface language
 
-All window labels are in one file (`ui/src/i18n.ts`). Thus a translation is one
-more dictionary next to the Russian one. Two dictionaries exist now: `ru`
-(default) and `en`. To change the language, use the gear menu in the status bar
-or the settings ("General"). Each language name is in its own language:
-"Русский" stays "Русский" in the English locale too.
+All labels are in the `locales/` folder: one JSON file per language
+(`ru.json` is the default, `en.json`). The format is i18next JSON v4 with flat
+keys, so translation tools such as Weblate, Crowdin or i18n Ally can edit the
+files. To add a language, copy `ru.json` to `<code>.json`, translate it, and
+add the code to `LOCALES` in `src-tauri/src/menu.rs`. `pnpm ui:test` checks
+that the new file has all keys and placeholders. To change the language, use
+the gear menu in the status bar or the settings ("General"). Each language
+name is in its own language: "Русский" stays "Русский" in the English locale
+too.
 
 A language change reloads the windows. kknow puts the labels into the markup and the
 editor configuration when the window starts. A page reload is more reliable than
