@@ -24,8 +24,8 @@ import { reloadVault, switchVault } from "./vaults";
 /**
  * Search palette.
  *
- * It has no state of its own: notes, actions and open history live here. The
- * palette only shows them and calls back.
+ * It has no state of its own: notes, actions and open history live in the
+ * zones of the window. The palette only shows them and calls back.
  */
 export let palette: Palette;
 
