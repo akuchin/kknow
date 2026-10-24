@@ -88,3 +88,35 @@ test("a key recorded in the settings replaces the default and resets", async ({ 
   await expect(line).not.toHaveClass(/custom/);
   await expect(reset).toHaveCount(0);
 });
+
+test("the command form adds, edits and removes a command", async ({ page }) => {
+  await page.goto("/settings.html#commands");
+  const commands = page.locator(".settings-command-list button.settings-command");
+  await expect(commands.first()).toBeVisible();
+  const before = await commands.count();
+
+  const tools = page.locator(".settings-command-tools");
+  await tools.locator("button", { hasText: t("settings.commands.add") }).click();
+  await expect(commands).toHaveCount(before + 1);
+  const added = commands.last();
+  await expect(added).toHaveAttribute("aria-current", "true");
+  const name = page.locator("#settings-body input.settings-name");
+  await expect(name).toHaveValue(t("settings.commands.new"));
+
+  // Typed text saves on `change` and updates the list on the left.
+  await name.fill("Сборка");
+  await name.press("Tab");
+  await expect(added).toContainText("Сборка");
+
+  // A target chip rebuilds the form: the note variable goes away with it.
+  const vars = page.locator("details.settings-vars");
+  await vars.locator("summary").click();
+  await expect(vars).toContainText("$KKNOW_NOTE");
+  await page.locator(".settings-chip", { hasText: t("settings.commands.target.note") }).click();
+  await expect(page.locator("details.settings-vars")).not.toContainText("$KKNOW_NOTE");
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await tools.locator("button", { hasText: t("settings.commands.remove") }).click();
+  await expect(commands).toHaveCount(before);
+  await expect(page.locator(".settings-command-list")).not.toContainText("Сборка");
+});
