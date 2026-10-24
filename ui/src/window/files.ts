@@ -27,16 +27,7 @@ import { markActive, rowActions, rowMenu } from "./rows";
 import { state } from "./state";
 import { fail, setStatus } from "./status";
 import { copyText } from "./util";
-
-/** Steps of higher zones that the file zone starts. */
-export interface FileHooks {
-  /** Reloads the vault list: a file from a known vault opens as its note. */
-  refreshVaults: () => Promise<void>;
-  /** Adds dropped folders as vaults. */
-  adoptVaults: (paths: string[]) => Promise<void>;
-}
-
-let hooks: FileHooks;
+import { adoptVaults, refreshVaults } from "./vaults";
 
 /**
  * "Drop here" hint while a folder is dragged over the window.
@@ -47,9 +38,8 @@ let hooks: FileHooks;
  */
 let dropHint: HTMLDivElement;
 
-/** Takes the hooks, adds the drop hint and wires the "Open file…" button. */
-export function initFiles(calls: FileHooks): void {
-  hooks = calls;
+/** Adds the drop hint and wires the "Open file…" button. */
+export function initFiles(): void {
   dropHint = document.createElement("div");
   dropHint.className = "drop-hint";
   dropHint.textContent = t("sidebar.vault.drop");
@@ -182,7 +172,7 @@ async function forgetFile(entry: FileEntry): Promise<void> {
  */
 async function openPath(opened: Opened): Promise<void> {
   if (opened.kind === "note") {
-    await hooks.refreshVaults();
+    await refreshVaults();
     await openFound(opened.id, opened.vault);
     return;
   }
@@ -237,7 +227,7 @@ async function openFiles(paths: string[]): Promise<void> {
 async function adoptDropped(paths: string[]): Promise<void> {
   const markdown = paths.filter((path) => MARKDOWN.test(path));
   const folders = paths.filter((path) => !MARKDOWN.test(path));
-  if (folders.length > 0) await hooks.adoptVaults(folders);
+  if (folders.length > 0) await adoptVaults(folders);
   if (markdown.length > 0) await openFiles(markdown);
 }
 
