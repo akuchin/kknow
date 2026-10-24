@@ -27,6 +27,7 @@ pub struct KeymapState {
 
 /// The keys for the windows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct KeymapView {
     pub keys: Keymap,
     /// The file path, for the hint on the keys page.

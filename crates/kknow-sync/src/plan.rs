@@ -15,6 +15,7 @@ use crate::manifest::Manifest;
 /// Which version wins when both sides changed the same note.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ConflictPolicy {
     /// Lose nothing: the local version stays, and the remote version goes next
     /// to it as a separate note.

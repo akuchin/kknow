@@ -2039,6 +2039,21 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   has the parts "plan — network — write" for the same reason. In Tauri this
   needs `#[tauri::command(async)]`. Without it, the command would run on the
   main thread, and the window would stop responding.
+- **The TypeScript types of command results come from Rust.**
+  `ui/src/bindings.ts` is generated with `ts-rs` by the test in
+  `src-tauri/src/bindings.rs`, and `ui/src/api.ts` re-exports it. Before,
+  `api.ts` repeated each struct by hand, and a renamed field gave the window a
+  silent `undefined`. The mock imports the same types, so the compiler checks
+  it too.
+  - The test fails when the file differs from the types. Write it again with
+    `KKNOW_BLESS=1 cargo test -p kknow-desktop bindings`.
+  - The crates have a `ts` feature, and only the dev-dependencies of
+    `src-tauri` turn it on. The app binary has no `ts-rs`.
+  - A field with `skip_serializing_if` needs `ts(optional)`: ts-rs does not
+    read that serde attribute.
+  - `api.ts` keeps by hand only what Rust does not have: `CommandTarget` (the
+    command takes separate arguments) and `NoteView`, which joins a vault note
+    and a standalone file.
 - **An error goes to the window as a code, not as a text.** The core writes
   its errors in Russian, because the CLI prints them as they are. The window
   has a second language, so a command fails with `{ code, params, message }`

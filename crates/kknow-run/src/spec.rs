@@ -46,6 +46,7 @@ pub const DEFAULT_TIMEOUT: u64 = 60;
 /// The working directory of a command.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "CommandCwd"))]
 pub enum Cwd {
     /// The vault root. This is the default: scripts usually look at the whole
     /// directory, and `$KKNOW_PATH` gives the target itself.
@@ -58,6 +59,7 @@ pub enum Cwd {
 /// One command as written in the manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CommandSpec {
     /// Stable name. The CLI and the app call the command by it.
     pub id: String,
@@ -105,6 +107,7 @@ pub struct CommandSpec {
     /// Overrides the default program: python from a virtual environment, a
     /// custom build tool, any program from `PATH` or a full path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub program: Option<String>,
 
     #[serde(default)]
@@ -119,6 +122,7 @@ pub struct CommandSpec {
 
     /// Extra environment variables for the process.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<BTreeMap<String, String>>", optional))]
     pub env: BTreeMap<String, String>,
 }
 

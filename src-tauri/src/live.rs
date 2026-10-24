@@ -21,6 +21,7 @@ const WAKE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct VaultChanged {
     /// The vault ID: the window must not redraw for edits in an inactive vault.
     pub vault: String,

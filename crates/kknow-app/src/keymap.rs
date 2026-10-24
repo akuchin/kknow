@@ -44,6 +44,7 @@ const SYMBOLS: &str = "\\,./=-;'`[]";
 /// Action ID → its keys.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Keymap(pub BTreeMap<String, Vec<String>>);
 
 /// Result of reading the file.

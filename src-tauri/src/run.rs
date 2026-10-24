@@ -16,6 +16,7 @@ use crate::state::{AppState, Error, Result};
 /// A menu command: the label and what the window needs to decide.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CommandView {
     id: String,
     name: String,
@@ -28,6 +29,7 @@ pub struct CommandView {
 /// What to show in the target menu.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CommandList {
     commands: Vec<CommandView>,
     /// Problems in the commands file. Users edit it by hand, so we must report
@@ -148,6 +150,7 @@ pub fn run_command(
 /// them with a problem.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "CommandManifest"))]
 pub struct ManifestView {
     /// File location: the form shows the path and can open it in Finder.
     path: String,

@@ -1,4 +1,6 @@
 mod association;
+#[cfg(test)]
+mod bindings;
 mod commands;
 mod errors;
 mod files;

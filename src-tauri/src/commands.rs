@@ -21,6 +21,7 @@ use crate::state::{AppState, Error, Result};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct VaultInfo {
     /// Vault ID: later commands and events refer to the vault by it.
     id: String,
@@ -36,6 +37,7 @@ pub struct VaultInfo {
 /// and the list must show at once on the first click.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct VaultView {
     id: String,
     name: String,
@@ -49,6 +51,7 @@ pub struct VaultView {
 /// Vault totals for the settings window.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "VaultStats"))]
 pub struct VaultStatsView {
     notes: usize,
     folders: usize,
@@ -58,6 +61,7 @@ pub struct VaultStatsView {
 /// A global search result: a normal result plus the vault it came from.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct GlobalResult {
     vault: String,
     vault_name: String,
@@ -69,6 +73,7 @@ pub struct GlobalResult {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct NoteSummary {
     id: String,
     title: String,
@@ -77,6 +82,7 @@ pub struct NoteSummary {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct LinkRef {
     id: String,
     title: String,
@@ -84,6 +90,7 @@ pub struct LinkRef {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SearchResult {
     id: String,
     title: String,
@@ -93,6 +100,7 @@ pub struct SearchResult {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct NoteView {
     id: String,
     title: String,
@@ -108,6 +116,7 @@ pub struct NoteView {
 /// A bookmark in the palette list.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct BookmarkView {
     note: String,
     title: String,
@@ -115,11 +124,13 @@ pub struct BookmarkView {
     line: usize,
     text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     name: Option<String>,
 }
 
 /// A task in the palette list.
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TaskView {
     note: String,
     title: String,
@@ -131,6 +142,7 @@ pub struct TaskView {
 
 /// One deletion in the trash of a vault.
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TrashEntryView {
     /// Entry name: restore takes it.
     id: String,
@@ -143,6 +155,7 @@ pub struct TrashEntryView {
 
 /// A moved note: its new ID and the number of notes whose links changed.
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct RenamedNote {
     id: String,
     relinked: usize,
@@ -456,6 +469,7 @@ pub fn load_note(
 /// Save result for the window.
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum SaveOutcome {
     Saved {
         note: NoteView,

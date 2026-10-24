@@ -5,10 +5,16 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+# TypeScript declarations of the types that the window gets
+# (`ui/src/bindings.ts`). The src-tauri tests turn it on; builds do not.
+ts = ["dep:ts-rs"]
+
 [dependencies]
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+ts-rs = { workspace = true, optional = true }
 
 # Only for `killpg`. On timeout we must kill everything the shell started,
 # not only the shell. The standard library has no process groups.

@@ -42,3 +42,9 @@ percent-encoding = "2"
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 tempfile.workspace = true
+# The bindings test writes `ui/src/bindings.ts` from the Rust types. The
+# `ts` features exist only here, so the app build has no ts-rs.
+ts-rs.workspace = true
+kknow-app = { workspace = true, features = ["ts"] }
+kknow-sync = { workspace = true, features = ["s3", "ts"] }
+kknow-run = { workspace = true, features = ["ts"] }

@@ -26,6 +26,7 @@ use crate::sync_status::{self, SyncState, SyncStatus, SyncStatuses};
 /// Sync settings as the UI sees them.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SyncSettings {
     #[serde(flatten)]
     config: RemoteConfig,
@@ -41,6 +42,7 @@ pub struct SyncSettings {
 
 /// A conflict: both sides edited the same note.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "SyncConflict"))]
 pub struct ConflictView {
     /// The note that keeps the local version.
     id: String,
@@ -51,6 +53,7 @@ pub struct ConflictView {
 /// What the sync did.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SyncReport {
     uploaded: usize,
     downloaded: usize,

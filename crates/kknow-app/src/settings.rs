@@ -37,6 +37,7 @@ const DEFAULT_NOTE_SCALE: u32 = 100;
 /// have a mode yet.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ViewMode {
     /// The markup is drawn in the text; no preview.
     Edit,
@@ -60,6 +61,7 @@ fn lenient_mode<'de, D: Deserializer<'de>>(raw: D) -> std::result::Result<ViewMo
 /// What the note tree shows for a note.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum NoteLabel {
     /// The first-level heading, or the file name if there is none.
     #[default]
@@ -82,6 +84,7 @@ fn lenient_label<'de, D: Deserializer<'de>>(raw: D) -> std::result::Result<NoteL
 // Otherwise a file without `openLastNote` would mean "do not open", but the
 // default is the opposite.
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct AppSettings {
     /// UI language.
     pub locale: String,

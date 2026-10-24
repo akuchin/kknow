@@ -16,6 +16,7 @@ use serde::Serialize;
 use crate::state::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct ErrorView {
     pub code: &'static str,
     pub params: BTreeMap<&'static str, String>,

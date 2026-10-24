@@ -46,10 +46,12 @@ pub struct Bookmark {
 /// The window gets these with the note and sends them back on save.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "BookmarkMark"))]
 pub struct Mark {
     /// Line number, starting from 1.
     pub line: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub name: Option<String>,
 }
 

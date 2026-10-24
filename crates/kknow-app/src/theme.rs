@@ -102,6 +102,7 @@ const MAX_VALUE: usize = 200;
 /// a dark theme with a default white background is not a theme.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Base {
     #[default]
     Light,
@@ -115,6 +116,7 @@ pub enum Base {
 /// A built-in theme has no file at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeSource"))]
 pub enum Source {
     #[default]
     Vault,
@@ -125,6 +127,7 @@ pub enum Source {
 /// A parsed and checked theme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Theme {
     /// File name without extension; settings store the theme by it.
     pub id: String,
@@ -146,6 +149,7 @@ pub struct Theme {
 /// Themes of a directory and problems with files that are not themes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ThemeSet {
     pub themes: Vec<Theme>,
     /// Files that did not parse. A theme must not disappear silently: its author

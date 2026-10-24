@@ -24,19 +24,24 @@ pub const CONFIG_PATH: &str = ".kknow/remote.json";
 /// Settings of S3-compatible storage: AWS, MinIO, R2.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct S3Settings {
     pub bucket: String,
     /// Storage address. AWS does not need it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub region: Option<String>,
     /// Prefix inside the bucket, so one bucket can hold several vaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub prefix: Option<String>,
     /// Access key ID. It is not a secret: it is the login for the secret key,
     /// and AWS keeps it in plain text in `~/.aws/credentials`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub access_key_id: Option<String>,
 }
 
@@ -48,6 +53,7 @@ pub struct S3Settings {
 /// algorithm, not a different trait implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Provider {
     S3(S3Settings),
     Folder { path: PathBuf },
@@ -60,6 +66,7 @@ pub enum Provider {
 /// is detected by the shape of the file, see [`Stored`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RemoteConfig {
     pub provider: Provider,
     pub policy: ConflictPolicy,

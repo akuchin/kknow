@@ -26,6 +26,7 @@ const BACKOFF_LIMIT: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum SyncState {
     /// Sync is not configured.
     Off,
@@ -44,6 +45,7 @@ pub enum SyncState {
 /// unchanged status makes them redraw for nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SyncStatus {
     pub vault: String,
     pub state: SyncState,

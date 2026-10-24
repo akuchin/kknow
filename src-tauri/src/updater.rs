@@ -40,6 +40,7 @@ const PERIOD: Duration = Duration::from_secs(6 * 60 * 60);
 /// What the windows show.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum UpdateStatus {
     /// A developer build: it never checks.
     Unavailable,

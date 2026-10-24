@@ -17,6 +17,7 @@ use crate::state::{AppState, Error, Result};
 /// What was opened from outside or from the window, and how to show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum Opened {
     /// The file is in a known vault, so it is a note of that vault.
     Note { vault: String, id: String },
@@ -27,6 +28,7 @@ pub enum Opened {
 /// A loose file in the sidebar.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FileEntry {
     path: String,
     /// File name with extension. The title needs a disk read, and the list
@@ -40,6 +42,7 @@ pub struct FileEntry {
 /// both in one editor. Here `id` is the absolute path, and `file` tells them
 /// apart.
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FileView {
     id: String,
     title: String,
@@ -54,6 +57,7 @@ pub struct FileView {
 /// Result of saving a loose file. Same as for a note, but the copy is a path.
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum FileSaveOutcome {
     Saved { note: FileView },
     Conflict { note: FileView, copy: String },

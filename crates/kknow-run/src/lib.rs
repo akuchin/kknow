@@ -73,6 +73,7 @@ impl Error {
 /// The kind of target a command is attached to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum TargetKind {
     Note,
     Folder,
@@ -188,6 +189,7 @@ impl Target {
 /// The result of a command run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "RunOutcome"))]
 pub struct Outcome {
     /// Command ID, so the app knows which command the report is for.
     pub command: String,

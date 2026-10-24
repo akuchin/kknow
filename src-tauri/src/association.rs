@@ -20,6 +20,7 @@ pub const MARKDOWN_TYPE: &str = "net.daringfireball.markdown";
 /// Which app opens markdown now.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "MarkdownAssociation"))]
 pub struct Association {
     /// The platform lets the app set the default handler from here.
     supported: bool,
