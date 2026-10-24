@@ -116,6 +116,13 @@ pub struct BookmarkView {
     name: Option<String>,
 }
 
+/// A moved note: its new ID and the number of notes whose links changed.
+#[derive(Serialize)]
+pub struct RenamedNote {
+    id: String,
+    relinked: usize,
+}
+
 fn info(entry: &VaultEntry, workspace: &Workspace) -> VaultInfo {
     VaultInfo {
         id: entry.id.clone(),
@@ -703,7 +710,8 @@ pub fn list_bookmarks(
     })
 }
 
-/// Renames or moves a note and returns its new ID.
+/// Renames or moves a note and returns its new ID and the number of notes
+/// with rewritten links.
 ///
 /// The new name is the full path from the root, `Folder/Name`. For the core,
 /// rename and move are one operation, so the window does not separate them.
@@ -713,12 +721,15 @@ pub fn rename_note(
     id: String,
     to: String,
     vault: Option<String>,
-) -> Result<String> {
+) -> Result<RenamedNote> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let from = note_id(workspace, &id)?;
         let to = NoteId::parse(&to).ok_or_else(|| kknow_app::Error::InvalidName(to.clone()))?;
-        workspace.rename(&from, &to)?;
-        Ok(to.as_str().to_string())
+        let relinked = workspace.rename(&from, &to)?;
+        Ok(RenamedNote {
+            id: to.as_str().to_string(),
+            relinked: relinked.notes,
+        })
     })
 }
 
@@ -735,17 +746,18 @@ pub fn duplicate_note(
     })
 }
 
-/// Renames or moves a folder with all its notes.
+/// Renames or moves a folder with all its notes. Returns the number of notes
+/// with rewritten links.
 #[tauri::command]
 pub fn rename_folder(
     state: State<'_, AppState>,
     name: String,
     to: String,
     vault: Option<String>,
-) -> Result<()> {
+) -> Result<usize> {
     state
         .slot(vault.as_deref())?
-        .write(|workspace| Ok(workspace.rename_folder(&name, &to)?))
+        .write(|workspace| Ok(workspace.rename_folder(&name, &to)?.notes))
 }
 
 #[tauri::command]
@@ -877,15 +889,17 @@ mod tests {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        let id = rename_note(
+        let renamed = rename_note(
             app.state(),
             "Projects/kknow".into(),
             "Архив/kknow-old".into(),
             None,
         )
         .unwrap();
+        let id = renamed.id;
 
         assert_eq!(id, "Архив/kknow-old");
+        assert_eq!(renamed.relinked, 1, "ссылка из оглавления");
         assert!(dir.path().join("Архив/kknow-old.md").is_file());
         assert!(!dir.path().join("Projects/kknow.md").exists());
         assert!(load_note(app.state(), id, None).is_ok());
@@ -917,8 +931,9 @@ mod tests {
         let dir = vault();
         let app = app(&[dir.path()]);
 
-        rename_folder(app.state(), "Projects".into(), "Work".into(), None).unwrap();
+        let relinked = rename_folder(app.state(), "Projects".into(), "Work".into(), None).unwrap();
 
+        assert_eq!(relinked, 1, "ссылка из оглавления");
         let notes = list_notes(app.state(), None).unwrap();
         assert!(notes.iter().any(|note| note.id == "Work/kknow"));
         assert!(

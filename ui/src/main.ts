@@ -2214,12 +2214,12 @@ async function renameNote(
   if (isCurrent) await flushPendingSave();
 
   try {
-    const moved = await api.renameNote(id, to, vaultId);
+    const { id: moved, relinked } = await api.renameNote(id, to, vaultId);
     moveScale(noteKey(vaultId, id), noteKey(vaultId, moved));
     moveMode(noteKey(vaultId, id), noteKey(vaultId, moved));
     await refreshTree(vaultId);
     if (isCurrent) await openNote(moved);
-    setStatus(t(done));
+    setStatus(movedStatus(done, relinked));
   } catch (error) {
     fail(error);
   }
@@ -2237,13 +2237,18 @@ async function renameFolder(
   if (inside) await flushPendingSave();
 
   try {
-    await api.renameFolder(name, to, vaultId);
+    const relinked = await api.renameFolder(name, to, vaultId);
     await refreshTree(vaultId);
     if (inside) await openNote(`${to}/${inside.slice(prefix.length)}`);
-    setStatus(t(done));
+    setStatus(movedStatus(done, relinked));
   } catch (error) {
     fail(error);
   }
+}
+
+/** "Renamed", plus the number of notes whose links the core rewrote. */
+function movedStatus(done: "status.renamed" | "status.moved", relinked: number): string {
+  return relinked > 0 ? `${t(done)} · ${t("status.relinked", { count: relinked })}` : t(done);
 }
 
 /** Copies a note next to it and opens the copy, since that is the goal. */

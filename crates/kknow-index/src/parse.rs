@@ -333,7 +333,7 @@ fn is_external(target: &str) -> bool {
 }
 
 /// Decodes `%20` and similar sequences to plain characters.
-fn decode_target(target: &str) -> String {
+pub(crate) fn decode_target(target: &str) -> String {
     let mut decoded = String::with_capacity(target.len());
     let mut chars = target.chars();
 

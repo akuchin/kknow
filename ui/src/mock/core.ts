@@ -387,6 +387,28 @@ function view(note: MockNote): NoteView {
 }
 
 /**
+ * Rewrites `[[old…]]` links to the new IDs and returns the number of changed
+ * notes. The core also keeps short names and Markdown links; the mock needs
+ * only enough for the status bar message. The HTML stays as it was.
+ */
+function relink(vault: MockVault, moves: [string, string][]): number {
+  let changed = 0;
+  for (const note of vault.notes) {
+    let content = note.content;
+    for (const [from, to] of moves) {
+      content = content.replace(
+        new RegExp(`(!?\\[\\[\\s*)${escapeRegExp(from)}(\\s*[\\]|#])`, "g"),
+        `$1${to}$2`,
+      );
+    }
+    if (content === note.content) continue;
+    note.content = content;
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
  * Bookmarks on lines that exist in the text, sorted and one per line, as in
  * the core. Names lose the outer spaces; an empty name is no name.
  */
@@ -849,7 +871,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }
       note.id = to;
       note.folder = to.includes("/") ? to.slice(0, to.lastIndexOf("/")) : null;
-      return to as T;
+      return { id: to, relinked: relink(asked, [[id as string, to]]) } as T;
     }
 
     case "duplicate_note": {
@@ -871,15 +893,17 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       const to = (args?.to as string).replace(/^\/+|\/+$/g, "");
       const prefix = `${name}/`;
       const moved = (path: string) => `${to}/${path.slice(prefix.length)}`;
+      const moves: [string, string][] = [];
       for (const note of asked.notes) {
         if (!note.id.startsWith(prefix)) continue;
+        moves.push([note.id, moved(note.id)]);
         note.id = moved(note.id);
         note.folder = note.id.slice(0, note.id.lastIndexOf("/"));
       }
       asked.folders = asked.folders.map((folder) =>
         folder === name ? to : folder.startsWith(prefix) ? moved(folder) : folder,
       );
-      return undefined as T;
+      return relink(asked, moves) as T;
     }
 
     case "list_folders": {

@@ -236,6 +236,10 @@ Short links follow the usual wiki rules. kknow tries the full path first, then
 the file name, then a path suffix. If many notes have the same name, kknow
 selects the note that is closest in the folder tree.
 
+When you rename or move a note or a folder, kknow updates the links to it in
+the other notes. A short link that still finds the note stays as it is. Links
+in code stay too. The status bar tells how many notes changed.
+
 The preview does not show raw HTML from a note. A note can come from another
 person's vault or from sync. A script in it would run with the app's
 privileges.
