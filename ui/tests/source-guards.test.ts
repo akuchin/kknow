@@ -106,3 +106,34 @@ test("ui/src has no import cycles", () => {
   const cycles = findCycles(graph).map((cycle) => cycle.join(" → "));
   assert.deepEqual(cycles, [], "a lower layer must not import a higher one");
 });
+
+const MAX_LINES = 800;
+
+/**
+ * Files that may be longer than MAX_LINES. Each one was already this long
+ * before the refactor of the window code, or the build writes it.
+ */
+const LONG_FILES: Record<string, string> = {
+  "bindings.ts": "generated from the Rust types; nobody edits it",
+  "table-widget.ts": "one widget: the drawn table and its cell editor",
+  "live-preview.ts": "one CodeMirror extension: the decorations of live preview",
+  "mock/core.ts": "the stubs of all Tauri commands for `pnpm ui:mock`",
+};
+
+function lines(text: string): number {
+  return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+}
+
+test(`each file in ui/src has at most ${MAX_LINES} lines`, () => {
+  const long = sources()
+    .filter((path) => !(path in LONG_FILES))
+    .map((path) => ({ path, lines: lines(read(path)) }))
+    .filter((file) => file.lines > MAX_LINES)
+    .map((file) => `${file.path}: ${file.lines}`);
+  assert.deepEqual(long, [], "split the file into modules");
+});
+
+test("the list of long files names only files that exist", () => {
+  const all = new Set(sources());
+  assert.deepEqual(Object.keys(LONG_FILES).filter((path) => !all.has(path)), []);
+});
