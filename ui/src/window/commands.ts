@@ -3,7 +3,7 @@
 //
 // The module does not touch the DOM on import.
 
-import { api, type CommandTarget, type CommandView, type RunOutcome } from "../api";
+import { api, type CommandTarget, type CommandView, type RunLine, type RunOutcome } from "../api";
 import { t } from "../i18n";
 import type { MenuItem, MenuSection } from "../menu";
 import { el } from "./dom";
@@ -22,6 +22,9 @@ export function initCommands(): void {
     renderRunButton();
   });
   el.runHide.onclick = () => showRunOutput(false);
+  el.runStop.onclick = () => {
+    if (live) void api.stopCommand(live.run).catch(fail);
+  };
 }
 
 /**
@@ -72,6 +75,23 @@ export function editCommandsSection(): MenuSection {
 }
 
 /**
+ * The run that the output float follows: the last one started.
+ *
+ * Runs can overlap: a click on the run button does not wait for the previous
+ * command. The float shows only the newest run. The lines and the result of an
+ * older run do not mix into it; its result goes only to the status line.
+ */
+let live: { run: string; command: CommandView; started: number; timer: number } | null = null;
+let runs = 0;
+
+/**
+ * A command that runs longer than this opens its output by itself: then the
+ * person waits for it and wants to see what happens. A fast command does not
+ * flash a float that closes at once.
+ */
+const OPEN_LIVE_AFTER_MS = 1000;
+
+/**
  * Runs a command and shows the result.
  *
  * Pending edits are saved first: the command reads the file from disk and
@@ -87,11 +107,67 @@ export async function runCommand(command: CommandView, target: CommandTarget): P
   renderRunButton();
   setStatus(t("commands.running", { name: command.name }), "work");
 
+  const run = `${Date.now()}-${++runs}`;
+  startLive(run, command);
   try {
-    showRunOutcome(command, await api.runCommand(command.id, target));
+    const outcome = await api.runCommand(command.id, target, run, (line) => {
+      if (live?.run === run) appendLine(line);
+    });
+    showRunOutcome(command, outcome, live?.run === run);
   } catch (error) {
+    if (live?.run === run) endLive();
     fail(error);
   }
+}
+
+/**
+ * Prepares the float for a new run: its name, an empty output and the stop
+ * button. The float opens only if the run is still going after a moment.
+ */
+function startLive(run: string, command: CommandView): void {
+  if (live) window.clearInterval(live.timer);
+  const started = Date.now();
+  const tick = () => {
+    const seconds = ((Date.now() - started) / 1000).toFixed(0);
+    el.runSummary.textContent = t("panel.run.running", { seconds });
+  };
+  // The summary counts the seconds: a float without change looks frozen.
+  live = { run, command, started, timer: window.setInterval(tick, 1000) };
+  window.setTimeout(() => {
+    if (live?.run === run) showRunOutput(true);
+  }, OPEN_LIVE_AFTER_MS);
+
+  el.runTitle.textContent = command.name;
+  el.runFloat.dataset.tone = "work";
+  el.runOutput.replaceChildren();
+  el.runStop.hidden = false;
+  tick();
+  status.setRun(command.name, "work", t("statusbar.run.title", { summary: t("panel.run.running", { seconds: 0 }) }));
+}
+
+function endLive(): void {
+  if (live) window.clearInterval(live.timer);
+  live = null;
+  el.runStop.hidden = true;
+}
+
+/**
+ * Adds an output line. Stderr gets its own color: in a stream of lines it is
+ * the only way to see which ones are complaints.
+ *
+ * The output stays at its end while the person does not scroll up: as in a
+ * terminal, the new lines matter, but a scroll up to read must not jump back.
+ */
+function appendLine(line: RunLine): void {
+  const output = el.runOutput;
+  const atEnd = output.scrollHeight - output.scrollTop - output.clientHeight < 4;
+
+  const row = document.createElement("span");
+  if (line.stream === "stderr") row.className = "run-stderr";
+  row.textContent = `${line.text}\n`;
+  output.append(row);
+
+  if (atEnd) output.scrollTop = output.scrollHeight;
 }
 
 /**
@@ -102,34 +178,46 @@ export async function runCommand(command: CommandView, target: CommandTarget): P
  * success shows in the status bar and a click opens the output. A failure
  * opens the output at once, because the user usually wants to read it.
  *
+ * The output came line by line while the command ran, in the true order of
+ * both streams. The result does not replace it with the two streams one after
+ * the other; it only adds the note about a cut.
+ *
  * The output goes in as text (`textContent`), not HTML: it comes from an
  * external program, and a `<script>` in it would run with app rights. This is
  * the same reason the preview strips raw HTML.
  */
-function showRunOutcome(command: CommandView, outcome: RunOutcome): void {
+function showRunOutcome(command: CommandView, outcome: RunOutcome, current: boolean): void {
   const seconds = (outcome.millis / 1000).toFixed(1);
-  const failed = outcome.timedOut || outcome.code !== 0;
-  const summary = outcome.timedOut
-    ? t("panel.run.timedOut", { seconds })
-    : outcome.code === null
-      ? t("panel.run.killed", { seconds })
-      : outcome.code === 0
-        ? t("panel.run.ok", { seconds })
-        : t("panel.run.failed", { code: outcome.code, seconds });
+  const failed = outcome.timedOut || outcome.stopped || outcome.code !== 0;
+  const summary = outcome.stopped
+    ? t("panel.run.stopped", { seconds })
+    : outcome.timedOut
+      ? t("panel.run.timedOut", { seconds })
+      : outcome.code === null
+        ? t("panel.run.killed", { seconds })
+        : outcome.code === 0
+          ? t("panel.run.ok", { seconds })
+          : t("panel.run.failed", { code: outcome.code, seconds });
 
-  el.runTitle.textContent = command.name;
+  setStatus(`${command.name}: ${summary}`, failed ? "error" : "idle");
+  if (!current) return;
+  endLive();
+
   el.runSummary.textContent = summary;
   el.runFloat.dataset.tone = failed ? "error" : "ok";
-
-  // Both streams in a row: scripts print to both, and we do not judge which
-  // one matters more.
-  const printed = [outcome.stdout, outcome.stderr].filter((part) => part.length > 0).join("\n");
-  const tail = outcome.truncated ? `\n\n[${t("panel.run.truncated")}]` : "";
-  el.runOutput.textContent = printed ? `${printed}${tail}` : t("panel.run.empty");
+  if (outcome.truncated) {
+    const note = document.createElement("span");
+    note.className = "run-note";
+    note.textContent = `\n[${t("panel.run.truncated")}]`;
+    el.runOutput.append(note);
+  } else if (el.runOutput.childElementCount === 0) {
+    el.runOutput.textContent = t("panel.run.empty");
+  }
 
   status.setRun(command.name, failed ? "error" : "ok", t("statusbar.run.title", { summary }));
-  setStatus(`${command.name}: ${summary}`, failed ? "error" : "idle");
-  showRunOutput(failed);
+  // A stop is the person's own act: the float stays as it was. A failure
+  // opens it; a success leaves it as it is, open if the run was long.
+  if (failed && !outcome.stopped) showRunOutput(true);
 }
 
 /** Shows or hides the output float. The status bar segment toggles it. */

@@ -536,10 +536,16 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - Separate threads read the output. They keep the first 64 KB of each stream.
   A read after the process ends does not work: the process pipe is small. A
   command that prints more than the pipe holds would wait forever.
-- On timeout kknow kills the **process group**, not only the process. `sh`
-  almost
-  always runs the real work as a separate process. This is why `kknow-run` has
-  `libc` and one `unsafe` for `killpg`.
+- **The output comes line by line while the command runs.** `run_watched`
+  takes a `Watch`: a callback for each line with its stream, and a stop flag.
+  The reader threads cut the lines from the kept bytes, not with a separate
+  line reader. Thus a long line without an end cannot use up the memory, and
+  the lines add up to exactly the text of the `Outcome`. The CLI does not use
+  this: the terminal already shows the streams.
+- On timeout and on stop kknow kills the **process group**, not only the
+  process. `sh` almost always runs the real work as a separate process. This is
+  why `kknow-run` has `libc` and one `unsafe` for `killpg`. A stopped command
+  has `stopped` in its outcome, not `timedOut`.
 - An incorrect entry in the file becomes an error message. It does not silently
   disappear. Examples: a typo in `kind`, an empty script, a repeated `id`. The
   list of errors goes to the status bar and to `kknow commands`.
@@ -566,8 +572,21 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     digits. The menu matches `event.code`, not `event.key`, so the keys work
     with the Russian layout on too.
   - The result goes to the status bar. The output goes to a small popup next to
-    it. The popup has a summary with the exit code and the time, and both
-    streams as text.
+    it. The popup has a summary with the exit code and the time, and the
+    output as text. Stderr lines have the error color.
+  - The lines go through a Tauri `Channel` of the `run_command` call, not
+    through an app event as the sync progress does. A channel belongs to one
+    run: two runs at the same time cannot mix their lines, and the lines come
+    in order. The window names each run with an ID; `stop_command` with that
+    ID sets the stop flag (`AppState::runs`).
+  - The popup opens by itself when the command still runs after one second.
+    Then the person waits and wants to see what happens; a fast command does
+    not flash a popup. The popup counts the seconds, keeps the scroll at the
+    end while the person does not scroll up, and has a "stop" button. A
+    failure opens the popup; a stop does not change it.
+  - The popup follows the newest run. The lines and the result of an older run
+    that still goes do not mix into it; its result goes only to the status
+    line.
 
   In the terminal: `kknow commands` and `kknow run`.
 - You edit commands with a form in the settings. "Configure commands…" opens

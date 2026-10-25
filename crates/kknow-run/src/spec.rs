@@ -403,6 +403,17 @@ impl CommandSet {
         let spec = self.get(id).ok_or_else(|| Error::Unknown(id.to_string()))?;
         crate::run_with(spec, target, &self.env)
     }
+
+    /// [`Self::run`] that shows the output as it comes and can be stopped.
+    pub fn run_watched(
+        &self,
+        id: &str,
+        target: &Target,
+        watch: &crate::Watch<'_>,
+    ) -> Result<crate::Outcome> {
+        let spec = self.get(id).ok_or_else(|| Error::Unknown(id.to_string()))?;
+        crate::run_watched(spec, target, &self.env, watch)
+    }
 }
 
 /// A starter commands file.

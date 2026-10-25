@@ -108,6 +108,8 @@ const PATHS = {
   external: ["M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", "M15 3h6v6", "M10 14 21 3"],
   // Run the last command: a triangle, as on a player.
   play: ["M7 4v16l13-8z"],
+  // Stop a running command: a square, as on a player.
+  stop: ["M6 6h12v12H6z"],
   // Collapse all: two chevrons that point at a line in the middle.
   collapse: ["M4 12h16", "m8 3 4 4 4-4", "m8 21 4-4 4 4"],
   // Command: a terminal window with a prompt.

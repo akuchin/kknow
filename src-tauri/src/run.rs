@@ -7,9 +7,10 @@
 
 use std::collections::BTreeMap;
 
-use kknow_run::{CommandSpec, Manifest, Outcome, Target, TargetKind};
+use kknow_run::{CommandSpec, Manifest, Outcome, Stream, Target, TargetKind, Watch};
 use serde::Serialize;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use crate::state::{AppState, Error, Result};
 
@@ -108,16 +109,31 @@ pub fn list_commands(
     })
 }
 
-/// Runs the command and returns its result.
+/// One output line of a running command, for the output popup.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct RunLine {
+    stream: Stream,
+    text: String,
+}
+
+/// Runs the command, sends its output line by line and returns its result.
 ///
 /// `(async)` is required. The command is an external program and can run for a
 /// long time. Without it, Tauri runs the command on the main thread, and the
 /// window freezes for that time.
 ///
+/// The lines go through a channel of this call, not through an app event as
+/// the sync progress does. A channel belongs to one run: two runs at the same
+/// time cannot mix their lines, and the lines come in order. `run` is the ID
+/// that [`stop_command`] uses.
+///
 /// The vault lock is released before the run starts: only path resolution
 /// takes it. Otherwise a one-minute upload to an external service delays the
 /// note autosave. Sync is split into "plan, network, write" for the same
 /// reason.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 pub fn run_command(
     state: State<'_, AppState>,
@@ -126,6 +142,8 @@ pub fn run_command(
     target: Option<String>,
     vault: Option<String>,
     file: Option<String>,
+    run: String,
+    lines: Channel<RunLine>,
 ) -> Result<Outcome> {
     let set = state.commands()?;
     if set.get(&command).is_none() {
@@ -139,8 +157,29 @@ pub fn run_command(
         target.as_deref(),
         file.as_deref(),
     )?;
+
+    let stop = state.start_run(&run);
+    let watch = Watch {
+        // A closed window drops the channel; the command still ends normally.
+        line: &|stream, text| {
+            let _ = lines.send(RunLine {
+                stream,
+                text: text.to_string(),
+            });
+        },
+        stop: &stop,
+    };
     // Run through the set, not directly: only the set knows the shared env.
-    Ok(set.run(&command, &resolved)?)
+    let outcome = set.run_watched(&command, &resolved, &watch);
+    state.end_run(&run);
+    Ok(outcome?)
+}
+
+/// Asks a running command to stop. A run that already ended is no error: the
+/// click and the end can cross.
+#[tauri::command]
+pub fn stop_command(state: State<'_, AppState>, run: String) {
+    state.stop_run(&run);
 }
 
 /// The whole manifest, as the settings form edits it.
@@ -280,6 +319,28 @@ mod tests {
         (config, app)
     }
 
+    /// [`run_command`] without a look at the lines.
+    fn run_plain(
+        state: State<'_, AppState>,
+        command: String,
+        kind: String,
+        target: Option<String>,
+        vault: Option<String>,
+        file: Option<String>,
+    ) -> Result<Outcome> {
+        let lines = Channel::new(|_| Ok(()));
+        run_command(
+            state,
+            command,
+            kind,
+            target,
+            vault,
+            file,
+            "проба".into(),
+            lines,
+        )
+    }
+
     const SAMPLE: &str = r#"{"commands":[
         {"id":"echo","name":"Показать путь","kind":"shell",
          "script":"printf '%s|%s' \"$KKNOW_PATH\" \"$KKNOW_TARGET\"","targets":["note"]},
@@ -322,7 +383,7 @@ mod tests {
         let dir = vault();
         let (_config, app) = app(dir.path(), SAMPLE);
 
-        let outcome = run_command(
+        let outcome = run_plain(
             app.state(),
             "echo".into(),
             "note".into(),
@@ -343,7 +404,7 @@ mod tests {
         let dir = vault();
         let (_config, app) = app(dir.path(), SAMPLE);
 
-        let outcome = run_command(
+        let outcome = run_plain(
             app.state(),
             "here".into(),
             "folder".into(),
@@ -368,7 +429,7 @@ mod tests {
 
         for target in ["..", "/etc", "Docs/../.."] {
             assert!(
-                run_command(
+                run_plain(
                     app.state(),
                     "here".into(),
                     "folder".into(),
@@ -390,11 +451,11 @@ mod tests {
         // "echo" is declared only for notes. It cannot run on a vault, even
         // without the menu.
         assert!(matches!(
-            run_command(app.state(), "echo".into(), "vault".into(), None, None, None),
+            run_plain(app.state(), "echo".into(), "vault".into(), None, None, None),
             Err(Error::Run(kknow_run::Error::NotApplicable { .. }))
         ));
         assert!(matches!(
-            run_command(
+            run_plain(
                 app.state(),
                 "нет такой".into(),
                 "vault".into(),
@@ -433,7 +494,7 @@ mod tests {
             .collect();
         assert_eq!(ids, ["echo"]);
 
-        let outcome = run_command(
+        let outcome = run_plain(
             app.state(),
             "echo".into(),
             "note".into(),
@@ -556,5 +617,52 @@ mod tests {
 
         assert!(listed.commands.is_empty());
         assert!(listed.problems.is_empty());
+    }
+
+    /// The window sees the lines while the command runs, and its "stop" ends
+    /// the run by the ID it gave.
+    #[test]
+    fn lines_come_through_the_channel_and_stop_ends_the_run() {
+        let dir = vault();
+        let (_config, app) = app(
+            dir.path(),
+            r#"{"commands":[{"id":"долгая","name":"Долгая","kind":"shell",
+                "script":"echo начали; sleep 30"}]}"#,
+        );
+        let (sent, got) = std::sync::mpsc::channel::<String>();
+        let lines = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                let _ = sent.send(json);
+            }
+            Ok(())
+        });
+
+        let handle = app.handle().clone();
+        let running = std::thread::spawn(move || {
+            run_command(
+                handle.state(),
+                "долгая".into(),
+                "vault".into(),
+                None,
+                None,
+                None,
+                "запуск-1".into(),
+                lines,
+            )
+        });
+
+        let first = got
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("строка пришла до конца команды");
+        assert!(first.contains("начали"), "{first}");
+        assert!(first.contains("stdout"), "{first}");
+
+        stop_command(app.state(), "запуск-1".into());
+        let outcome = running.join().unwrap().unwrap();
+
+        assert!(outcome.stopped, "{outcome:?}");
+        assert!(outcome.millis < 20_000, "{outcome:?}");
+        // The run is gone from the list: a late stop does nothing.
+        assert!(!app.state::<AppState>().stop_run("запуск-1"));
     }
 }

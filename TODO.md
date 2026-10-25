@@ -36,12 +36,8 @@ The plan for the redesign is closed. Its archive copy is
 - **Tables do not have all of Advanced Tables.** There are no formulas and
   no CSV export. You cannot paste a rectangle from the clipboard into cells.
   You can copy a selection, but you cannot paste one.
-- **A running command shows no progress.** The window shows "running…" in the
-  status bar and waits. All the output comes at the end. For a long command,
-  show the output line by line in a popup, with a "stop" button. To do this,
-  the core sends an event for each line, as it does for the sync progress.
 - **The app keeps only the last output.** The popup near the status bar shows
-  the result of the last command. There is no run history. A restart clears
+  the output of the last command. There is no run history. A restart clears
   the output.
 - **You cannot bind a command to a key.** Each user has a different set of
   commands, so a list in the code does not work. Add a field to the manifest.

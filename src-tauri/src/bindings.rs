@@ -74,6 +74,7 @@ fn generate() -> String {
     collect.visit::<crate::updater::UpdateStatus>();
     collect.visit::<crate::run::CommandList>();
     collect.visit::<crate::run::ManifestView>();
+    collect.visit::<crate::run::RunLine>();
     collect.visit::<crate::errors::ErrorView>();
     collect.visit::<kknow_app::theme::ThemeSet>();
     collect.visit::<kknow_app::settings::AppSettings>();

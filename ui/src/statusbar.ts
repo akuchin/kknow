@@ -200,9 +200,12 @@ export class StatusBar {
    *
    * A segment, not a panel: usually it is enough to know that the command
    * passed. A click opens the output. `null` hides the segment (no commands yet).
+   * `work` is a command that still runs: a click shows its output as it comes.
    */
-  setRun(name: string | null, tone: "ok" | "error", title: string): void {
-    this.runIcon.replaceChildren(icon(tone === "ok" ? "check" : "close"));
+  setRun(name: string | null, tone: "ok" | "error" | "work", title: string): void {
+    this.runIcon.replaceChildren(
+      icon(tone === "ok" ? "check" : tone === "work" ? "play" : "close"),
+    );
     this.runText.textContent = name ?? "";
     this.run.hidden = name === null;
     this.run.dataset.tone = tone;

@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -199,6 +200,9 @@ pub struct Outcome {
     pub stderr: String,
     /// The command exceeded `timeoutSeconds` and was stopped.
     pub timed_out: bool,
+    /// The caller asked to stop the command ([`Watch::stop`]), and it was
+    /// killed.
+    pub stopped: bool,
     /// The output is cut: only its start is kept.
     pub truncated: bool,
     /// Run time; the app shows it next to the exit code.
@@ -210,6 +214,31 @@ impl Outcome {
     pub fn ok(&self) -> bool {
         self.code == Some(0)
     }
+}
+
+/// The stream an output line came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "RunStream"))]
+pub enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// What the caller sees and controls while a command runs.
+///
+/// A long command (a build, an upload) must not look frozen until it ends. So
+/// the run gives each output line as soon as it comes, and it checks a stop
+/// flag together with the timeout. The CLI does not need this: the terminal
+/// already shows a long command as it runs, through its own streams.
+pub struct Watch<'a> {
+    /// Gets each output line, without its line end. Both reader threads call
+    /// it, so it must be `Sync`. The lines are the same text that the
+    /// [`Outcome`] keeps, also after the cut: only the start of the output.
+    pub line: &'a (dyn Fn(Stream, &str) + Sync),
+    /// Set it to stop the command. The run kills the process group, as on
+    /// timeout, and the outcome has `stopped`.
+    pub stop: &'a AtomicBool,
 }
 
 /// How much output to keep from each stream.
@@ -381,6 +410,21 @@ pub fn run_with(
     target: &Target,
     shared: &BTreeMap<String, String>,
 ) -> Result<Outcome> {
+    let stop = AtomicBool::new(false);
+    let watch = Watch {
+        line: &|_, _| {},
+        stop: &stop,
+    };
+    run_watched(spec, target, shared, &watch)
+}
+
+/// [`run_with`] that shows the output as it comes and can be stopped.
+pub fn run_watched(
+    spec: &CommandSpec,
+    target: &Target,
+    shared: &BTreeMap<String, String>,
+    watch: &Watch<'_>,
+) -> Result<Outcome> {
     // Check here too, not only in the menu: the scope is part of the manifest,
     // and a direct call must not bypass it.
     if !spec.applies_to(target) {
@@ -429,6 +473,7 @@ pub fn run_with(
         command,
         Duration::from_secs(spec.timeout_seconds),
         &program.to_string_lossy(),
+        watch,
     )?;
 
     Ok(Outcome {
@@ -437,6 +482,7 @@ pub fn run_with(
         stdout: finished.stdout,
         stderr: finished.stderr,
         timed_out: finished.timed_out,
+        stopped: finished.stopped,
         truncated: finished.truncated,
         millis: started.elapsed().as_millis() as u64,
     })
@@ -447,15 +493,23 @@ struct Finished {
     stdout: String,
     stderr: String,
     timed_out: bool,
+    stopped: bool,
     truncated: bool,
 }
 
-/// Waits for the process up to the timeout and reads both its streams.
+/// Waits for the process up to the timeout or the stop, and reads both its
+/// streams.
 ///
 /// Separate threads read the streams, not this code after `wait`. A pipe is
 /// small, and a command that prints more than it holds would block forever:
-/// the app would wait for the command, and the command for the pipe.
-fn wait(mut command: Command, timeout: Duration, program: &str) -> Result<Finished> {
+/// the app would wait for the command, and the command for the pipe. The
+/// threads are scoped: they call the borrowed [`Watch::line`].
+fn wait(
+    mut command: Command,
+    timeout: Duration,
+    program: &str,
+    watch: &Watch<'_>,
+) -> Result<Finished> {
     let mut child = command.spawn().map_err(|source| Error::Spawn {
         program: program.to_string(),
         source,
@@ -463,67 +517,85 @@ fn wait(mut command: Command, timeout: Duration, program: &str) -> Result<Finish
 
     let out = child.stdout.take().expect("stdout запрошен трубой");
     let err = child.stderr.take().expect("stderr запрошен трубой");
-    let reading_out = std::thread::spawn(move || capture(out));
-    let reading_err = std::thread::spawn(move || capture(err));
 
-    let deadline = Instant::now() + timeout;
-    let mut pause = FIRST_POLL;
-    let mut timed_out = false;
+    std::thread::scope(|scope| {
+        let reading_out = scope.spawn(|| capture(out, |line| (watch.line)(Stream::Stdout, line)));
+        let reading_err = scope.spawn(|| capture(err, |line| (watch.line)(Stream::Stderr, line)));
 
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) => {}
-            Err(source) => return Err(Error::io(program, source)),
-        }
+        let deadline = Instant::now() + timeout;
+        let mut pause = FIRST_POLL;
+        let mut timed_out = false;
+        let mut stopped = false;
 
-        if Instant::now() >= deadline {
-            // Kill the group, not one process. `sh` almost always runs the
-            // real work as a child process. If only the shell dies, the child
-            // lives on and keeps the pipe open, so the output wait lasts as
-            // long as the timeout tried to avoid. The process has its own group
-            // (`process_group(0)`), so the group ID is its `pid`.
-            #[cfg(unix)]
-            // SAFETY: we signal our own process group by its ID. If the group
-            // is already dead, `killpg` returns an error code; nothing else
-            // happens.
-            unsafe {
-                libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Some(status),
+                Ok(None) => {}
+                Err(source) => return Err(Error::io(program, source)),
             }
-            // Platforms without groups kill only the process. Its children
-            // outlive the timeout there, but `kill` at least closes the pipes.
-            let _ = child.kill();
-            let _ = child.wait();
-            timed_out = true;
-            break None;
-        }
 
-        std::thread::sleep(pause);
-        pause = (pause * 2).min(MAX_POLL);
-    };
+            stopped = watch.stop.load(Ordering::Relaxed);
+            if stopped || Instant::now() >= deadline {
+                kill(&mut child);
+                timed_out = !stopped;
+                break None;
+            }
 
-    // A panic in a reader thread means a bug in our code. Then the output is
-    // empty, but we still return the command result.
-    let (stdout, cut_out) = reading_out.join().unwrap_or_default();
-    let (stderr, cut_err) = reading_err.join().unwrap_or_default();
+            std::thread::sleep(pause);
+            pause = (pause * 2).min(MAX_POLL);
+        };
 
-    Ok(Finished {
-        code: status.and_then(|status| status.code()),
-        stdout,
-        stderr,
-        timed_out,
-        truncated: cut_out || cut_err,
+        // A panic in a reader thread means a bug in our code. Then the output
+        // is empty, but we still return the command result.
+        let (stdout, cut_out) = reading_out.join().unwrap_or_default();
+        let (stderr, cut_err) = reading_err.join().unwrap_or_default();
+
+        Ok(Finished {
+            code: status.and_then(|status| status.code()),
+            stdout,
+            stderr,
+            timed_out,
+            stopped,
+            truncated: cut_out || cut_err,
+        })
     })
 }
 
-/// Reads a stream to the end and keeps its start.
+/// Kills the process group, not one process.
+///
+/// `sh` almost always runs the real work as a child process. If only the shell
+/// dies, the child lives on and keeps the pipe open, so the output wait lasts
+/// as long as the timeout tried to avoid. The process has its own group
+/// (`process_group(0)`), so the group ID is its `pid`.
+fn kill(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    // SAFETY: we signal our own process group by its ID. If the group is
+    // already dead, `killpg` returns an error code; nothing else happens.
+    unsafe {
+        libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+    }
+    // Platforms without groups kill only the process. Its children outlive
+    // the timeout there, but `kill` at least closes the pipes.
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Reads a stream to the end, keeps its start and gives each kept line to
+/// `line`.
 ///
 /// Also returns a "truncated" flag: showing the first 64 KB as the full output
 /// would misreport how the command ended.
-fn capture(mut source: impl Read) -> (String, bool) {
+///
+/// The lines come from the kept bytes, not from a separate line reader. So a
+/// very long line without an end cannot use up the memory, and the lines add
+/// up to exactly the text of the outcome. A line split by the cut or without
+/// a final line end comes at the end of the stream.
+fn capture(mut source: impl Read, line: impl Fn(&str)) -> (String, bool) {
     let mut kept: Vec<u8> = Vec::new();
     let mut buffer = [0u8; 8192];
     let mut truncated = false;
+    // Where the next line starts in `kept`.
+    let mut sent = 0;
 
     loop {
         let read = match source.read(&mut buffer) {
@@ -539,6 +611,14 @@ fn capture(mut source: impl Read) -> (String, bool) {
             truncated = true;
         }
         kept.extend_from_slice(&buffer[..read.min(room)]);
+
+        while let Some(end) = kept[sent..].iter().position(|&byte| byte == b'\n') {
+            line(&String::from_utf8_lossy(&kept[sent..sent + end]));
+            sent += end + 1;
+        }
+    }
+    if sent < kept.len() {
+        line(&String::from_utf8_lossy(&kept[sent..]));
     }
 
     // The cut can split a character. `from_utf8_lossy` puts a replacement
@@ -851,6 +931,92 @@ mod tests {
         assert!(outcome.truncated);
         assert_eq!(outcome.stdout.len(), CAPTURE_LIMIT);
         assert_eq!(outcome.stderr.trim(), "хвост");
+    }
+
+    /// Runs `script` and collects the lines it prints, with their streams.
+    fn watched(script: &str, stop: &AtomicBool) -> (Outcome, Vec<(Stream, String)>) {
+        let dir = tempfile::tempdir().unwrap();
+        let lines = std::sync::Mutex::new(Vec::new());
+        let watch = Watch {
+            line: &|stream, text| lines.lock().unwrap().push((stream, text.to_string())),
+            stop,
+        };
+        let outcome =
+            run_watched(&spec(script), &note(dir.path()), &BTreeMap::new(), &watch).unwrap();
+        (outcome, lines.into_inner().unwrap())
+    }
+
+    #[test]
+    fn each_line_comes_with_its_stream() {
+        let stop = AtomicBool::new(false);
+
+        let (outcome, lines) = watched("echo раз; echo беда >&2; printf 'два\\nбез конца'", &stop);
+
+        assert!(outcome.ok(), "{outcome:?}");
+        let out: Vec<&str> = lines
+            .iter()
+            .filter(|(stream, _)| *stream == Stream::Stdout)
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(out, ["раз", "два", "без конца"]);
+        assert!(lines.contains(&(Stream::Stderr, "беда".to_string())));
+        // The lines are the same text as the outcome, only split.
+        assert_eq!(outcome.stdout, "раз\nдва\nбез конца");
+    }
+
+    #[test]
+    fn a_line_comes_while_the_command_still_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let stop = AtomicBool::new(false);
+        // The line callback stops the command: if lines came only at the end,
+        // the run would wait the whole `sleep`.
+        let watch = Watch {
+            line: &|_, text| {
+                if text == "начали" {
+                    stop.store(true, Ordering::Relaxed);
+                }
+            },
+            stop: &stop,
+        };
+
+        let outcome = run_watched(
+            &spec("echo начали; sleep 30"),
+            &note(dir.path()),
+            &BTreeMap::new(),
+            &watch,
+        )
+        .unwrap();
+
+        assert!(outcome.stopped, "{outcome:?}");
+        assert!(!outcome.timed_out, "остановка — не тайм-аут: {outcome:?}");
+        assert_eq!(outcome.code, None);
+        assert!(outcome.millis < 20_000, "{outcome:?}");
+        assert_eq!(outcome.stdout, "начали\n");
+    }
+
+    #[test]
+    fn a_stop_kills_the_whole_group() {
+        // The stop flag is up before the start: the run must still end at
+        // once, and the `sleep` child must not keep the pipe open.
+        let stop = AtomicBool::new(true);
+
+        let (outcome, _) = watched("sleep 30 | cat", &stop);
+
+        assert!(outcome.stopped, "{outcome:?}");
+        assert!(outcome.millis < 20_000, "{outcome:?}");
+    }
+
+    #[test]
+    fn a_cut_output_gives_only_the_kept_lines() {
+        let stop = AtomicBool::new(false);
+
+        let (outcome, lines) = watched("yes 'строка' | head -n 100000", &stop);
+
+        assert!(outcome.truncated);
+        // The last kept line is cut and has no line end of its own.
+        let joined: Vec<&str> = lines.iter().map(|(_, text)| text.as_str()).collect();
+        assert_eq!(joined.join("\n"), outcome.stdout);
+        assert!(lines.len() < 100_000);
     }
 
     #[test]

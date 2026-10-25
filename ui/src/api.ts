@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -29,6 +29,7 @@ import type {
   Opened,
   Provider,
   RenamedNote,
+  RunLine,
   RunOutcome,
   S3Settings,
   SearchResult,
@@ -73,6 +74,7 @@ export type {
   Opened,
   Provider,
   RenamedNote,
+  RunLine,
   RunOutcome,
   S3Settings,
   SearchResult,
@@ -287,15 +289,31 @@ export const api = {
       vault: target.vault ?? null,
       file: target.file ?? null,
     }),
-  /** Runs a command and waits for it. The core runs it off the main thread. */
-  runCommand: (command: string, target: CommandTarget) =>
-    invoke<RunOutcome>("run_command", {
+  /**
+   * Runs a command and waits for it. The core runs it off the main thread and
+   * sends each output line to `onLine` while it runs. `run` names the run for
+   * `stopCommand`.
+   */
+  runCommand: (
+    command: string,
+    target: CommandTarget,
+    run: string,
+    onLine: (line: RunLine) => void,
+  ) => {
+    const lines = new Channel<RunLine>();
+    lines.onmessage = onLine;
+    return invoke<RunOutcome>("run_command", {
       command,
       kind: target.kind,
       target: target.name ?? null,
       vault: target.vault ?? null,
       file: target.file ?? null,
-    }),
+      run,
+      lines,
+    });
+  },
+  /** Stops a running command; a run that already ended is no error. */
+  stopCommand: (run: string) => invoke<void>("stop_command", { run }),
   /** The full manifest for the settings form. */
   editCommands: () => invoke<CommandManifest>("edit_commands"),
   /** Writes the full manifest and returns it with its problems. */

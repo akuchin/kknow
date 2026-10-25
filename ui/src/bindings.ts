@@ -309,6 +309,11 @@ autoSyncMinutes: number, };
 export type RenamedNote = { id: string, relinked: number, };
 
 /**
+ * One output line of a running command, for the output popup.
+ */
+export type RunLine = { stream: RunStream, text: string, };
+
+/**
  * The result of a command run.
  */
 export type RunOutcome = { 
@@ -325,6 +330,11 @@ code: number | null, stdout: string, stderr: string,
  */
 timedOut: boolean, 
 /**
+ * The caller asked to stop the command ([`Watch::stop`]), and it was
+ * killed.
+ */
+stopped: boolean, 
+/**
  * The output is cut: only its start is kept.
  */
 truncated: boolean, 
@@ -332,6 +342,11 @@ truncated: boolean,
  * Run time; the app shows it next to the exit code.
  */
 millis: number, };
+
+/**
+ * The stream an output line came from.
+ */
+export type RunStream = "stdout" | "stderr";
 
 /**
  * Settings of S3-compatible storage: AWS, MinIO, R2.

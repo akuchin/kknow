@@ -2456,6 +2456,32 @@ pre.mermaid[data-error]::after {
   color: var(--danger);
 }
 
+/* Stderr lines in a live output: in a stream of lines, the color is the only
+   way to see which ones are complaints. */
+.run-stderr {
+  color: var(--danger);
+}
+
+.run-note {
+  font-style: italic;
+}
+
+.run-tools {
+  display: flex;
+  gap: 2px;
+}
+
+/* A running command: the stop button and the segment icon in the accent. */
+#run-stop,
+#status-run[data-tone="work"] .status-run-icon {
+  color: var(--accent);
+}
+
+/* Otherwise the display of the button overrides the hidden attribute. */
+#run-stop[hidden] {
+  display: none;
+}
+
 /* A check mark shows success, not the label color, so the command name stays readable. */
 #status-run[data-tone="ok"] .status-run-icon {
   color: var(--ok);

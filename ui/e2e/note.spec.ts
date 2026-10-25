@@ -154,3 +154,25 @@ test("the note toolbar counts bookmarks and repeats the last command", async ({ 
   await menuItem(page, t("palette.action.bookmark")).click();
   await expect(count).toHaveText("1");
 });
+
+test("a long command shows its output as it goes and stops on request", async ({ page }) => {
+  const float = page.locator("#run-float");
+  const output = page.locator("#run-output");
+  const stop = page.locator("#run-stop");
+  page.on("dialog", (dialog) => void dialog.accept());
+
+  const folder = page.locator('.folder-row[data-vault="notes"][data-path="Projects"] button.folder');
+  await openRowMenu(page, folder);
+  await menuItem(page, "Сложить архив").click();
+
+  // The run is long: the float opens by itself, before the end.
+  await expect(float).toBeVisible();
+  await expect(stop).toBeVisible();
+  await expect(output).toContainText("собираю архив…");
+  await expect(output).not.toContainText("архив готов");
+
+  await stop.click();
+  await expect(page.locator("#run-summary")).toContainText(t("panel.run.stopped", { seconds: "" }).split(" ")[0]);
+  await expect(stop).toBeHidden();
+  await expect(output).not.toContainText("архив готов");
+});

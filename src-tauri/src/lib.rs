@@ -336,6 +336,7 @@ pub fn run() {
             commands::reveal_themes,
             run::list_commands,
             run::run_command,
+            run::stop_command,
             run::edit_commands,
             run::save_commands,
             run::reveal_commands,
@@ -511,6 +512,8 @@ mod tests {
             "get_settings",
             "get_keymap",
             "update_status",
+            // Sets a flag in memory; the run itself is async.
+            "stop_command",
         ];
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut blocking = Vec::new();

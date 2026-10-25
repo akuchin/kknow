@@ -169,9 +169,36 @@ pub struct AppState {
     /// here until the window takes it: on load or on the event, whichever
     /// comes first.
     pending: Mutex<Option<Opened>>,
+    /// Commands that run now, by the run ID from the window, with their stop
+    /// flags. "Stop" in the output popup sets the flag of its run.
+    runs: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl AppState {
+    /// Registers a run and gives its stop flag. The ID comes from the window:
+    /// the run reports to the window only at its end, too late to name it.
+    pub fn start_run(&self, id: &str) -> Arc<AtomicBool> {
+        let stop = Arc::new(AtomicBool::new(false));
+        lock(&self.runs).insert(id.to_string(), stop.clone());
+        stop
+    }
+
+    pub fn end_run(&self, id: &str) {
+        lock(&self.runs).remove(id);
+    }
+
+    /// Asks a run to stop. `false` if it already ended: the stop came too late,
+    /// which is not an error.
+    pub fn stop_run(&self, id: &str) -> bool {
+        match lock(&self.runs).get(id) {
+            Some(stop) => {
+                stop.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Sets the loaded registry and the file to write it to.
     /// `None` for the file means write nothing: tests use this.
     pub fn use_registry(&self, file: Option<PathBuf>, registry: VaultRegistry) {

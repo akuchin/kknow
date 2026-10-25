@@ -52,6 +52,7 @@ function query() {
     runSummary: document.querySelector<HTMLParagraphElement>("#run-summary")!,
     runOutput: document.querySelector<HTMLPreElement>("#run-output")!,
     runHide: document.querySelector<HTMLButtonElement>("#run-hide")!,
+    runStop: document.querySelector<HTMLButtonElement>("#run-stop")!,
     toggleNotes: document.querySelector<HTMLButtonElement>("#toggle-notes")!,
     notesCount: document.querySelector<HTMLSpanElement>("#notes-count")!,
     noteTools: document.querySelector<HTMLElement>("#note-tools")!,
@@ -261,10 +262,16 @@ export function initDom(): void {
   <section id="run-float" class="run-float" role="dialog" aria-labelledby="run-title" hidden>
     <h2>
       <span id="run-title">${t("panel.run.title")}</span>
-      <button id="run-hide" class="ghost bare" title="${t("panel.run.hide")}"
-              aria-label="${t("panel.run.hide")}">
-        ${iconMarkup("close")}
-      </button>
+      <span class="run-tools">
+        <button id="run-stop" class="ghost bare" title="${t("panel.run.stop")}"
+                aria-label="${t("panel.run.stop")}" hidden>
+          ${iconMarkup("stop")}
+        </button>
+        <button id="run-hide" class="ghost bare" title="${t("panel.run.hide")}"
+                aria-label="${t("panel.run.hide")}">
+          ${iconMarkup("close")}
+        </button>
+      </span>
     </h2>
     <p id="run-summary" class="muted"></p>
     <pre id="run-output" class="run-output"></pre>

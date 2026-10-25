@@ -14,6 +14,7 @@ import type {
   KeymapView,
   GlobalResult,
   MarkdownAssociation,
+  RunLine,
   RunOutcome,
   NoteSummary,
   NoteView,
@@ -623,6 +624,8 @@ function escapeRegExp(text: string): string {
 const MOCK_COMMANDS: (CommandSpec & {
   /** What the "command" prints: the browser has no real processes. */
   output: { code: number | null; stdout: string; stderr: string };
+  /** The pause before each line, so the float shows a run as it goes. */
+  lineMs?: number;
 })[] = [
   {
     ...blank("confluence", "Отправить в Confluence"),
@@ -653,7 +656,15 @@ const MOCK_COMMANDS: (CommandSpec & {
     targets: ["folder", "vault"],
     confirm: true,
     timeoutSeconds: 300,
-    output: { code: null, stdout: "собираю архив…\n", stderr: "" },
+    // Long on purpose: the float opens by itself, the lines come one by one,
+    // and "stop" has time to work.
+    lineMs: 700,
+    output: {
+      code: null,
+      stdout:
+        "собираю архив…\nДневник/2026-10.md\nДневник/2026-09.md\nПроекты/kknow.md\nПроекты/план.md\nархив готов: 4 файла\n",
+      stderr: "",
+    },
   },
   {
     // Broken on purpose: the settings form shows its problem, and the target
@@ -804,6 +815,19 @@ function mockAttachment(name: string, bytes: ArrayBuffer | null): string {
 function isImageName(name: string): boolean {
   return /^[^./\\][^/\\]*\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i.test(name);
 }
+
+/**
+ * The `Channel` of `@tauri-apps/api/core`: the core sends the messages of one
+ * call through it. Here the mock calls `onmessage` itself.
+ */
+export class Channel<T> {
+  onmessage: (message: T) => void = () => {};
+}
+
+/** Runs that a "stop" has reached, by their ID. */
+const stoppedRuns = new Set<string>();
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function invoke<T>(
   command: string,
@@ -1279,23 +1303,54 @@ export async function invoke<T>(
       const command = MOCK_COMMANDS.find((entry) => entry.id === args?.command);
       if (!command) throw coded("unknownCommand", `команда не найдена: ${String(args?.command)}`, { value: String(args?.command) });
 
-      // The browser has no real processes: the mock returns prepared output.
-      // Its job is to show the panel.
+      // The browser has no real processes: the mock sends prepared output,
+      // line by line, as the core does. Its job is to show the float.
+      const run = args?.run as string;
+      const lines = args?.lines as Channel<RunLine>;
+      const stdout = command.output.stdout
+        .replace(
+          "{path}",
+          (args?.file as string) ?? `/Users/kknow/${(args?.target as string) ?? "(каталог)"}`,
+        )
+        .replace("{target}", (args?.kind as string) ?? "vault");
+      const printed: RunLine[] = [
+        ...stdout.split("\n").filter(Boolean).map((text) => ({ stream: "stdout" as const, text })),
+        ...command.output.stderr
+          .split("\n")
+          .filter(Boolean)
+          .map((text) => ({ stream: "stderr" as const, text })),
+      ];
+
+      const started = Date.now();
+      const sent: RunLine[] = [];
+      for (const line of printed) {
+        await pause(command.lineMs ?? 60);
+        if (stoppedRuns.has(run)) break;
+        lines.onmessage(line);
+        sent.push(line);
+      }
+      const stopped = stoppedRuns.delete(run);
+      const text = (stream: RunLine["stream"]) =>
+        sent
+          .filter((line) => line.stream === stream)
+          .map((line) => `${line.text}\n`)
+          .join("");
+
       return {
         command: command.id,
-        code: command.output.code,
-        stdout: command.output.stdout
-          .replace(
-            "{path}",
-            (args?.file as string) ?? `/Users/kknow/${(args?.target as string) ?? "(каталог)"}`,
-          )
-          .replace("{target}", (args?.kind as string) ?? "vault"),
-        stderr: command.output.stderr,
-        timedOut: command.output.code === null,
+        code: stopped ? null : command.output.code,
+        stdout: text("stdout"),
+        stderr: text("stderr"),
+        timedOut: !stopped && command.output.code === null,
+        stopped,
         truncated: false,
-        millis: 1240,
+        millis: Date.now() - started,
       } satisfies RunOutcome as T;
     }
+
+    case "stop_command":
+      stoppedRuns.add(args?.run as string);
+      return undefined as T;
 
     case "edit_commands":
       return manifestView() as T;
