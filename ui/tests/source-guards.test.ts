@@ -137,3 +137,13 @@ test("the list of long files names only files that exist", () => {
   const all = new Set(sources());
   assert.deepEqual(Object.keys(LONG_FILES).filter((path) => !all.has(path)), []);
 });
+
+test("main.ts keeps no state of its own", () => {
+  // Module level is column 0: the code has no top-level blocks.
+  const found = read("main.ts")
+    .split("\n")
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => /^(export\s+)?(let|var)\s/.test(line))
+    .map(({ line, number }) => `main.ts:${number}: ${line}`);
+  assert.deepEqual(found, [], "the state belongs to a zone in window/ or to window/state.ts");
+});
