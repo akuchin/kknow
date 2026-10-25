@@ -6,6 +6,10 @@ The behaviour of the app must not change. The work rules are in
 [CLAUDE.md](../CLAUDE.md), and the design is in
 [ARCHITECTURE.md](../ARCHITECTURE.md).
 
+Status: phases 0–5 are done. The manual check in the real window is still
+open. The final module map differs from the target layout below: for example,
+`note.ts` is a low layer. ARCHITECTURE.md, "Window code", has the final map.
+
 ## Why
 
 - `main.ts` has about 180 functions and 19 module variables that change

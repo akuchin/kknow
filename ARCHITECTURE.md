@@ -1074,7 +1074,9 @@ Rules:
 ### Settings window code
 
 The settings window is in `ui/src/settings/`, one module for each section. It
-has only three shared values, so it has no store and no events.
+has only three shared values, so it has no store and no events. `main.ts`
+writes them on start and on the core events. `vaults.ts` reads the vault list
+and the statuses again, and `patch` writes the settings.
 
 | Module | What it owns |
 |---|---|

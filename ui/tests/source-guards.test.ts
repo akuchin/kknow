@@ -170,3 +170,9 @@ test("each setter of the store has one owner", () => {
     .sort();
   assert.deepEqual(strangers, [], "only the owner changes the value; others subscribe");
 });
+
+test("the entry points of both windows stay small", () => {
+  // From the "Done when" list of docs/refactor-ui-2026.md.
+  assert.ok(lines(read("main.ts")) < 200, "main.ts only starts the zones of window/");
+  assert.ok(lines(read("settings/main.ts")) < 300, "a section belongs in its own module");
+});
