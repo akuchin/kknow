@@ -769,7 +769,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   vaults at the same time, like workspace folders in VS Code. The window reads
   the tree of a vault when you expand it (`toggleVault` → `list_notes`). During
   parsing and indexing, the branch shows the row "reading the folder…".
-- Inside is a folder tree. `buildTree` in `ui/src/main.ts` builds it from note
+- Inside is a folder tree. `buildTree` in `ui/src/tree-model.ts` builds it from note
   paths. The core needs no separate command, because `NoteId` is the path.
   The indentation of the nested `<ul>` shows the nesting, so the code never
   computes the depth. A note keeps the arrow slot empty. If not, its name would
@@ -860,7 +860,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   parent would also blur the palette.
 - Two keys open the palette: ⌘K and ⌘⇧P. Plain ⌘P stays for printing.
 - The palette has no state of its own. Notes, actions and the open history are
-  in `main.ts`. They go to the palette through `PaletteHost`.
+  in the zones of the window. `ui/src/window/palette.ts` gives them to the
+  palette through `PaletteHost`.
 - Chips in the header limit the query to an index field: `title:(…)`,
   `tag:(…)`. The chip resets on close. If not, the next search would silently
   use a field that you selected some time ago.
@@ -997,6 +998,101 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 - To add a language, add `locales/<code>.json` and one line in `LOCALES` in
   `src-tauri/src/menu.rs`. The window finds the file itself
   (`import.meta.glob`). A Rust test fails if a file is not in `LOCALES`.
+
+### Window code
+
+The code of the main window is in `ui/src/window/`, one module for each zone.
+`ui/src/main.ts` is only the entry point: `boot` starts the zones and
+subscribes to the events of the core. The plan of this layout and its reasons
+are in [docs/refactor-ui-2026.md](docs/refactor-ui-2026.md).
+
+The modules make layers. A module imports only from lower layers:
+
+| Layer | Module | What it owns |
+|---|---|---|
+| 0 | `state.ts` | the store: the open note, the active vault, the vault list, the separate files, the mode, the app settings |
+| 0 | `dom.ts` | the markup of the window and `el` |
+| 1 | `status.ts` | the status bar, messages, errors, the update button |
+| 1 | `editor.ts` | the CodeMirror instance of the open note |
+| 1 | `rows.ts` | the row parts that the tree, the trash and the file list share; the mark of the open note |
+| 2 | `util.ts` | small shared actions: open the settings, copy text, read a list |
+| 2 | `notes-float.ts` | the agent notes float and the two selection popups |
+| 3 | `note.ts` | open, show, save and close a note; the preview, the heading, positions, the font size, backlinks, the mode, back and forward |
+| 4 | `commands.ts` | command items, runs, the run output, the commands of the open note |
+| 4 | `marks.ts` | bookmarks, tasks, headings, recent notes |
+| 4 | `sync.ts` | the sync panel, the status bar segment, the chip, the sync statuses |
+| 4 | `trash.ts` | the trash nodes and the read-only trash view |
+| 5 | `tree.ts` | the sidebar tree, collapsed and expanded branches, `reveal` |
+| 6 | `appearance.ts` | app settings, themes, the language, line numbers |
+| 6 | `edits.ts` | create, rename, move, duplicate and delete; the row menu; the new note form |
+| 7 | `vaults.ts` | the vault menu, a vault switch, rename, colour, forget, ⌘1…⌘9, edits from outside |
+| 8 | `files.ts` | separate files, drag and drop, attachments |
+| 9 | `palette.ts` | the sources and actions of the palette, the links of the preview |
+| 10 | `toolbar.ts` | the note toolbar menus |
+| 10 | `keys.ts` | the window actions, the keydown handler, the keymap |
+| 11 | `main.ts` | `boot` and the subscriptions to the core events |
+
+Pure modules outside `window/` hold the logic that has no DOM:
+`tree-model.ts` (the tree as data), `sync-text.ts` (the sync texts),
+`session.ts` (the autosave timer), `navigation.ts` (back and forward). They
+get the language as a parameter, so `node --test` loads them without Vite.
+
+Rules:
+
+- **The store has no logic.** `window/state.ts` keeps the values that many
+  zones read. A setter writes the value and then sends the event with the same
+  name (`state.on("note", …)`). There is no reactivity library: the events are
+  plain callbacks.
+- **Each store value has one owner.** Only the owner calls the setter:
+  - `note.ts`: `setNote`, `setMode`;
+  - `vaults.ts`: `setVault`, `setVaults`;
+  - `files.ts`: `setFiles`;
+  - `appearance.ts`: `setSettings`.
+
+  `ui/tests/source-guards.test.ts` checks this. A module-level `export let`
+  (`editor`, `status`, `palette`) gets its value only in the `init` of its
+  module. An importer cannot change it: an import is a read-only binding.
+- **State of one zone stays in that zone.** It is not in the store. Examples:
+  the trash view in `trash.ts`, the note commands in `commands.ts`, the themes
+  in `appearance.ts`, the sync statuses in `sync.ts`.
+- **A lower layer does not import a higher one.** It learns about a change
+  from a store event: the tree and the commands subscribe to `note`. If it
+  must start an action of a higher zone (the tree switches the vault), `boot`
+  gives it the action as a hook in `init`. The guard test fails on an import
+  cycle.
+- **A module does not touch the DOM on import.** It exports `init…()`, and
+  `boot` calls the `init` functions in a fixed order: the order of the old
+  top-level code. A module with no DOM work (`marks.ts`) has no `init`.
+- **Read the store after an `await`.** Another note or vault can open during
+  the call. Code that must finish with the same note keeps a copy before the
+  `await` and compares it after (`saveNow`).
+- **`main.ts` has no module-level `let`.** A value that changes belongs to its
+  zone or to the store. The guard test also limits each file in `ui/src` to
+  800 lines. The allow list names the files that were longer before the
+  refactor, with a reason for each.
+
+### Settings window code
+
+The settings window is in `ui/src/settings/`, one module for each section. It
+has only three shared values, so it has no store and no events.
+
+| Module | What it owns |
+|---|---|
+| `state.ts` | the shared values (`settings`, `vaults`, `statuses`), `view` (the window parts that sections need) and `patch` |
+| `controls.ts` | the form controls: `row`, `select`, `toggle`, `field`, `chips`, `scaleControl`, `heading` |
+| `general.ts` | the General section, updates, the `.md` association |
+| `appearance.ts` | the Appearance section, themes |
+| `keys.ts` | the Keys section, key recording |
+| `editor.ts` | the Editor section |
+| `commands.ts` | the command list and the command form |
+| `vaults.ts` | vaults, vault details and statistics |
+| `sync-form.ts` | the sync form of a vault: provider, S3, folder |
+| `main.ts` | the section list, the markup, `render`, the listeners, `boot` |
+
+The sections import `state.ts` and `controls.ts`, never `main.ts`. `main.ts`
+fills `view` before the first render, so a section can draw the window again
+without an import of `main.ts`. `sync-form.ts` gets the redraw of the vault
+page from `initSyncForm`, so it does not import `vaults.ts`.
 
 ## Editor
 
@@ -1567,7 +1663,7 @@ Each key belongs to an action: a named thing the user can do (`note.new`,
 `ui/src/actions.ts`. The keys use the CodeMirror format (`Mod-Shift-b`), where
 `Mod` is ⌘ on macOS and Ctrl elsewhere. Everything reads this list:
 
-- the window handler (`windowActions` in `main.ts`) and the CodeMirror
+- the window handler (`windowActions` in `window/keys.ts`) and the CodeMirror
   keymaps (`bindings(action, run)`);
 - every hint: tooltips (`withShortcut`), menu items and palette actions (the
   `action` field), the keys page of the settings.
@@ -1702,13 +1798,16 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
     the first one as an edit by someone else.
   - On window focus, kknow compares the open note with the disk again, because
     the watcher can miss an event.
-- **State with rules leaves `main.ts` one zone at a time.** `main.ts` is the
-  window glue, and any handler there can change any module variable. A zone
-  whose state has rules gets its own module that owns the state and has an
-  explicit API: `session.ts` (the autosave timer and the queue of writes) and
-  `navigation.ts` (back and forward). These modules have no imports, so
-  `node --test` checks them without Vite. The next zone moves out when a
-  feature touches it, not in one big rewrite.
+- **The window code is zones around one store.** The old `main.ts` had about
+  4000 lines, and any handler could change any module variable. Now each zone
+  of `ui/src/window/` owns its state and has an explicit API. The values that
+  many zones read are in one store with plain events.
+  - We did not take a signals library: it would be a new concept for all of
+    the window code, and the frontend has no reactivity layer on purpose.
+  - Pure parts (`session.ts`, `navigation.ts`, `tree-model.ts`,
+    `sync-text.ts`) have no DOM, so `node --test` checks them without Vite.
+  - The rules are in "Window code" above. Tests check the import cycles, the
+    setter owners, the file sizes and the state of `main.ts`.
 - **Autosave has a fixed delay and is not a setting.** The window writes 1 s
   after the last key press. It also writes at once when the window loses
   focus, when it closes, and before it leaves the note. Nobody tuned the delay,
@@ -1944,7 +2043,7 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   source of a diagram. A search that silently hides some of its hits is worse
   than no search.
 - **The window does not catch shortcuts that the editor already handled.** The
-  handler in `main.ts` returns on `event.defaultPrevented`. If not, ⌘F in the
+  handler in `window/keys.ts` returns on `event.defaultPrevented`. If not, ⌘F in the
   editor would open the search panel two times. Ctrl-K ("delete to end of line"
   in CodeMirror) would also move the focus to the sidebar.
 - **The window as a whole does not scroll** (`body { overflow: hidden }`). Some
@@ -2248,9 +2347,14 @@ app.
 stubs on port 1430 and walks the main user paths through the DOM (edit and
 save, history, tree edits and the trash, vaults, the palette, sync, files,
 modes, the settings window). The tests find elements by markup ids and by the
-strings of `locales/ru.json`, not by functions of `main.ts`, so they stay valid
+strings of `locales/ru.json`, not by functions of the window code, so they stay valid
 when the window code moves between modules. Each test gets a fresh page, and
 thus a fresh copy of the stubs.
+
+`ui/tests/source-guards.test.ts` (part of `pnpm ui:test`) checks the layout of
+the code, not its behaviour. It fails on an import cycle in `ui/src`, on a
+store setter outside its owner, on a file with more than 800 lines, and on a
+module-level `let` in `main.ts`. "Window code" gives the reasons.
 
 Two stub features exist for these tests. Events that the stub commands send
 (now only `settings-changed`) go to every tab through a `BroadcastChannel`, as

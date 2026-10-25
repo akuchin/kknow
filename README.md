@@ -35,7 +35,8 @@ crates/
   kknow-cli    the kknow binary: the same data in the terminal
 src-tauri/     desktop app: commands on top of kknow-app
 ui/            interface: TypeScript, Vite, CodeMirror 6; two windows — the main
-               one (`src/main.ts`) and settings (`src/settings/main.ts`)
+               one (`src/window/`, entry `src/main.ts`) and settings
+               (`src/settings/`, entry `src/settings/main.ts`)
 ```
 
 `kknow-core` knows nothing about text parsing. `kknow-index` knows nothing about
