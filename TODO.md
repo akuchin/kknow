@@ -30,9 +30,6 @@ The plan for the redesign is closed. Its archive copy is
   a `[[link]]` in the editor. Backlinks are also a problem. They are below the
   preview, so the "Edit" mode does not show them. Move them below the text or
   into the note menu.
-- **A folder rename loses the mode and the zoom.** A note rename keeps them. A
-  folder rename does not: the notes in the folder open in the default mode and
-  at the normal font size.
 - **Conflict resolution is only a list of files.** "Resolve" opens the copies
   in the palette. Add a side-by-side comparison of the two versions. Put the
   "accept" and "delete copy" buttons next to it.

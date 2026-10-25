@@ -89,3 +89,18 @@ export function moveScale(from: string, to: string): void {
   delete scales[from];
   store();
 }
+
+/**
+ * A folder was renamed or moved; the scales of all files inside move with it.
+ * `from` and `to` are the folder keys, without the trailing slash.
+ */
+export function moveFolderScale(from: string, to: string): void {
+  const prefix = `${from}/`;
+  const keys = Object.keys(scales).filter((key) => key.startsWith(prefix));
+  if (keys.length === 0) return;
+  for (const key of keys) {
+    scales[`${to}/${key.slice(prefix.length)}`] = scales[key];
+    delete scales[key];
+  }
+  store();
+}

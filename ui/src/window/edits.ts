@@ -8,8 +8,8 @@ import { formKeys, matches } from "../actions";
 import { api, type CommandTarget } from "../api";
 import { t } from "../i18n";
 import { openMenu, type MenuItem, type MenuSection } from "../menu";
-import { moveMode } from "../note-mode";
-import { moveScale } from "../note-scale";
+import { moveFolderMode, moveMode } from "../note-mode";
+import { moveFolderScale, moveScale } from "../note-scale";
 import { folderOf, join, leafOf } from "../tree-model";
 import { commandItems, editCommandsSection } from "./commands";
 import { el } from "./dom";
@@ -362,7 +362,10 @@ async function renameNote(
   }
 }
 
-/** Renames or moves a folder. An open note inside it moves too. */
+/**
+ * Renames or moves a folder. An open note inside it moves too, and so do the
+ * mode and the font size of every note inside.
+ */
 async function renameFolder(
   name: string,
   to: string,
@@ -376,6 +379,8 @@ async function renameFolder(
 
   try {
     const relinked = await api.renameFolder(name, to, vaultId);
+    moveFolderScale(noteKey(vaultId, name), noteKey(vaultId, to));
+    moveFolderMode(noteKey(vaultId, name), noteKey(vaultId, to));
     await refreshTree(vaultId);
     if (inside) await openNote(`${to}/${inside.slice(prefix.length)}`);
     setStatus(movedStatus(done, relinked));

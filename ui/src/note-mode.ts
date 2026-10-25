@@ -63,6 +63,21 @@ export function moveMode(from: string, to: string): void {
   store();
 }
 
+/**
+ * A folder was renamed or moved; the modes of all files inside move with it.
+ * `from` and `to` are the folder keys, without the trailing slash.
+ */
+export function moveFolderMode(from: string, to: string): void {
+  const prefix = `${from}/`;
+  const keys = Object.keys(modes).filter((key) => key.startsWith(prefix));
+  if (keys.length === 0) return;
+  for (const key of keys) {
+    modes[`${to}/${key.slice(prefix.length)}`] = modes[key];
+    delete modes[key];
+  }
+  store();
+}
+
 /** The next mode in the cycle, for ⌘E. */
 export function nextMode(mode: ViewMode): ViewMode {
   return MODES[(MODES.indexOf(mode) + 1) % MODES.length];

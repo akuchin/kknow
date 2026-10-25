@@ -1446,8 +1446,11 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   action. A control that appears only after the first change is hard to find.
   The slider sends a difference in steps to `changeCurrentScale`, so ⌘=/⌘−,
   the palette and the slider use one path.
-- A note rename moves its size (`moveScale`). A folder move does not. It is a
-  small thing, and it would need a loop over all keys.
+- A note rename moves its size and its mode (`moveScale`, `moveMode`). A
+  folder rename or move moves them for every note inside
+  (`moveFolderScale`, `moveFolderMode`): a loop over the stored keys with the
+  folder prefix. The prefix ends with `/`, so `Проекты-2` is not inside
+  `Проекты`.
 - ⌘0 is free, because vaults use ⌘1…⌘9. Tauri does not bind window zoom to
   ⌘=/⌘− (`zoomHotkeysEnabled` is off by default), so the keys are ours.
 
