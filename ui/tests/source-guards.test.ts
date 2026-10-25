@@ -147,3 +147,26 @@ test("main.ts keeps no state of its own", () => {
     .map(({ line, number }) => `main.ts:${number}: ${line}`);
   assert.deepEqual(found, [], "the state belongs to a zone in window/ or to window/state.ts");
 });
+
+/** The only module that may call each setter of the window store. */
+const OWNERS: Record<string, string> = {
+  setNote: "window/note.ts",
+  setMode: "window/note.ts",
+  setVault: "window/vaults.ts",
+  setVaults: "window/vaults.ts",
+  setFiles: "window/files.ts",
+  setSettings: "window/appearance.ts",
+};
+
+test("each setter of the store has one owner", () => {
+  const declared = [...read("window/state.ts").matchAll(/^\s+(set[A-Z]\w*)\(/gm)].map((m) => m[1]);
+  assert.deepEqual(declared.sort(), Object.keys(OWNERS).sort(), "give each new setter its owner");
+  const strangers = sources()
+    .flatMap((path) =>
+      [...read(path).matchAll(/\bstate\.(set[A-Z]\w*)\(/g)]
+        .filter(([, setter]) => OWNERS[setter] !== path)
+        .map(([, setter]) => `${path}: state.${setter}`),
+    )
+    .sort();
+  assert.deepEqual(strangers, [], "only the owner changes the value; others subscribe");
+});
