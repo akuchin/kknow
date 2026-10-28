@@ -13,7 +13,7 @@ pub mod tag;
 pub mod wikilink;
 
 pub use graph::{BrokenLink, Edge, EdgeKind, LinkGraph, Resolver};
-pub use parse::{Frontmatter, Heading, MarkdownLink, ParsedNote, Task, parse};
+pub use parse::{AgentComment, Frontmatter, Heading, MarkdownLink, ParsedNote, Task, parse};
 pub use relink::Relink;
 pub use render::to_html;
 pub use search::{SearchHit, SearchIndex};

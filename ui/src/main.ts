@@ -45,6 +45,7 @@ import {
   syncWithDisk,
 } from "./window/note";
 import { initNotesFloat, showNotes } from "./window/notes-float";
+import { initMcp, mcpFloat, showMcpSetup } from "./window/mcp";
 import { initPalette, resolveConflicts } from "./window/palette";
 import { state } from "./window/state";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
@@ -58,6 +59,7 @@ import {
   openVaultMenu,
   openVaultRowMenu,
   refreshVaults,
+  refreshVaultsOnFocus,
   switchVault,
   useVault,
 } from "./window/vaults";
@@ -86,10 +88,12 @@ async function boot(): Promise<void> {
       chip: (anchor) => openChipMenu(anchor),
       scale: (steps) => changeCurrentScale(steps),
       lines: () => void toggleLineNumbers(),
+      mcp: () => showMcpSetup(mcpFloat.hidden),
       more: (anchor) => openMoreMenu(anchor),
     },
     () => flushPendingSave(),
   );
+  initMcp();
   initTree({
     openVaultMenu: openVaultRowMenu,
     openCommandMenu,
@@ -133,6 +137,8 @@ async function boot(): Promise<void> {
   void onCloseRequested(() => flushPendingSave().catch(fail));
   // A hand edit of `keybindings.json` shows when the user comes back.
   window.addEventListener("focus", () => void refreshKeymap());
+  // Names, colors and labels change in the settings window.
+  window.addEventListener("focus", () => void refreshVaultsOnFocus());
   void onKeymapChanged(({ keys }) => void applyKeymap(keys));
   // Sync reports itself: progress, conflicts and failures come as events,
   // also from auto-sync that nobody started by hand.

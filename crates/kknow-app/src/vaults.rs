@@ -76,6 +76,14 @@ pub struct VaultEntry {
     pub name: String,
     pub path: PathBuf,
     pub color: LabelColor,
+    /// Text labels, for example `work`. They group vaults: `kknow mcp --label
+    /// work` serves all vaults with the label. Not the same as the colour
+    /// label above: that one is a mark for the eye, these are for selection.
+    ///
+    /// An old registry has no field, so it reads as empty, and an empty list
+    /// is not written. Thus the format version stays the same.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
 }
 
 impl VaultEntry {
@@ -316,6 +324,7 @@ impl VaultRegistry {
             color: self.free_color(),
             name,
             path,
+            labels: Vec::new(),
         };
 
         self.vaults.push(entry);
@@ -356,6 +365,29 @@ impl VaultRegistry {
         Ok(())
     }
 
+    /// Replaces the labels of the vault. The labels go through
+    /// [`clean_labels`], so the stored form is always the same.
+    pub fn set_labels<'a>(
+        &mut self,
+        id: &str,
+        labels: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        self.entry_mut(id)?.labels = clean_labels(labels);
+        Ok(())
+    }
+
+    /// Vaults with at least one of the labels, in list order.
+    ///
+    /// "At least one", not "all": `--label work --label study` is a person
+    /// who wants both groups, not the vaults that are in both.
+    pub fn with_labels<'a>(&self, labels: impl IntoIterator<Item = &'a str>) -> Vec<&VaultEntry> {
+        let wanted = clean_labels(labels);
+        self.vaults
+            .iter()
+            .filter(|entry| entry.labels.iter().any(|label| wanted.contains(label)))
+            .collect()
+    }
+
     fn entry_mut(&mut self, id: &str) -> Result<&mut VaultEntry> {
         self.vaults
             .iter_mut()
@@ -383,6 +415,30 @@ impl VaultRegistry {
             .find(|color| self.vaults.iter().all(|entry| entry.color != *color))
             .unwrap_or(LabelColor::ALL[self.vaults.len() % LabelColor::ALL.len()])
     }
+}
+
+/// Labels in one form: no `#` in front, lower case, spaces become hyphens.
+/// Empty labels and repeats go away, the order stays.
+///
+/// One form is necessary because a person types the label in two places: in
+/// the settings and in `--label`. `Work`, `#work` and ` work ` must be the
+/// same label. Spaces become hyphens because a label is one word on the
+/// command line.
+pub fn clean_labels<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    for label in raw {
+        let label = label
+            .trim()
+            .trim_start_matches('#')
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join("-")
+            .to_lowercase();
+        if !label.is_empty() && !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    labels
 }
 
 /// The directory name is the default vault name.
@@ -492,6 +548,54 @@ mod tests {
         assert_eq!(entry.id, "заметки");
         assert_eq!(entry.color, LabelColor::Blue);
         assert_eq!(registry.active().unwrap().id, "заметки");
+    }
+
+    #[test]
+    fn labels_have_one_form() {
+        assert_eq!(
+            clean_labels(["Work", " #work ", "личное хранилище", "", "#"]),
+            ["work", "личное-хранилище"]
+        );
+    }
+
+    #[test]
+    fn with_labels_takes_vaults_with_any_of_the_labels() {
+        let home = dir();
+        let mut registry = VaultRegistry::default();
+        for name in ["Работа", "Учёба", "Дом"] {
+            registry.add(folder(home.path(), name), None).unwrap();
+        }
+        registry.set_labels("работа", ["work", "ai"]).unwrap();
+        registry.set_labels("учёба", ["#Study"]).unwrap();
+
+        let names = |labels: &[&str]| -> Vec<String> {
+            registry
+                .with_labels(labels.iter().copied())
+                .iter()
+                .map(|entry| entry.name.clone())
+                .collect()
+        };
+        assert_eq!(names(&["WORK"]), ["Работа"]);
+        assert_eq!(names(&["work", "study"]), ["Работа", "Учёба"]);
+        assert!(names(&["nothing"]).is_empty());
+    }
+
+    #[test]
+    fn labels_survive_a_save_and_old_files_read_without_them() {
+        let home = dir();
+        let file = home.path().join(REGISTRY_FILE);
+        let mut registry = VaultRegistry::default();
+        registry.add(folder(home.path(), "notes"), None).unwrap();
+        registry.save(&file).unwrap();
+        assert!(
+            !fs::read_to_string(&file).unwrap().contains("labels"),
+            "пустой список не пишется"
+        );
+
+        registry.set_labels("notes", ["work"]).unwrap();
+        registry.save(&file).unwrap();
+        let loaded = VaultRegistry::load(&file).unwrap().registry;
+        assert_eq!(loaded.entries()[0].labels, ["work"]);
     }
 
     #[test]

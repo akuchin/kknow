@@ -13,9 +13,12 @@ use kknow_app::bookmarks::clean_name;
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
-use kknow_index::{Edge, EdgeKind, Subpath, Task};
+use kknow_app::text::{describe, plain_snippet, task_row};
+use kknow_index::Task;
 use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
 use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings};
+
+mod mcp;
 
 #[derive(Parser)]
 #[command(
@@ -131,6 +134,18 @@ enum Command {
     },
     /// Watch the directory and print changes.
     Watch,
+    /// Serve vaults to an agent over MCP on stdin and stdout.
+    ///
+    /// The agent starts the process itself, for example
+    /// `claude mcp add kknow -- kknow mcp --vault notes`. With `--label`, the
+    /// server takes all vaults with the label instead of `--vault`:
+    /// `kknow mcp --label work`.
+    Mcp {
+        /// Vault label from `kknow vaults`. Repeat it for several labels: a
+        /// vault needs one of them.
+        #[arg(long = "label")]
+        labels: Vec<String>,
+    },
     /// Sync the vault with S3-compatible storage or a shared folder.
     Sync {
         /// Show the plan and change nothing.
@@ -163,6 +178,11 @@ enum VaultAction {
     Rm { vault: String },
     /// Make a vault active: the window opens with it.
     Use { vault: String },
+    /// Set the labels of a vault: `kknow vaults label Personal work ai`.
+    ///
+    /// The list replaces the old one; without labels, the vault has none.
+    /// `kknow mcp --label work` serves all vaults with the label.
+    Label { vault: String, labels: Vec<String> },
 }
 
 #[derive(Subcommand)]
@@ -287,6 +307,11 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         vaults(action.unwrap_or(VaultAction::List))?;
         return Ok(ExitCode::SUCCESS);
     }
+    // The server can serve several vaults, so it opens them itself.
+    if let Command::Mcp { labels } = &cli.command {
+        serve_mcp(&cli.vault, labels)?;
+        return Ok(ExitCode::SUCCESS);
+    }
 
     // A standalone file is a note without a vault, so its commands need none.
     // `README.md` in a repository must not need `--vault`.
@@ -385,6 +410,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Vaults { .. } => unreachable!(),
         Command::Trash { action } => trash(&mut workspace, action.unwrap_or(TrashAction::List))?,
         Command::Watch => watch(&mut workspace)?,
+        // Handled above: these commands open their vaults themselves.
+        Command::Mcp { .. } => unreachable!(),
         Command::Sync {
             dry_run,
             on_conflict,
@@ -487,10 +514,82 @@ fn vaults(action: VaultAction) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             registry.save(&path).map_err(|error| error.to_string())?;
         }
+        VaultAction::Label { vault, labels } => {
+            let id = id_of(&registry, &vault)?;
+            registry
+                .set_labels(&id, labels.iter().map(String::as_str))
+                .map_err(|error| error.to_string())?;
+            registry.save(&path).map_err(|error| error.to_string())?;
+        }
     }
 
     show_vaults(&registry);
     Ok(())
+}
+
+/// `kknow mcp`: one vault from `--vault`, or all vaults with one of the labels.
+///
+/// The server takes the vaults when it starts. A vault that gets the label
+/// later comes in when the agent starts the server again.
+fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
+    let entries: Vec<(String, String, Vec<String>, PathBuf)> = if labels.is_empty() {
+        let path = vault_path(vault)?;
+        let (id, name) = vault_identity(&path);
+        let labels = load_registry()
+            .ok()
+            .and_then(|(registry, _)| registry.get(&id).map(|entry| entry.labels.clone()))
+            .unwrap_or_default();
+        vec![(id, name, labels, path)]
+    } else {
+        let (registry, _) = load_registry()?;
+        let found = registry.with_labels(labels.iter().map(String::as_str));
+        if found.is_empty() {
+            return Err(format!(
+                "нет хранилищ с ярлыком {}: kknow vaults label <хранилище> <ярлык>",
+                labels.join(", ")
+            ));
+        }
+        found
+            .into_iter()
+            // An external disk can be disconnected: the rest still work.
+            .filter(|entry| {
+                let available = entry.available();
+                if !available {
+                    eprintln!("предупреждение: каталог недоступен: {}", entry.name);
+                }
+                available
+            })
+            .map(|entry| {
+                (
+                    entry.id.clone(),
+                    entry.name.clone(),
+                    entry.labels.clone(),
+                    entry.path.clone(),
+                )
+            })
+            .collect()
+    };
+
+    let mut served = Vec::new();
+    for (id, name, labels, path) in entries {
+        let workspace = Workspace::open(&path).map_err(|error| format!("{name}: {error}"))?;
+        let watcher = workspace
+            .watch()
+            .inspect_err(|error| eprintln!("предупреждение: {name}: {error}"))
+            .ok();
+        served.push(mcp::Served {
+            vault: kknow_app::mcp::VaultRef { id, name, labels },
+            workspace,
+            watcher,
+        });
+    }
+    let names: Vec<&str> = served.iter().map(|vault| vault.vault.name.as_str()).collect();
+    // stderr: stdout belongs to the protocol.
+    eprintln!("kknow mcp: {}", names.join(", "));
+
+    let mut vaults = mcp::Vaults::new(served);
+    mcp::serve(&mut vaults, std::io::stdin().lock(), std::io::stdout().lock())
+        .map_err(|error| error.to_string())
 }
 
 fn id_of(registry: &VaultRegistry, wanted: &str) -> Result<String, String> {
@@ -525,8 +624,13 @@ fn show_vaults(registry: &VaultRegistry) {
             "  (каталог недоступен)"
         };
 
+        let labels: String = entry
+            .labels
+            .iter()
+            .map(|label| format!("  #{label}"))
+            .collect();
         println!(
-            "{mark} {hotkey} {:<20} {}{state}",
+            "{mark} {hotkey} {:<20} {}{labels}{state}",
             entry.name,
             entry.path.display()
         );
@@ -638,16 +742,6 @@ fn tasks(workspace: &Workspace, all: bool) {
     }
 }
 
-/// `note:line  text`. With `--all`, the box shows which tasks are done.
-fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
-    let place = format!("{id}:{}", task.line);
-    if !all {
-        return format!("{place}  {}", task.text);
-    }
-    let mark = if task.done { 'x' } else { ' ' };
-    format!("{place}  [{mark}] {}", task.text)
-}
-
 fn bookmark(
     workspace: &mut Workspace,
     note: &str,
@@ -732,26 +826,6 @@ fn backlinks(workspace: &Workspace, note: &str) -> Result<(), String> {
         println!("  {}", describe(edge, &edge.from));
     }
     Ok(())
-}
-
-fn describe(edge: &Edge, other: &NoteId) -> String {
-    let mut line = other.to_string();
-
-    match &edge.subpath {
-        Some(Subpath::Heading(heading)) => line.push_str(&format!("#{heading}")),
-        Some(Subpath::Block(block)) => line.push_str(&format!("#^{block}")),
-        None => {}
-    }
-    if let Some(label) = &edge.label {
-        line.push_str(&format!("  «{label}»"));
-    }
-    match edge.kind {
-        EdgeKind::Embed => line.push_str("  [embed]"),
-        EdgeKind::Markdown => line.push_str("  [md]"),
-        EdgeKind::Wiki => {}
-    }
-
-    line
 }
 
 fn tags(workspace: &Workspace) {
@@ -841,10 +915,9 @@ fn search(workspace: &Workspace, query: &str, limit: usize) -> Result<(), String
 
     for hit in hits {
         println!("{:.2}  {}  ({})", hit.score, hit.title, hit.id);
-        // The snippet has HTML highlighting, which the terminal does not need.
-        let snippet = hit.snippet.replace("<b>", "«").replace("</b>", "»");
+        let snippet = plain_snippet(&hit.snippet);
         if !snippet.is_empty() {
-            println!("      {}", snippet.replace('\n', " "));
+            println!("      {snippet}");
         }
     }
     Ok(())
@@ -1160,16 +1233,6 @@ mod tests {
         assert_eq!(human_size(1536), "1.5 КБ");
         assert_eq!(human_size(12_900_000), "12.3 МБ");
         assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 ГБ");
-    }
-
-    #[test]
-    fn a_task_row_shows_the_box_only_with_all() {
-        let id = NoteId::parse("Проекты/План").unwrap();
-        let note = kknow_index::parse("# План\n\n- [x] начать\n");
-        let task = &note.tasks[0];
-
-        assert_eq!(task_row(&id, task, false), "Проекты/План:3  начать");
-        assert_eq!(task_row(&id, task, true), "Проекты/План:3  [x] начать");
     }
 
     #[test]

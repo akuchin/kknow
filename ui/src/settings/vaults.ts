@@ -25,6 +25,14 @@ const INTERVALS = [0, 5, 15, 60];
 /** The vault open in the "Vaults" section. */
 let picked: string | null = null;
 
+/** The labels field had the focus before the redraw: give it back. */
+let labelFocus = false;
+
+/** A button is down: a redraw now would lose its click. */
+let pointerHeld = false;
+document.addEventListener("pointerdown", () => (pointerHeld = true), true);
+document.addEventListener("pointerup", () => (pointerHeld = false), true);
+
 /** The "Last sync" text on the right. An event updates it, not a redraw. */
 let lastSyncHint: HTMLElement | null = null;
 
@@ -188,9 +196,97 @@ async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<
   }
   page.append(row(t("settings.vaults.color"), colors));
 
+  page.append(row(t("settings.vaults.labels"), labelChips(vault)));
+
   page.append(heading(t("settings.vaults.sync")));
   await renderVaultSync(page, vault);
   await renderVaultStats(page, vault);
+}
+
+/**
+ * Text labels as chips, like in the MCP float. A chip has a cross to remove
+ * it, the field after the chips adds a new one: Enter, a space or a comma
+ * ends the word. Labels of the other vaults come after the field as dashed
+ * chips: a click adds one, so a group gets the same spelling everywhere.
+ */
+function labelChips(vault: VaultView): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "settings-labels";
+  const save = (labels: string[]): void => {
+    labelFocus = true;
+    void relabel(vault.id, labels);
+  };
+
+  for (const label of vault.labels) {
+    const chip = document.createElement("span");
+    chip.className = "settings-label";
+    chip.textContent = `#${label}`;
+    const remove = document.createElement("button");
+    remove.className = "bare";
+    remove.innerHTML = iconMarkup("close");
+    remove.title = t("settings.vaults.labels.remove", { label });
+    remove.setAttribute("aria-label", remove.title);
+    remove.onclick = () => save(vault.labels.filter((other) => other !== label));
+    chip.append(remove);
+    box.append(chip);
+  }
+
+  const input = document.createElement("input");
+  input.className = "settings-label-input";
+  input.placeholder = t("settings.vaults.labels.placeholder");
+  input.spellcheck = false;
+  const typed = (): string[] => {
+    const added = input.value.split(/[\s,#]+/).filter(Boolean);
+    // The redraw removes the field, and its blur must not save twice.
+    input.value = "";
+    return added;
+  };
+  input.onkeydown = (event) => {
+    if (event.key === "Enter" || event.key === " " || event.key === ",") {
+      event.preventDefault();
+      const added = typed();
+      if (added.length > 0) save([...vault.labels, ...added]);
+    } else if (event.key === "Backspace" && input.value === "" && vault.labels.length > 0) {
+      save(vault.labels.slice(0, -1));
+    }
+  };
+  // The focus left with a word in the field: save it, but redraw only after
+  // the pointer is up. An earlier redraw would replace the button under the
+  // pointer, and the click that took the focus (on another vault, say) would
+  // be lost.
+  input.onblur = () => {
+    const added = typed();
+    if (added.length === 0) return;
+    const saved = api.setVaultLabels(vault.id, [...vault.labels, ...added]).catch(console.error);
+    const redraw = (): void => void saved.then(() => renderVaults());
+    if (pointerHeld) document.addEventListener("click", () => setTimeout(redraw), { once: true });
+    else redraw();
+  };
+  box.append(input);
+  if (labelFocus) {
+    labelFocus = false;
+    queueMicrotask(() => input.focus());
+  }
+
+  const others = [
+    ...new Set(state.vaults.filter((other) => other.id !== vault.id).flatMap((other) => other.labels)),
+  ]
+    .filter((label) => !vault.labels.includes(label))
+    .sort();
+  for (const label of others) {
+    const offer = document.createElement("button");
+    offer.className = "settings-label settings-label-offer";
+    offer.textContent = `+#${label}`;
+    offer.title = t("settings.vaults.labels.add", { label });
+    // The field would commit its text on blur first and lose this click.
+    offer.onmousedown = (event) => event.preventDefault();
+    offer.onclick = () => save([...vault.labels, label]);
+    box.append(offer);
+  }
+  box.onclick = (event) => {
+    if (event.target === box) input.focus();
+  };
+  return box;
 }
 
 async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<void> {
@@ -362,6 +458,15 @@ async function rename(id: string, name: string): Promise<void> {
 async function recolor(id: string, color: string): Promise<void> {
   try {
     await api.setVaultColor(id, color);
+  } catch (error) {
+    console.error(error);
+  }
+  await renderVaults();
+}
+
+async function relabel(id: string, labels: string[]): Promise<void> {
+  try {
+    await api.setVaultLabels(id, labels);
   } catch (error) {
     console.error(error);
   }

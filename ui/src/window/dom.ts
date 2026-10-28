@@ -32,6 +32,7 @@ function query() {
     newNoteName: document.querySelector<HTMLInputElement>("#new-note-name")!,
     addVault: document.querySelector<HTMLButtonElement>("#add-vault")!,
     noteList: document.querySelector<HTMLUListElement>("#note-list")!,
+    labelFilter: document.querySelector<HTMLDivElement>("#label-filter")!,
     openFile: document.querySelector<HTMLButtonElement>("#open-file")!,
     fileList: document.querySelector<HTMLUListElement>("#file-list")!,
     editor: document.querySelector<HTMLElement>("#editor")!,
@@ -181,6 +182,10 @@ export function initDom(): void {
         </button>
       </div>
     </div>
+    <!-- The label filter: one row for all vaults, not labels on each row.
+         It shows only when some vault has a label. -->
+    <div id="label-filter" class="label-filter" role="group"
+         aria-label="${t("sidebar.labels")}" hidden></div>
     <form id="new-note-form" class="new-note" hidden>
       <input id="new-note-name" type="text" placeholder="${t("sidebar.newNote.placeholder")}"
              autocomplete="off" />

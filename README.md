@@ -226,15 +226,85 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `trash`.
+`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `trash`, `mcp`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
 kknow vaults                               # list: active one marked, ⌘1…⌘9
 kknow vaults use Personal                  # active: the window opens with it
 kknow vaults rm Personal                   # forget; files on disk stay
+kknow vaults label Personal work ai        # labels; without labels, removes them
 kknow --vault Personal stats               # work with it by name
 ```
+
+## Agents (MCP)
+
+kknow gives your vaults to an AI agent through MCP (Model Context Protocol).
+While the app runs, it has an MCP server on `127.0.0.1`. You do not install
+anything else. Add the server to Claude Code:
+
+```bash
+claude mcp add --transport http kknow 'http://127.0.0.1:7377/mcp' --header 'Authorization: Bearer <token>'
+```
+
+You do not need to type this. Click "MCP" in the status bar. The window shows
+the command for Claude Code and a JSON block for `.mcp.json`, Cursor and other
+clients, with the port and the token. Each has a copy button.
+
+The dot in the status bar shows the server: green when it runs, gray when it
+is off, red when it could not start (for example, another program uses the
+port). The window with the snippets also has the switch and the port. A new
+port takes effect at once. The settings are in `mcp.json` in the app config
+directory.
+
+The address tells which vaults the agent gets. Pick it above the snippets:
+
+- `/mcp?vault=<id>`: this vault;
+- `/mcp`: all vaults of the list;
+- `/mcp?label=work&label=asw`: the vaults with at least one of the labels
+  (see "Vaults"). A vault that gets the label later comes in at once.
+
+With several vaults, each tool has an optional `vault` argument, and each row
+starts with `[vault]`. `list_vaults` shows the vaults of the server. If two
+vaults have a note with the same name, the tool asks the agent for `vault`.
+
+The server is only on `127.0.0.1`, and each request needs the token. A web
+page cannot use it either: the server refuses a request with a foreign `Host`
+or `Origin`.
+
+Without the window, the CLI has the same server on stdin and stdout. The agent
+starts it as a child process:
+
+```bash
+claude mcp add kknow -- kknow mcp --vault Personal
+claude mcp add kknow-work -- kknow mcp --label work --label asw
+```
+
+The server has these tools:
+
+| Tool | What it does |
+|---|---|
+| `list_vaults` | the vaults of the server, with labels and note counts |
+| `search` | full-text search with the same syntax as ⌘K |
+| `list_notes` | notes with their titles, all or in one folder |
+| `read_note` | the Markdown of a note and the path to its file |
+| `backlinks`, `links` | notes that link to a note, and notes it links to |
+| `tasks`, `set_task` | open tasks; mark a task as done or open |
+| `agent_comments` | comments for the agent: `note:line  «words»: task` |
+| `resolve_comment` | removes a comment after the agent did its task |
+
+The comments are the main use. Select words in the window, press ⌘⇧M and write
+the task. Then ask the agent to do the comments in the vault. The agent finds
+all comments in one call, does each task, and removes the comment. The words
+stay in the text. A comment alone on its line goes away with its line.
+
+`set_task` and `resolve_comment` check the place first, as a click on a task
+box does. If the line changed, the tool changes nothing and tells the agent
+to get the list again. A change from the agent shows in the open note at
+once. A change from another program is visible on the next call.
+
+The server does not edit the text of notes. An agent with file access (for
+example, Claude Code) edits the file at the path from `read_note`.
 
 ## What the parser understands
 
@@ -411,6 +481,9 @@ Its right side is about the note and the window:
   go back to the default size;
 - the line numbers button. It shows or hides the line numbers on the left of
   the text. The "Editor" section of the settings has the same switch;
+- the MCP lamp: the state of the MCP server for agents. Click it to turn the
+  server on or off, change the port and connect an agent (see "Agents
+  (MCP)");
 - a gear with theme, language and "Settings" in one menu.
 
 The status bar does not show the full file path. The tooltip on the folder in
@@ -447,6 +520,21 @@ To switch to a vault, do one of these:
 
 A vault can become unavailable, for example if you move its directory or
 unmount the disk. It stays in the list with a mark, and it does not open.
+
+A vault can have text labels, for example `work` or `study`. Set them in
+**Settings → Vaults → Labels** (each label is a chip; the labels of the other
+vaults are offered with one click), or with
+`kknow vaults label <vault> <labels…>`. A label groups vaults:
+
+- The row of labels above the sidebar tree is a filter. Click `#work`, and the
+  tree and the search (⌘K) show only the vaults with this label. Click it
+  again to show all. The active vault always stays. The filter is kept
+  between runs.
+- `kknow mcp --label work` serves all vaults with the label to an agent (see
+  "Agents (MCP)").
+
+kknow keeps labels in one form: `#Work` and `work` are the same label. Do not
+mix them up with the label colour: the colour is a mark for the eye.
 
 You can rename a vault in the sidebar. Click "⋯" at the tree root, select
 "Rename" and press ↵ to save. The name identifies the vault in the sidebar and

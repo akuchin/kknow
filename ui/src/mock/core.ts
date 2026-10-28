@@ -14,6 +14,7 @@ import type {
   KeymapView,
   GlobalResult,
   MarkdownAssociation,
+  McpStatus,
   RunLine,
   RunOutcome,
   NoteSummary,
@@ -228,6 +229,8 @@ interface MockVault {
   name: string;
   path: string;
   color: string;
+  /** Text labels, in the clean form of the core. */
+  labels: string[];
   available: boolean;
   notes: MockNote[];
   /** Folders without notes: the note list cannot restore them, as in the core. */
@@ -284,6 +287,7 @@ const vaults: MockVault[] = [
     name: "notes (мок)",
     path: "~/notes (мок)",
     color: "blue",
+    labels: ["work", "ai"],
     available: true,
     notes,
     folders: ["Черновики"],
@@ -313,6 +317,7 @@ const vaults: MockVault[] = [
     name: "Work — ASW",
     path: "~/work (мок)",
     color: "violet",
+    labels: ["work"],
     available: true,
     notes: [
       {
@@ -340,6 +345,7 @@ const vaults: MockVault[] = [
     name: "Архив 2024",
     path: "/Volumes/Backup/Архив 2024",
     color: "amber",
+    labels: [],
     available: false,
     notes: [],
     folders: [],
@@ -349,12 +355,36 @@ const vaults: MockVault[] = [
 
 let activeVault = vaults[0];
 
+/** The MCP server of the app. `?mcp=busy` in the address shows a port in use. */
+const mcp = { enabled: true, port: 7377, token: "0123456789abcdef0123456789abcdef" };
+
+function mcpView(): McpStatus {
+  const busy = new URLSearchParams(location.search).get("mcp") === "busy";
+  const running = mcp.enabled && !busy;
+  return {
+    ...mcp,
+    running,
+    error: mcp.enabled && busy ? "Address already in use (os error 48)" : null,
+  };
+}
+
+/** The same form as `clean_labels` in the core: `#Work` is `work`. */
+function cleanLabels(raw: string[]): string[] {
+  const labels: string[] = [];
+  for (const label of raw) {
+    const clean = label.trim().replace(/^#+/, "").split(/\s+/).filter(Boolean).join("-").toLowerCase();
+    if (clean && !labels.includes(clean)) labels.push(clean);
+  }
+  return labels;
+}
+
 function vaultView(vault: MockVault): VaultView {
   return {
     id: vault.id,
     name: vault.name,
     path: vault.path,
     color: vault.color,
+    labels: [...vault.labels],
     active: vault.id === activeVault.id,
     available: vault.available,
   };
@@ -887,6 +917,12 @@ export async function invoke<T>(
       return vaults.map(vaultView) as T;
     }
 
+    case "set_vault_labels": {
+      const vault = vaults.find((entry) => entry.id === args?.id);
+      if (vault) vault.labels = cleanLabels(args?.labels as string[]);
+      return vaults.map(vaultView) as T;
+    }
+
     case "vault_stats": {
       const vault = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const folders = new Set(
@@ -909,6 +945,7 @@ export async function invoke<T>(
         name: path.split("/").filter(Boolean).pop() ?? path,
         path,
         color: "green",
+        labels: [],
         available: true,
         notes: [],
         folders: [],
@@ -1062,8 +1099,9 @@ export async function invoke<T>(
       // Same order as in the core: the active vault first, unavailable ones
       // skipped.
       const order = [activeVault, ...vaults.filter((vault) => vault !== activeVault)];
+      const only = args?.vaults as string[] | null | undefined;
       return order
-        .filter((vault) => vault.available)
+        .filter((vault) => vault.available && (!only || only.includes(vault.id)))
         .flatMap((vault) =>
           hits(vault, (args?.query as string) ?? "").map<GlobalResult>(({ note, text }) => ({
             vault: vault.id,
@@ -1373,6 +1411,14 @@ export async function invoke<T>(
     case "share_theme":
       sharedThemes.add(args?.id as string);
       return undefined as T;
+
+    case "mcp_status":
+      return mcpView() as T;
+
+    case "set_mcp":
+      mcp.enabled = args?.enabled as boolean;
+      mcp.port = args?.port as number;
+      return mcpView() as T;
 
     case "reveal_themes":
       console.info("reveal_themes: в браузере файлового менеджера нет");

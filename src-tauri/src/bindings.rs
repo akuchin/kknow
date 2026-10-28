@@ -51,6 +51,7 @@ fn generate() -> String {
 
     collect.visit::<crate::commands::VaultInfo>();
     collect.visit::<crate::commands::VaultView>();
+    collect.visit::<crate::mcp_http::McpStatus>();
     collect.visit::<crate::commands::VaultStatsView>();
     collect.visit::<crate::commands::GlobalResult>();
     collect.visit::<crate::commands::SearchResult>();

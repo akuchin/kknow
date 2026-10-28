@@ -6,6 +6,7 @@ mod errors;
 mod files;
 mod keymap;
 mod live;
+mod mcp_http;
 #[cfg(target_os = "macos")]
 mod menu;
 mod run;
@@ -257,6 +258,7 @@ pub fn run() {
         .manage(sync_status::SyncStatuses::default())
         .manage(settings)
         .manage(keymap)
+        .manage(mcp_http::McpServer::load(vaults::config_dir()))
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
@@ -288,6 +290,10 @@ pub fn run() {
                 }
             }
 
+            // The MCP server for agents lives as long as the app. A port in
+            // use does not stop the start: the lamp in the status bar says it.
+            app.state::<mcp_http::McpServer>().start(handle.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -298,6 +304,7 @@ pub fn run() {
             commands::vault_by_hotkey,
             commands::rename_vault,
             commands::set_vault_color,
+            commands::set_vault_labels,
             commands::vault_stats,
             commands::open_settings,
             commands::current_vault,
@@ -334,6 +341,8 @@ pub fn run() {
             commands::list_themes,
             commands::share_theme,
             commands::reveal_themes,
+            mcp_http::mcp_status,
+            mcp_http::set_mcp,
             run::list_commands,
             run::run_command,
             run::stop_command,
@@ -512,6 +521,7 @@ mod tests {
             "get_settings",
             "get_keymap",
             "update_status",
+            "mcp_status",
             // Sets a flag in memory; the run itself is async.
             "stop_command",
         ];

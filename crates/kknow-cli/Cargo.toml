@@ -16,3 +16,7 @@ kknow-index.workspace = true
 kknow-sync = { workspace = true, features = ["s3"] }
 kknow-run.workspace = true
 clap.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -167,22 +167,30 @@ impl SearchIndex {
     ///
     /// `*` in tantivy syntax gives no prefix search: the tokenizer drops the
     /// star. So the prefix is searched with a regex over the term dictionary.
+    ///
+    /// The palette chips wrap the text in a field: `tag:(per)`. Such a query
+    /// gets the prefix too, but only in that field, or the «Tags» chip finds
+    /// `#personal` only after the last letter.
     fn prefix_query(&self, query: &str) -> Result<Option<Box<dyn Query>>> {
-        if !query
+        let (fields, text, field_name) = match self.scoped(query) {
+            Some((field, name, text)) => (vec![field], text, Some(name)),
+            None => (self.searchable().to_vec(), query, None),
+        };
+        if !text
             .chars()
             .all(|ch| ch.is_alphanumeric() || ch.is_whitespace() || ch == '_')
         {
             return Ok(None);
         }
 
-        let words: Vec<&str> = query.split_whitespace().collect();
+        let words: Vec<&str> = text.split_whitespace().collect();
         let Some((last, head)) = words.split_last() else {
             return Ok(None);
         };
 
         let pattern = format!("{}.*", last.to_lowercase());
         let mut prefix_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
-        for field in self.searchable() {
+        for field in fields {
             let regex = RegexQuery::from_pattern(&pattern, field)?;
             prefix_clauses.push((Occur::Should, Box::new(regex)));
         }
@@ -190,10 +198,32 @@ impl SearchIndex {
         let mut clauses: Vec<(Occur, Box<dyn Query>)> =
             vec![(Occur::Must, Box::new(BooleanQuery::new(prefix_clauses)))];
         if !head.is_empty() {
-            clauses.push((Occur::Must, self.parser().parse_query(&head.join(" "))?));
+            let head = head.join(" ");
+            let head = match field_name {
+                Some(name) => format!("{name}:({head})"),
+                None => head,
+            };
+            clauses.push((Occur::Must, self.parser().parse_query(&head)?));
         }
 
         Ok(Some(Box::new(BooleanQuery::new(clauses))))
+    }
+
+    /// Splits `field:(text)` or `field:text` into the field and the text.
+    fn scoped<'q>(&self, query: &'q str) -> Option<(Field, &'static str, &'q str)> {
+        let (name, rest) = query.split_once(':')?;
+        let text = rest
+            .strip_prefix('(')
+            .and_then(|inner| inner.strip_suffix(')'))
+            .unwrap_or(rest);
+        let (field, name) = match name {
+            "title" => (self.fields.title, "title"),
+            "body" => (self.fields.body, "body"),
+            "tag" => (self.fields.tag, "tag"),
+            "path" => (self.fields.path, "path"),
+            _ => return None,
+        };
+        Some((field, name, text))
     }
 
     fn run(&self, query: Box<dyn Query>, limit: usize) -> Result<Vec<SearchHit>> {
@@ -370,6 +400,21 @@ mod tests {
         let hits = sample().search("tag:rust", 10).unwrap();
 
         assert_eq!(ids(&hits), ["Projects/kknow"]);
+    }
+
+    #[test]
+    fn tag_prefix_works_inside_a_field() {
+        let index = sample();
+
+        // The «Tags» chip of the palette sends the text in this form.
+        assert_eq!(ids(&index.search("tag:(ru)", 10).unwrap()), ["Projects/kknow"]);
+        assert_eq!(ids(&index.search("tag:дне", 10).unwrap()), ["Daily/2026-07-26"]);
+        // The prefix stays in the field: «Rust» has the word in the title only.
+        assert!(index.search("tag:(язы проекты)", 10).unwrap().is_empty());
+        assert_eq!(
+            ids(&index.search("tag:(rust прое)", 10).unwrap()),
+            ["Projects/kknow"]
+        );
     }
 
     #[test]

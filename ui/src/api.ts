@@ -24,6 +24,7 @@ import type {
   KeymapView,
   LinkRef,
   MarkdownAssociation,
+  McpStatus,
   NoteLabel,
   NoteSummary,
   Opened,
@@ -69,6 +70,7 @@ export type {
   KeymapView,
   LinkRef,
   MarkdownAssociation,
+  McpStatus,
   NoteLabel,
   NoteSummary,
   Opened,
@@ -159,6 +161,9 @@ export const api = {
     invoke<VaultView[]>("rename_vault", { id, name }),
   setVaultColor: (id: string, color: string) =>
     invoke<VaultView[]>("set_vault_color", { id, color }),
+  /** Replaces the text labels; the reply has them in the clean form. */
+  setVaultLabels: (id: string, labels: string[]) =>
+    invoke<VaultView[]>("set_vault_labels", { id, labels }),
   vaultStats: (vault?: string) =>
     invoke<VaultStats>("vault_stats", { vault: vault ?? null }),
   /** Opens the settings window at the given section. */
@@ -271,8 +276,9 @@ export const api = {
   search: (query: string, limit?: number) =>
     invoke<SearchResult[]>("search", { query, limit }),
   /** Searches all vaults at once; each hit knows its vault. */
-  searchAll: (query: string, limit?: number) =>
-    invoke<GlobalResult[]>("search_all", { query, limit }),
+  /** `vaults` narrows the search to these ids: the label filter of the sidebar. */
+  searchAll: (query: string, limit?: number, vaults?: string[]) =>
+    invoke<GlobalResult[]>("search_all", { query, limit, vaults: vaults ?? null }),
 
   listThemes: (vault?: string) => invoke<ThemeSet>("list_themes", { vault: vault ?? null }),
   /** Copies a vault theme to the global folder, so all vaults see it. */
@@ -280,6 +286,11 @@ export const api = {
     invoke<void>("share_theme", { id, vault: vault ?? null }),
   /** Reveals the global theme folder in the file manager; creates it if missing. */
   revealThemes: () => invoke<void>("reveal_themes"),
+  /** The MCP server of the app: on or off, the port, the token. */
+  mcpStatus: () => invoke<McpStatus>("mcp_status"),
+  /** Saves the server settings and starts it again; a busy port comes back
+   *  in the status, not as an error. */
+  setMcp: (enabled: boolean, port: number) => invoke<McpStatus>("set_mcp", { enabled, port }),
 
   /** Commands that apply to the target, for its menu. */
   listCommands: (target: CommandTarget) =>

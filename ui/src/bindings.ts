@@ -260,6 +260,23 @@ current: string | null,
 ours: boolean, };
 
 /**
+ * What the window shows about the server.
+ */
+export type McpStatus = { enabled: boolean, port: number, 
+/**
+ * The server listens now.
+ */
+running: boolean, 
+/**
+ * Why the server does not listen, for example a port in use.
+ */
+error: string | null, 
+/**
+ * For the setup snippets: the agent sends it in `Authorization`.
+ */
+token: string, };
+
+/**
  * What the note tree shows for a note.
  */
 export type NoteLabel = "title" | "file";
@@ -555,7 +572,11 @@ export type VaultStats = { notes: number, folders: number, bytes: number, };
  * There is no note count here: it needs the vault to be opened and parsed,
  * and the list must show at once on the first click.
  */
-export type VaultView = { id: string, name: string, path: string, color: string, active: boolean, 
+export type VaultView = { id: string, name: string, path: string, color: string, 
+/**
+ * Text labels: `kknow mcp --label` takes vaults by them.
+ */
+labels: Array<string>, active: boolean, 
 /**
  * The folder exists. An external disk can be disconnected.
  */

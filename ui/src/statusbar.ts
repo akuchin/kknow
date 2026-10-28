@@ -6,7 +6,7 @@
  * the name because it belongs to the vault, not the window), and the message.
  * The right side is about the note and the window: the downloaded update, the
  * last command result, problems in other vaults, words, the font size of the note, the line
- * numbers toggle, and one button for theme, language and settings.
+ * numbers toggle, the MCP lamp, and one button for theme, language and settings.
  *
  * The full file path is gone: the header shows the folder, and "Reveal in
  * Finder" and "Copy path" are in the note menu. The path was the longest
@@ -45,6 +45,8 @@ export interface StatusBarActions {
   scale: (steps: number) => void;
   /** Line numbers in the editor gutter: on or off. */
   lines: () => void;
+  /** MCP lamp: show or hide how to connect an agent. */
+  mcp: () => void;
   /** Theme, language and settings in one menu. */
   more: (anchor: HTMLElement) => void;
 }
@@ -68,6 +70,7 @@ export class StatusBar {
   private readonly scaleLarger: HTMLButtonElement;
   private readonly scaleValue: HTMLButtonElement;
   private readonly lines: HTMLButtonElement;
+  private readonly mcp: HTMLButtonElement;
   /** Current scale in percents: the slider moves by steps from it. */
   private scalePercent = 100;
 
@@ -101,6 +104,9 @@ export class StatusBar {
       <button class="status-item" id="status-lines" aria-pressed="false">
         ${iconMarkup("lineNumbers")}
       </button>
+      <button class="status-item" id="status-mcp" aria-expanded="false" data-tone="off">
+        <span class="status-dot"></span><span>MCP</span>
+      </button>
       <button class="status-item" id="status-more" aria-haspopup="menu">
         ${iconMarkup("gear")}
       </button>
@@ -127,6 +133,7 @@ export class StatusBar {
     this.scaleLarger = pick("#status-scale-larger");
     this.scaleValue = pick("#status-scale-value");
     this.lines = pick("#status-lines");
+    this.mcp = pick("#status-mcp");
     const more = pick<HTMLButtonElement>("#status-more");
 
     this.vault.onclick = () => actions.vault(this.vault);
@@ -138,6 +145,7 @@ export class StatusBar {
     this.scaleLarger.onclick = () => actions.scale(1);
     this.scaleValue.onclick = () => actions.scale(0);
     this.lines.onclick = () => actions.lines();
+    this.mcp.onclick = () => actions.mcp();
     // The slider sends the difference in steps: 0 would mean "reset".
     this.scaleSlider.oninput = () => {
       const steps = Math.round(
@@ -162,6 +170,7 @@ export class StatusBar {
     this.sync.setAttribute("aria-label", t("panel.sync.title"));
     this.setWords(0);
     this.setLineNumbers(false);
+    this.setMcp(null);
   }
 
   setVault(name: string | null, color = "blue"): void {
@@ -280,6 +289,23 @@ export class StatusBar {
     const label = t(on ? "statusbar.lines.hide" : "statusbar.lines.show");
     this.lines.title = label;
     this.lines.setAttribute("aria-label", label);
+  }
+
+  /**
+   * MCP lamp, as on a dashboard: green while the server of the app listens,
+   * red when it could not start (a port in use), gray when it is off. `null`
+   * is the state before the first answer of the core.
+   */
+  setMcp(status: { enabled: boolean; running: boolean } | null): void {
+    const tone = !status || !status.enabled ? "off" : status.running ? "ready" : "error";
+    this.mcp.dataset.tone = tone;
+    this.mcp.title = t(`statusbar.mcp.${tone}`);
+  }
+
+  /** The lamp is a toggle, so it shows whether the setup is open. */
+  setMcpOpen(open: boolean): void {
+    this.mcp.setAttribute("aria-expanded", String(open));
+    this.mcp.dataset.open = String(open);
   }
 }
 

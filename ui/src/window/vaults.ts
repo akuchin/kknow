@@ -133,6 +133,8 @@ export function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("menu.vault.settings"),
           glyph: "gear",
+          // The labels are set there, so the item shows them.
+          detail: entry.labels.map((label) => `#${label}`).join(" ") || undefined,
           action: "settings.open",
           run: () => void openSettings("vaults"),
         },
@@ -286,6 +288,22 @@ export async function switchVault(id: string): Promise<void> {
     await useVault(info);
   } catch (error) {
     fail(error);
+  }
+}
+
+/**
+ * Reads the vault list when the window gets the focus back. Names, colors and
+ * labels change in the settings window, and that window does not tell this
+ * one. The tree redraws only if the list differs.
+ */
+export async function refreshVaultsOnFocus(): Promise<void> {
+  try {
+    const fresh = await api.listVaults();
+    if (JSON.stringify(fresh) === JSON.stringify(state.vaults)) return;
+    state.setVaults(fresh);
+    renderTree();
+  } catch (error) {
+    console.error(error);
   }
 }
 

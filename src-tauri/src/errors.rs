@@ -91,6 +91,14 @@ fn app(error: &kknow_app::Error) -> Coded {
             "notATask",
             vec![("value", id.to_string()), ("line", line.to_string())],
         ),
+        E::NotAnAgentComment(id, line, text) => (
+            "notAnAgentComment",
+            vec![
+                ("value", id.to_string()),
+                ("line", line.to_string()),
+                ("other", text.clone()),
+            ],
+        ),
         E::UnknownVault(id) => value("unknownVault", id),
         E::UnknownTarget(id) => value("unknownTarget", id),
         E::NotADirectory(path) => value("notADirectory", path.display()),

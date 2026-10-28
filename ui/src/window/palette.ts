@@ -17,7 +17,7 @@ import { goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark
 import { changeCurrentScale, openFound, openNote, setMode, travel } from "./note";
 import { state } from "./state";
 import { runSync } from "./sync";
-import { activeNotes, toggleSidebar } from "./tree";
+import { activeNotes, filteredVaults, pickedLabelsText, toggleSidebar } from "./tree";
 import { openSettings } from "./util";
 import { reloadVault, switchVault } from "./vaults";
 
@@ -53,7 +53,10 @@ export function initPalette(): void {
   palette = new Palette({
     // Search all vaults at once: the user wants the note, the vault is secondary.
     // The active vault comes first; results from others carry their vault label.
-    search: (query) => api.searchAll(query),
+    // The label filter of the sidebar narrows the search too: the user picked
+    // a group of vaults to work in.
+    search: (query) => api.searchAll(query, undefined, filteredVaults() ?? undefined),
+    scope: () => pickedLabelsText(),
     bookmarks: () => (state.vault ? api.listBookmarks() : Promise.resolve([])),
     openBookmark: (id, line) => void openBookmark(id, line),
     tasks: () => (state.vault ? api.listTasks() : Promise.resolve([])),

@@ -36,6 +36,8 @@ blake3 = "1"
 ts-rs = { version = "12", features = ["no-serde-warnings"] }
 opendal = { version = "0.57", features = ["services-s3", "blocking"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# The MCP server of the app: a small blocking HTTP server for one local client.
+tiny_http = "0.12"
 
 [profile.release]
 lto = "thin"

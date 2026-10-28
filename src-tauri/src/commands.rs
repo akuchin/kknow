@@ -43,6 +43,8 @@ pub struct VaultView {
     name: String,
     path: String,
     color: String,
+    /// Text labels: `kknow mcp --label` takes vaults by them.
+    labels: Vec<String>,
     active: bool,
     /// The folder exists. An external disk can be disconnected.
     available: bool,
@@ -179,6 +181,7 @@ fn view(entry: &VaultEntry, active: Option<&str>) -> VaultView {
         name: entry.name.clone(),
         path: entry.path.to_string_lossy().into_owned(),
         color: entry.color.as_str().to_string(),
+        labels: entry.labels.clone(),
     }
 }
 
@@ -327,6 +330,18 @@ pub fn set_vault_color(
     Ok(list_vaults(state))
 }
 
+/// Replaces the text labels of a vault. The core cleans them, so the reply
+/// has the stored form: `#Work` comes back as `work`.
+#[tauri::command(async)]
+pub fn set_vault_labels(
+    state: State<'_, AppState>,
+    id: String,
+    labels: Vec<String>,
+) -> Result<Vec<VaultView>> {
+    state.set_labels(&id, &labels)?;
+    Ok(list_vaults(state))
+}
+
 /// Vault totals: notes, folders and bytes.
 ///
 /// It counts from the open vault. So the first visit to the settings of another
@@ -383,11 +398,16 @@ pub fn search(
 /// index, so scores from different vaults are not comparable.
 /// An unavailable vault (disk disconnected) is skipped: results from the
 /// others matter more than an error about one.
+///
+/// `vaults` narrows the search to these ids: the label filter of the sidebar.
+/// The other vaults are not even opened, so a hidden large vault costs no
+/// indexing.
 #[tauri::command(async)]
 pub fn search_all(
     state: State<'_, AppState>,
     query: String,
     limit: Option<usize>,
+    vaults: Option<Vec<String>>,
 ) -> Result<Vec<GlobalResult>> {
     // The limit is per vault, not for the whole response. Otherwise one large
     // vault fills the list, and the others get no place.
@@ -396,6 +416,9 @@ pub fn search_all(
 
     for entry in state.search_order() {
         if !entry.available() {
+            continue;
+        }
+        if vaults.as_ref().is_some_and(|ids| !ids.contains(&entry.id)) {
             continue;
         }
 
@@ -1590,7 +1613,7 @@ mod tests {
         )
         .unwrap();
 
-        let found = search_all(app.state(), "компиляторы".into(), None).unwrap();
+        let found = search_all(app.state(), "компиляторы".into(), None, None).unwrap();
 
         assert_eq!(found.len(), 2, "находки из обоих хранилищ");
         // The active vault comes first. Scores from different indexes are not
@@ -1600,6 +1623,12 @@ mod tests {
         assert_eq!(found[1].vault, ids[1]);
         assert_eq!(found[1].id, "Смета");
         assert!(!found[1].vault_name.is_empty());
+
+        // The label filter of the sidebar: only the listed vaults.
+        let found =
+            search_all(app.state(), "компиляторы".into(), None, Some(vec![ids[1].clone()])).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].vault, ids[1]);
     }
 
     #[test]
@@ -1615,7 +1644,7 @@ mod tests {
             .collect();
 
         assert!(state.opened(&ids[1]).is_none(), "второе ещё не открывали");
-        search_all(app.state(), "расходы".into(), None).unwrap();
+        search_all(app.state(), "расходы".into(), None, None).unwrap();
 
         assert!(state.opened(&ids[1]).is_some(), "поиск открыл его сам");
     }

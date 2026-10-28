@@ -141,6 +141,22 @@ pub struct Task {
     pub span: Range<usize>,
 }
 
+/// A comment for an agent: `<!-- @agent «words»: text -->`.
+///
+/// The parse keeps where the comment is, so an agent can find the task in
+/// the file and remove the comment when the task is done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentComment {
+    /// The words the comment is about. Empty for a comment on a paragraph.
+    pub anchor: String,
+    /// The task text.
+    pub text: String,
+    /// 1-based source line, frontmatter included.
+    pub line: usize,
+    /// The whole `<!-- … -->` in the source.
+    pub span: Range<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedNote {
     pub frontmatter: Option<Frontmatter>,
@@ -150,6 +166,8 @@ pub struct ParsedNote {
     pub tags: Vec<Tag>,
     /// Task list items in source order.
     pub tasks: Vec<Task>,
+    /// Comments for an agent in source order.
+    pub agent_comments: Vec<AgentComment>,
     /// Scalar metadata: frontmatter fields and the same as
     /// `<!-- key: value -->` comments. A note uses them to pass parameters to
     /// its commands, for example an export page id.
@@ -205,6 +223,7 @@ pub fn parse(source: &str) -> ParsedNote {
     let mut heading: Option<(u8, Range<usize>, String)> = None;
     let mut link: Option<(String, Range<usize>, String)> = None;
     let mut tasks = Vec::new();
+    let mut agent_comments = Vec::new();
     // The task whose text is being collected.
     let mut task: Option<Task> = None;
     let mut lines = LineCounter::new(source);
@@ -256,7 +275,18 @@ pub fn parse(source: &str) -> ParsedNote {
             // It is parsed after the walk, not here: the parser gives a
             // multi-line comment as **several** events, one per line, and
             // `<!--` and `-->` end up in different events.
+            //
+            // An agent comment is one line, so it is always one event.
             Event::Html(html) | Event::InlineHtml(html) => {
+                if let Some(note) = agent_note::parse(&html) {
+                    let start = range.start + (html.len() - html.trim_start().len());
+                    agent_comments.push(AgentComment {
+                        anchor: note.anchor.to_string(),
+                        text: note.text.to_string(),
+                        line: lines.line_at(start),
+                        span: start..start + html.trim().len(),
+                    });
+                }
                 raw_html.push_str(&html);
                 skip.push(range);
             }
@@ -319,6 +349,7 @@ pub fn parse(source: &str) -> ParsedNote {
         markdown_links,
         tags: tag::scan(source, &tag_skip),
         tasks,
+        agent_comments,
         fields,
         text: unwrap_wiki_links(&text),
     }
@@ -339,6 +370,35 @@ pub fn set_task(source: &str, line: usize, done: bool) -> Option<String> {
         task.span.start + 1..task.span.end - 1,
         if done { "x" } else { " " },
     );
+    Some(out)
+}
+
+/// Removes the agent comment with the task `text` on 1-based line `line` and
+/// returns the new text.
+///
+/// `None` means the line has no such comment: the file can change after the
+/// caller got the line. The text is part of the key, because one line can
+/// have several comments. A comment alone on its line goes away with its
+/// line, so no empty line stays in the file.
+pub fn remove_agent_comment(source: &str, line: usize, text: &str) -> Option<String> {
+    let comment = parse(source)
+        .agent_comments
+        .into_iter()
+        .find(|comment| comment.line == line && comment.text == text.trim())?;
+    let line_start = source[..comment.span.start]
+        .rfind('\n')
+        .map_or(0, |at| at + 1);
+    let line_end = source[comment.span.end..]
+        .find('\n')
+        .map_or(source.len(), |at| comment.span.end + at + 1);
+    let alone = source[line_start..comment.span.start].trim().is_empty()
+        && source[comment.span.end..line_end].trim().is_empty();
+    let mut out = source.to_string();
+    if alone {
+        out.replace_range(line_start..line_end, "");
+    } else {
+        out.replace_range(comment.span.clone(), "");
+    }
     Some(out)
 }
 
@@ -730,5 +790,84 @@ mod tests {
         assert_eq!(set_task(source, 1, true), None, "заголовок не задача");
         assert_eq!(set_task(source, 6, true), None, "пример в коде не задача");
         assert_eq!(set_task(source, 40, true), None, "такой строки нет");
+    }
+
+    #[test]
+    fn collects_agent_comments_with_lines_and_spans() {
+        let source = "---\na: 1\n---\n# План\n\nПоиск быстрый<!-- @agent «быстрый»: замерить -->.\n\nАбзац целиком.<!-- @agent: сократить -->\n<!-- просто комментарий -->\n";
+        let note = parse(source);
+
+        let found: Vec<(usize, &str, &str)> = note
+            .agent_comments
+            .iter()
+            .map(|comment| (comment.line, comment.anchor.as_str(), comment.text.as_str()))
+            .collect();
+        assert_eq!(found, [(6, "быстрый", "замерить"), (8, "", "сократить")]);
+        assert_eq!(
+            &source[note.agent_comments[0].span.clone()],
+            "<!-- @agent «быстрый»: замерить -->"
+        );
+    }
+
+    #[test]
+    fn agent_comment_in_code_is_an_example() {
+        let note = parse("```\nтекст<!-- @agent: пример -->\n```\n\n`<!-- @agent: тоже -->`\n");
+
+        assert!(note.agent_comments.is_empty(), "{:?}", note.agent_comments);
+    }
+
+    #[test]
+    fn a_comment_on_its_own_line_is_found() {
+        let note = parse("# Т\n\n<!-- @agent: проверить ссылки -->\n\nтекст\n");
+
+        assert_eq!(note.agent_comments.len(), 1);
+        assert_eq!(note.agent_comments[0].line, 3);
+        assert_eq!(note.agent_comments[0].text, "проверить ссылки");
+    }
+
+    #[test]
+    fn remove_agent_comment_keeps_the_words() {
+        let source = "Поиск быстрый<!-- @agent «быстрый»: замерить -->.\n";
+
+        assert_eq!(
+            remove_agent_comment(source, 1, "замерить").as_deref(),
+            Some("Поиск быстрый.\n")
+        );
+    }
+
+    #[test]
+    fn remove_agent_comment_takes_a_lone_line_with_it() {
+        let source = "# Т\n\n<!-- @agent: проверить -->\n\nтекст\n";
+
+        assert_eq!(
+            remove_agent_comment(source, 3, "проверить").as_deref(),
+            Some("# Т\n\n\nтекст\n")
+        );
+    }
+
+    #[test]
+    fn remove_agent_comment_picks_the_comment_by_text() {
+        let source = "а<!-- @agent «а»: раз --> б<!-- @agent «б»: два -->\n";
+
+        assert_eq!(
+            remove_agent_comment(source, 1, "два").as_deref(),
+            Some("а<!-- @agent «а»: раз --> б\n")
+        );
+    }
+
+    #[test]
+    fn remove_agent_comment_refuses_a_stale_place() {
+        let source = "текст<!-- @agent: задача -->\n";
+
+        assert_eq!(
+            remove_agent_comment(source, 2, "задача"),
+            None,
+            "не та строка"
+        );
+        assert_eq!(
+            remove_agent_comment(source, 1, "другая"),
+            None,
+            "не тот текст"
+        );
     }
 }

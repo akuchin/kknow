@@ -13,6 +13,7 @@ import { pickFile } from "./files";
 import { toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, flushPendingSave, setMode, travel } from "./note";
 import { previewNotes, showNotesFloat, tableNotes } from "./notes-float";
+import { mcpFloat, showMcpSetup } from "./mcp";
 import { palette } from "./palette";
 import { state } from "./state";
 import { runSync } from "./sync";
@@ -66,6 +67,11 @@ export function initKeys(): void {
     if (matches(event, "cancel") && !el.runFloat.hidden) {
       event.preventDefault();
       showRunOutput(false);
+      return;
+    }
+    if (matches(event, "cancel") && !mcpFloat.hidden) {
+      event.preventDefault();
+      showMcpSetup(false);
       return;
     }
     if (matches(event, "cancel") && !el.notesFloat.hidden) {

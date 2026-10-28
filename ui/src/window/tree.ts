@@ -16,6 +16,7 @@ import {
 import { icon } from "../icons";
 import { locale, t } from "../i18n";
 import { buildTree, fileName, type Folder } from "../tree-model";
+import { filterVaults, labelsOf, livePicks } from "../vault-labels";
 import { app, el } from "./dom";
 import { openFound } from "./note";
 import { emptyItem, markActive, rowActions, rowMenu } from "./rows";
@@ -105,10 +106,61 @@ export function renderTree(): void {
     return;
   }
 
-  el.noteList.append(...state.vaults.map(vaultItem));
+  renderLabelFilter();
+  el.noteList.append(...shownVaults().map(vaultItem));
   // While a trash note covers the open note, only the trash note is marked.
   markActive(viewingTrash() ? null : (state.note?.id ?? null));
   markTrashViewing();
+}
+
+/** The picked labels of the filter; they persist between runs. */
+const LABEL_FILTER = "kknow:labels:filter";
+let pickedLabels = readList(LABEL_FILTER);
+
+/**
+ * The vaults the label filter leaves, all of them with no filter. A label can
+ * go away in the settings: then it no longer filters.
+ */
+function shownVaults(): VaultView[] {
+  pickedLabels = livePicks(pickedLabels, state.vaults);
+  return filterVaults(state.vaults, pickedLabels, state.vault?.id ?? null);
+}
+
+/** Ids for the palette search, or `null` with no filter: then all vaults. */
+export function filteredVaults(): string[] | null {
+  return pickedLabels.length === 0 ? null : shownVaults().map((entry) => entry.id);
+}
+
+/** The picked labels as text for the palette: `#work, #ai`. Empty with no filter. */
+export function pickedLabelsText(): string {
+  return pickedLabels.map((label) => `#${label}`).join(", ");
+}
+
+/**
+ * The row of labels above the tree. A click picks a label or drops it; with
+ * several picked, a vault with any of them stays, as in the MCP float.
+ */
+function renderLabelFilter(): void {
+  const labels = labelsOf(state.vaults);
+  el.labelFilter.hidden = labels.length === 0;
+  el.labelFilter.replaceChildren(
+    ...labels.map((label) => {
+      const chip = document.createElement("button");
+      chip.className = "label-chip";
+      chip.setAttribute("role", "checkbox");
+      chip.setAttribute("aria-checked", String(pickedLabels.includes(label)));
+      chip.textContent = `#${label}`;
+      chip.title = t("sidebar.labels.pick", { label });
+      chip.onclick = () => {
+        pickedLabels = pickedLabels.includes(label)
+          ? pickedLabels.filter((other) => other !== label)
+          : [...pickedLabels, label];
+        localStorage.setItem(LABEL_FILTER, JSON.stringify(pickedLabels));
+        renderTree();
+      };
+      return chip;
+    }),
+  );
 }
 
 /**
@@ -172,6 +224,11 @@ function vaultItem(entry: VaultView): HTMLLIElement {
   button.title = entry.available
     ? t(open ? "sidebar.vault.collapse" : "sidebar.vault.expand", { name: entry.name })
     : t("menu.vault.missing");
+  // The labels of a vault are not on its row: the filter row lists them all
+  // once. The tooltip tells which ones this vault has.
+  if (entry.labels.length > 0) {
+    button.title += `\n${entry.labels.map((label) => `#${label}`).join(" ")}`;
+  }
   button.onclick = () => void toggleVault(entry);
 
   const arrow = icon("chevron");

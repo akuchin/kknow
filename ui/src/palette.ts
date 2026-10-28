@@ -63,6 +63,8 @@ export interface PaletteAction {
 export interface PaletteHost {
   /** Searches all vaults at once; each hit knows its vault. */
   search(query: string): Promise<GlobalResult[]>;
+  /** The labels that narrow the search, as text; empty when nothing does. */
+  scope(): string;
   /** Recently opened notes, shown instead of hits when the field is empty. */
   recent(): NoteSummary[];
   /** Note count of the active vault: the right number in the footer. */
@@ -337,7 +339,7 @@ export class Palette {
           snippet: hit.snippet,
           vault: { id: hit.vault, name: hit.vaultName, color: hit.color },
         })),
-        t("palette.results", { query: text }),
+        this.resultsTitle(text),
         nameable(text) ? t("palette.empty", { key: shortcut("submit") }) : t("palette.emptyPlain"),
         "found",
       );
@@ -346,7 +348,7 @@ export class Palette {
       // nothing to search. The window status bar is too far from the eyes.
       window.clearTimeout(this.working);
       if (ticket !== this.issued) return;
-      this.show([], t("palette.results", { query: text }), t("palette.broken"), "found");
+      this.show([], this.resultsTitle(text), t("palette.broken"), "found");
     }
   }
 
@@ -456,12 +458,20 @@ export class Palette {
     );
   }
 
+  /** "Results for …", with the labels of the sidebar filter if it is on. */
+  private resultsTitle(text: string): string {
+    const labels = this.host.scope();
+    return labels
+      ? t("palette.results.labels", { query: text, labels })
+      : t("palette.results", { query: text });
+  }
+
   /** Shows that the palette is busy while the core opens vaults. */
   private showWorking(text: string): void {
     this.list.replaceChildren();
     this.message.textContent = t("palette.working");
     this.message.hidden = false;
-    this.label.textContent = t("palette.results", { query: text });
+    this.label.textContent = this.resultsTitle(text);
     this.count.textContent = "";
   }
 

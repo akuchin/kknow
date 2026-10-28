@@ -7,7 +7,9 @@ pub mod bookmarks;
 pub mod commands;
 pub mod files;
 pub mod keymap;
+pub mod mcp;
 pub mod settings;
+pub mod text;
 pub mod theme;
 pub mod vaults;
 pub mod watch;
@@ -17,7 +19,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use kknow_core::{Note, NoteId, Trash, Vault};
-use kknow_index::{Edge, LinkGraph, ParsedNote, Relink, Resolver, SearchHit, SearchIndex, Task};
+use kknow_index::{
+    AgentComment, Edge, LinkGraph, ParsedNote, Relink, Resolver, SearchHit, SearchIndex, Task,
+};
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Plan as SyncPlan, Report as SyncReport, Staged, SyncEngine,
     SyncProvider,
@@ -54,6 +58,9 @@ pub enum Error {
 
     #[error("в {0} на строке {1} нет задачи: заметка изменилась")]
     NotATask(NoteId, usize),
+
+    #[error("в {0} на строке {1} нет комментария «{2}»: заметка изменилась")]
+    NotAnAgentComment(NoteId, usize, String),
 
     #[error("хранилище не найдено: {0}")]
     UnknownVault(String),
@@ -572,6 +579,32 @@ impl Workspace {
         Ok(changed)
     }
 
+    /// Agent comments of all notes, sorted by note and then by line.
+    pub fn agent_comments(&self) -> Vec<(&NoteId, &AgentComment)> {
+        self.parsed
+            .iter()
+            .flat_map(|(id, note)| note.agent_comments.iter().map(move |comment| (id, comment)))
+            .collect()
+    }
+
+    /// Removes the agent comment with the task `text` from line `line`: the
+    /// agent did the task. Returns the new text.
+    ///
+    /// As with [`Workspace::set_task`], the text comes from disk, and a place
+    /// without the comment is an error, not a guess.
+    pub fn resolve_agent_comment(
+        &mut self,
+        id: &NoteId,
+        line: usize,
+        text: &str,
+    ) -> Result<String> {
+        let content = self.read(id)?;
+        let changed = kknow_index::parse::remove_agent_comment(&content, line, text)
+            .ok_or_else(|| Error::NotAnAgentComment(id.clone(), line, text.trim().to_string()))?;
+        self.save(id, &changed)?;
+        Ok(changed)
+    }
+
     /// Creates an empty note with a heading from its name.
     pub fn create(&mut self, raw_name: &str) -> Result<NoteId> {
         let id = NoteId::parse(raw_name).ok_or_else(|| Error::InvalidName(raw_name.to_string()))?;
@@ -892,6 +925,37 @@ mod tests {
             tasks,
             [("Index", 3, false), ("План", 3, true), ("План", 4, false)]
         );
+    }
+
+    #[test]
+    fn resolve_agent_comment_removes_it_from_the_file_and_the_parse() {
+        let (dir, mut workspace) = workspace();
+        let plan = NoteId::parse("План").unwrap();
+        workspace
+            .save(
+                &plan,
+                "# План\n\nПоиск быстрый<!-- @agent «быстрый»: замерить -->.\n",
+            )
+            .unwrap();
+        assert_eq!(workspace.agent_comments().len(), 1);
+
+        let error = workspace
+            .resolve_agent_comment(&plan, 3, "другое")
+            .unwrap_err();
+        assert!(
+            matches!(error, Error::NotAnAgentComment(_, 3, _)),
+            "{error}"
+        );
+
+        let content = workspace
+            .resolve_agent_comment(&plan, 3, "замерить")
+            .unwrap();
+        assert_eq!(content, "# План\n\nПоиск быстрый.\n");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("План.md")).unwrap(),
+            content
+        );
+        assert!(workspace.agent_comments().is_empty(), "разбор обновился");
     }
 
     #[test]

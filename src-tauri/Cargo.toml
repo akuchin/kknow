@@ -38,6 +38,8 @@ keyring = { version = "3", features = [
 tauri-plugin-updater = "2"
 # The image name comes percent-encoded in a header (`save_attachment`).
 percent-encoding = "2"
+# The MCP server for agents on 127.0.0.1 (`mcp_http.rs`).
+tiny_http.workspace = true
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

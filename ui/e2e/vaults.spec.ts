@@ -129,3 +129,115 @@ test("the chip reports a conflict in another vault and leads to it", async ({ pa
   await expect(page.locator("#palette")).toBeVisible();
   await expect(page.locator("#palette-input")).toHaveValue(t("statusbar.chip.query"));
 });
+
+test("the MCP lamp shows the server and its setup for the active vault", async ({ page }) => {
+  const lamp = page.locator("#status-mcp");
+  // The mock server listens on 7377.
+  await expect(lamp).toHaveAttribute("data-tone", "ready");
+
+  await lamp.click();
+  const float = page.locator("#mcp-float");
+  await expect(float).toBeVisible();
+  await expect(float.locator(".mcp-state")).toHaveText("работает: http://127.0.0.1:7377/mcp");
+  const token = "0123456789abcdef0123456789abcdef";
+  await expect(float.locator("pre").first()).toHaveText(
+    `claude mcp add --transport http kknow 'http://127.0.0.1:7377/mcp?vault=notes' --header 'Authorization: Bearer ${token}'`,
+  );
+
+  // Labels of the vault take all vaults with them.
+  await float.getByRole("checkbox", { name: "#work" }).click();
+  await float.getByRole("checkbox", { name: "#ai" }).click();
+  await expect(float.locator("pre").first()).toContainText(
+    "kknow-work-ai 'http://127.0.0.1:7377/mcp?label=work&label=ai'",
+  );
+  await expect(float.locator(".mcp-scope p")).toContainText("notes (мок), Work — ASW");
+
+  // A new port goes to the server and into the snippets.
+  await float.locator(".mcp-port input").fill("8123");
+  await float.locator(".mcp-port input").press("Enter");
+  await expect(float.locator(".mcp-state")).toHaveText("работает: http://127.0.0.1:8123/mcp");
+  await expect(float.locator("pre").first()).toContainText("127.0.0.1:8123");
+
+  // Off: the lamp goes gray.
+  await float.getByRole("switch").click();
+  await expect(float.locator(".mcp-state")).toHaveText("выключен");
+  await expect(lamp).toHaveAttribute("data-tone", "off");
+
+  await page.keyboard.press("Escape");
+  await expect(float).toBeHidden();
+  await expect(lamp).toHaveAttribute("data-open", "false");
+});
+
+test("the MCP float offers the labels of all vaults, the active ones first", async ({ page }) => {
+  await page.locator("#status-vault").click();
+  await menuItem(page, "Work — ASW").click();
+  await expect(page.locator("#status-vault")).toContainText("Work — ASW");
+
+  await page.locator("#status-mcp").click();
+  const float = page.locator("#mcp-float");
+  // Work — ASW has only #work; #ai comes from the other vault.
+  await expect(float.locator(".mcp-chip")).toHaveText([
+    t("panel.mcp.scope.vault"),
+    t("panel.mcp.scope.all"),
+    "#work",
+    "#ai",
+  ]);
+  await float.getByRole("checkbox", { name: "#ai" }).click();
+  await expect(float.locator(".mcp-scope p")).toContainText("notes (мок)");
+});
+
+test("the labels of a vault are chips, and labels of other vaults are offered", async ({ context }) => {
+  const settings = await context.newPage();
+  await settings.goto("/settings.html#vaults");
+  await settings.locator(".settings-vault", { hasText: "Work — ASW" }).click();
+  const labels = settings.locator(".settings-labels");
+  await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText(["#work"]);
+  await expect(labels.locator(".settings-label-offer")).toHaveText(["+#ai"]);
+
+  await labels.locator(".settings-label-offer").click();
+  await labels.locator("input").fill("личное");
+  await labels.locator("input").press("Enter");
+  await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText([
+    "#work",
+    "#ai",
+    "#личное",
+  ]);
+  await expect(labels.locator("input")).toBeFocused();
+
+  await labels.getByRole("button", { name: t("settings.vaults.labels.remove", { label: "work" }) }).click();
+  await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText(["#ai", "#личное"]);
+  // #work stays on the other vault, so it is offered back.
+  await expect(labels.locator(".settings-label-offer")).toHaveText(["+#work"]);
+  await settings.close();
+});
+
+test("the label filter narrows the tree and the search, and survives a reload", async ({ page }) => {
+  const filter = page.locator("#label-filter");
+  await expect(filter.getByRole("checkbox")).toHaveText(["#work", "#ai"]);
+  const vaultRows = page.locator(".vault-row");
+  await expect(vaultRows).toHaveCount(3);
+
+  // Only notes (мок) has #ai; Work — ASW goes away from the tree.
+  await filter.getByRole("checkbox", { name: "#ai" }).click();
+  await expect(vaultRows).toHaveCount(1);
+  await expect(page.locator('.vault-row[data-vault="work-asw"]')).toHaveCount(0);
+
+  // The palette searches the same vaults and says so.
+  await page.locator("#open-palette").click();
+  await page.locator("#palette-input").fill("Ретро");
+  await expect(page.locator("#palette")).toContainText(t("palette.results.labels", { query: "Ретро", labels: "#ai" }));
+  await expect(page.locator("#palette-results .palette-row")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // The pick is remembered.
+  await page.reload();
+  await expect(page.locator("#label-filter").getByRole("checkbox", { name: "#ai" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(page.locator(".vault-row")).toHaveCount(1);
+
+  // A second click drops the filter.
+  await page.locator("#label-filter").getByRole("checkbox", { name: "#ai" }).click();
+  await expect(page.locator(".vault-row")).toHaveCount(3);
+});

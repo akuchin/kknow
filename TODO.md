@@ -66,20 +66,23 @@ The plan for the redesign is closed. Its archive copy is
 
 ## Larger tasks
 
-- **Git as a sync provider.** This task waits on purpose. Git has commits,
-  branches and its own conflict model. It needs a different algorithm, not one
-  more implementation of the trait.
-- **Import CSS themes from other Markdown editors.** Such a theme is a CSS
-  (Cascading Style Sheets) file. The app can read the variable values from it
-  and not execute the other rules.
+These are the next large features, in this order:
+
+1. **E2E (end-to-end) encryption for sync.** The notes must not be on S3 as
+   plain text. The design has a place for it: a wrapper around the `get`/`put`
+   of the provider.
+2. **Import CSS themes from other Markdown editors** (for example, Obsidian).
+   Such a theme is a CSS (Cascading Style Sheets) file. The app reads only the
+   variable values from it and does not execute the other rules.
+3. **Git as a sync provider.** This task waits on purpose. Git has commits,
+   branches and its own conflict model. It needs a different algorithm, not one
+   more implementation of the trait.
 
 ## Postponed on purpose
 
 - General-purpose plugins through WASM (WebAssembly): `extism`/`wasmtime`.
 - CRDT (conflict-free replicated data type) merging: `automerge`.
 - Mobile platforms.
-- E2E (end-to-end) encryption for sync. The design has a place for it: a
-  wrapper around the `get`/`put` of the provider.
 - A persistent search index.
 - Full YAML (YAML Ain't Markup Language) parsing in frontmatter. The app reads
   scalar fields, and commands use them. It does not read nested mappings and

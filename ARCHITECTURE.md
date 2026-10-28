@@ -78,6 +78,7 @@ The window and the terminal share data in the app config directory
 - `settings.json` — app settings.
 - `commands.json` — commands.
 - `files.json` — standalone files that you opened without a vault.
+- `mcp.json` — the MCP server of the app: on or off, the port, the token.
 - `themes/*.json` — shared themes.
 
 ### Data flow on edit
@@ -150,7 +151,8 @@ External edit:
   highlights.
 - The watcher sends edits from outside the app to the parse, the graph and the
   search. You do not need to do anything.
-- `search_all` searches all vaults. Each hit knows its folder. A hit from a
+- `search_all` searches all vaults, or only the ones in `vaults` (the label
+  filter of the sidebar). Each hit knows its folder. A hit from a
   different vault shows the label of that vault. When you open such a hit, the
   window first switches the vault and then opens the note. `search_all` skips
   vaults that are not available. The hit limit (20) applies to each vault, not
@@ -235,6 +237,29 @@ External edit:
 - `kknow-app::vaults` is the registry of the folders that kknow knows. Each
   entry has a stable identifier, a name, a path, a label colour and a position.
   The sync configuration does not go into the registry. It stays in the folder.
+- An entry also has text labels (`labels`). They select vaults:
+  `kknow mcp --label work`. They are not the label colour: the colour is a
+  mark for the eye, and the labels are words for the command line.
+  - `clean_labels` keeps one form: no `#`, lower case, spaces become hyphens,
+    no repeats. A person types a label in two places (the settings and
+    `--label`), and `#Work` must find `work`.
+  - An empty list is not written (`skip_serializing_if`), and an old file
+    reads as empty. Thus the registry version stays 1.
+  - `with_labels` takes the vaults with at least one of the labels: repeated
+    `--label` means "both groups", not "only vaults in both".
+  - The window edits them in the settings as chips. The labels of the other
+    vaults are offered there, so a group keeps one spelling. The settings
+    window does not tell the main window about it, so the MCP float reads the
+    vault list itself on each open, and the main window reads it again on
+    focus (`refreshVaultsOnFocus`).
+  - In the main window the labels are a filter, not marks on rows: one row of
+    chips above the tree (`#label-filter`). A label on each vault row would
+    repeat the same words over the whole tree. The pure part is
+    `ui/src/vault-labels.ts`: several picked labels mean "any of them", as
+    with `--label`, and the active vault always stays, or the tree would hide
+    where the open note lives. The filter also narrows the palette search:
+    `search_all` takes the vault ids and does not open the others, so a
+    hidden large vault costs no indexing.
 - kknow canonicalizes the path when you add a vault. The registry refuses
   duplicates and folders inside each other (`NestedVault`). If a folder
   disappears, it stays in the list with the mark "unavailable".
@@ -725,6 +750,17 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - A different vault with a problem gets a chip, for example
     "Archive 2024 · conflict: 2 files". The chip has a "Resolve" and "Sync"
     menu.
+  - The MCP lamp (`ui/src/window/mcp.ts`) is a dot and "MCP", before the gear.
+    The setup of an agent must be easy to find, not only in the README.
+    - The lamp shows the HTTP server of the app (`mcp_status`): green when
+      it listens, gray when it is off, red when it could not start.
+    - A click opens a float in the corner of the command output, and the
+      two floats close each other. The float has the switch and the port
+      (`set_mcp`), the choice of vaults, a `claude mcp add --transport http`
+      command and a JSON block for `.mcp.json` and Cursor, each with a copy
+      button.
+    - The vault goes into the address by its ID, not by its name: a name can
+      change. The chosen labels go as repeated `label=`.
 - The window has one menu module (`ui/src/menu.ts`). It serves the vault
   switcher, the gear menu, the note menu, the tree-row menus and the editor
   context menu. Arrows, Home/End, Esc and Tab work in it. Esc and Tab close
@@ -1042,6 +1078,7 @@ The modules make layers. A module imports only from lower layers:
 | 4 | `sync.ts` | the sync panel, the status bar segment, the chip, the sync statuses |
 | 4 | `trash.ts` | the trash nodes and the read-only trash view |
 | 5 | `tree.ts` | the sidebar tree, collapsed and expanded branches, `reveal` |
+| 5 | `mcp.ts` | the MCP lamp in the status bar and its setup float |
 | 6 | `appearance.ts` | app settings, themes, the language, line numbers |
 | 6 | `edits.ts` | create, rename, move, duplicate and delete; the row menu; the new note form |
 | 7 | `vaults.ts` | the vault menu, a vault switch, rename, colour, forget, ⌘1…⌘9, edits from outside |
@@ -1053,7 +1090,8 @@ The modules make layers. A module imports only from lower layers:
 
 Pure modules outside `window/` hold the logic that has no DOM:
 `tree-model.ts` (the tree as data), `sync-text.ts` (the sync texts),
-`session.ts` (the autosave timer), `navigation.ts` (back and forward). They
+`session.ts` (the autosave timer), `navigation.ts` (back and forward),
+`mcp-setup.ts` (the MCP setup snippets). They
 get the language as a parameter, so `node --test` loads them without Vite.
 
 Rules:
@@ -1372,8 +1410,10 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   (someone edited the text by hand), a badge appears instead of the highlight.
   The instruction stays.
 - Parsing occurs in two places:
-  - `kknow-index/src/agent_note.rs` for the preview. The renderer gives
-    `<mark class="agent-note" title="…">` with escaped text.
+  - `kknow-index/src/agent_note.rs` for the preview and for the MCP server.
+    The renderer gives `<mark class="agent-note" title="…">` with escaped
+    text. The parse collects all comments with their lines
+    (`ParsedNote::agent_comments`) for `kknow mcp`.
   - `ui/src/agent-notes.ts` for the editor. The editor draws it itself, without
     a call to the core.
 
@@ -1752,6 +1792,8 @@ Commands:
     there. An empty name removes the name.
 - `tasks [--all]` prints open tasks as `note:line  text`. `--all` also
   prints done tasks, with `[x]` or `[ ]` before the text.
+- `mcp` is an MCP server on stdin and stdout (`crates/kknow-cli/src/mcp.rs`).
+  See "MCP server" below.
 
 - `sync` takes `--dry-run`, `--on-conflict both|local|remote`, and
   `--bucket …` or `--folder …`.
@@ -1766,6 +1808,81 @@ command. With a target, it prints only the commands for that target.
 `kknow run <command> [target]` returns the exit code of the command itself. On
 timeout the code is 124, as with `timeout(1)`. It does not mix the streams:
 output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
+
+### MCP server
+
+- The protocol is in `kknow-app::mcp`, without a transport: `handle` takes one
+  JSON-RPC 2.0 message and gives the reply. The tools see the vaults through
+  the `Host` trait. Two transports carry it:
+  - the app: HTTP on `127.0.0.1` (`src-tauri/src/mcp_http.rs`);
+  - the CLI: `kknow mcp` on stdin and stdout (`crates/kknow-cli/src/mcp.rs`).
+- The protocol is written by hand on `serde_json`. It needs `initialize`,
+  `ping`, `tools/list` and `tools/call`, and the SDK (`rmcp`) brings an async
+  runtime for a loop over messages. The server knows the protocol versions in
+  `VERSIONS`. It answers with the version of the client if it knows it, and
+  else with the newest one.
+- **The main way is HTTP in the app.** Before, the agent had to start
+  `kknow mcp`, and a person had to install the CLI next to the app. On macOS
+  the cask has only the app, so the setup needed a second package. Now the
+  agent needs only an address and a token.
+  - The server uses the vaults of the window: the same `VaultSlot`s and
+    indexes. There is no second index in memory. The first request to a
+    closed vault opens it, as a search does.
+  - The write of a tool goes through the same `Workspace` as the window. The
+    watcher takes it for our own write and stays quiet, so `Host::changed`
+    sends `vault-changed` itself. Otherwise the open note would show the old
+    text.
+  - It works only while the app runs. The lamp says that honestly.
+  - `tiny_http`: a small blocking server on one thread. The requests come one
+    at a time from one local client, and an async server would bring tokio
+    into the window for nothing.
+  - Of Streamable HTTP, the server uses the simple part: a POST with a
+    message (or a batch) gets one JSON reply, a notification gets 202. There
+    is no SSE stream (GET gets 405) and no session: the tools answer at once
+    and send nothing by themselves.
+  - Protection: the port is only on `127.0.0.1`; each request needs
+    `Authorization: Bearer <token>` (other programs and users of the machine
+    reach `127.0.0.1` too); `Host` and `Origin` must be ours, against DNS
+    rebinding. The token comparison takes constant time.
+  - The address picks the vaults: `?vault=<id>`, `?label=a&label=b` or
+    nothing (all). It is read on each request, so a new label works at once.
+  - The settings (`enabled`, `port`, `token`) are in `mcp.json`, not in
+    `AppSettings`. The settings window sends the whole `AppSettings` back on
+    each change, and its older copy would undo a port set in the MCP float.
+    The token is made once (`RandomState` keys come from the system random
+    source) and stays: a new token would break the agents set up before.
+  - A port in use is not an error of the app. `set_mcp` saves the setting,
+    and the status tells why the server does not listen.
+- **The CLI keeps the same server on stdio** for a machine without the
+  window. The agent starts `kknow mcp --vault …` or `--label …` as a child
+  process.
+  - stdout belongs to the protocol. Warnings go to stderr. One stray line on
+    stdout breaks the session.
+  - The process takes the vaults at the start. Before each request, it
+    applies the events of its watchers (`VaultWatcher::try_recv`).
+- With several vaults, each tool takes an optional `vault`, and each row
+  starts with `[vault]`. With one vault there is no prefix: the same word in
+  each row only costs the agent tokens.
+  - A note name in two vaults is an error that names the vaults. A guess
+    would change a note in the wrong vault.
+  - Search goes vault by vault in list order, `limit` per vault. The scores of
+    two indexes cannot be compared, as in the palette.
+- A tool that fails (no note, a stale line) is a usual result with
+  `isError: true`, not a JSON-RPC error. The agent reads the reason and tries
+  again. A call with an unknown tool or method is a JSON-RPC error.
+- Tool descriptions are in English: they are for the agent, as the protocol
+  is. The results are CLI output, so they are in Russian and use the same
+  rows as `kknow tasks` and `kknow backlinks` (`kknow_app::text`).
+- Agent comments come from the parse (`ParsedNote::agent_comments`), not from
+  a text search. The parser gives a comment as one HTML event, so a comment in
+  code is an example, as for tasks. `Workspace::resolve_agent_comment` works
+  as `set_task`: it reads the file again and finds the comment by its line
+  and its task text. One line can have several comments, so the line alone is
+  not a key. A comment alone on its line goes away with the line.
+- The server has no tool that writes note text. A wrong write loses the work
+  of a person, and an agent with file access can edit the file itself. Add a
+  write tool only together with a check against the version the agent read
+  (`save_if_unchanged`).
 
 ## Key decisions and their reasons
 

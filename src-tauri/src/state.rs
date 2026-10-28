@@ -314,6 +314,13 @@ impl AppState {
         Ok(())
     }
 
+    pub fn set_labels(&self, id: &str, labels: &[String]) -> Result<()> {
+        self.registry()
+            .set_labels(id, labels.iter().map(String::as_str))?;
+        self.persist();
+        Ok(())
+    }
+
     /// Vault by ID; `None` means the active vault. Opens a closed vault.
     pub fn slot(&self, id: Option<&str>) -> Result<Arc<VaultSlot>> {
         let entry = match id {
@@ -467,7 +474,7 @@ impl AppState {
 
 /// A poisoned mutex means a panic in another command. The state is not
 /// reliable, so we must not continue with it; same rule as for a vault.
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().expect("состояние испорчено")
 }
 
