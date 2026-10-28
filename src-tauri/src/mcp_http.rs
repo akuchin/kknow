@@ -183,6 +183,25 @@ fn stop(inner: &mut Inner) {
         if let Some(thread) = running.thread.take() {
             let _ = thread.join();
         }
+        let port = running.port;
+        drop(running);
+        wait_until_free(port);
+    }
+}
+
+/// Waits until the port is free, at most a second.
+///
+/// `tiny_http` closes the listening socket in its own accept thread after the
+/// `Server` is dropped, and does not wait for it. Without the wait, a restart
+/// on the same port could fail with "address in use", and the port would
+/// still answer for a moment after the switch is off. On Linux this moment is
+/// long enough to see.
+fn wait_until_free(port: u16) {
+    for _ in 0..100 {
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
