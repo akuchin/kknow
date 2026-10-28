@@ -1649,8 +1649,15 @@ img.note-image {
 /* The whole code block while the cursor is outside: the same as in the
    preview. Lines do not wrap, so ASCII diagrams stay aligned, and the block
    has a single scrollbar. */
+/* No vertical margins on block widgets: CodeMirror does not count them in its
+   height map, and clicks below the widget land on the wrong line. The space is
+   the padding of a wrapper. */
+.cm-code-widget {
+  padding: 8px 0;
+}
+
 .cm-code-block {
-  margin: 8px 0;
+  margin: 0;
   padding: 12px 14px;
   border-radius: 8px;
   background: var(--bg-soft);
@@ -1672,8 +1679,9 @@ img.note-image {
    must not move the table under the cursor. */
 .cm-table {
   position: relative;
-  margin: 4px 0;
-  padding-top: 24px;
+  /* Padding, not margin: see `.cm-code-widget`. 4px of space plus 24px for
+     the toolbar on top, 4px of space below. */
+  padding: 28px 0 4px;
   overflow-x: auto;
   /* People read and copy the table with the mouse. CodeMirror does not touch
      text selection inside the widget: it ignores events from here. */
@@ -1810,7 +1818,7 @@ img.note-image {
 
 .cm-table-tools {
   position: absolute;
-  top: 0;
+  top: 4px;
   right: 0;
   display: flex;
   gap: 4px;

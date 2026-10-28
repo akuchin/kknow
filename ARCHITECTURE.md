@@ -2048,6 +2048,14 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   about a scroll in a line. Thus the caret moved to the wrong place. A widget
   gives the scroll to the browser. It also gives one scrollbar for each block,
   not one for each line.
+- **Block widgets have no vertical margins.** CodeMirror measures a widget
+  without its margins, so the margins are missing from its height map. Every
+  line below a code block or a table was lower on the screen than CodeMirror
+  thought, and a click landed on the next line. After you left a code block,
+  the error grew to about two lines. The space around a block is padding: the
+  code block has a wrapper `.cm-code-widget`, and the table and the diagram
+  have their own padding. The mock in Chromium did not show the error; the
+  window in WebKit did.
 - **Live preview decorations come from a state field, not from a view
   plugin.** CodeMirror needs this for anything that changes the block layout.
   If not, it cannot compute heights before it draws. The cost: kknow computes

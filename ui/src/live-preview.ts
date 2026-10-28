@@ -281,7 +281,15 @@ class CodeWidget extends WidgetType {
       if (draggedFrom(event)) return;
       editSource(view, box, clickedOffset(box, event));
     };
-    return box;
+
+    // The space around the block is the padding of a wrapper, not a margin of
+    // the block: CodeMirror measures a widget without its margins. The margins
+    // were missing from its height map, every line below a block was lower
+    // than CodeMirror thought, and a click landed on the line below.
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-code-widget";
+    wrapper.append(box);
+    return wrapper;
   }
 
   /** The browser handles selection and clicks inside the block, not CodeMirror. */
