@@ -2436,6 +2436,15 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   wait for output would then continue for exactly the time that we tried to
   limit. The cost was the `libc` crate and one `unsafe` for `killpg`. The
   standard library has no process groups.
+- **After the end of the process, the readers stop on silence, not on EOF.**
+  The kill does not reach a process outside the group, and such a process can
+  hold the write end of the pipe: a daemon that the command started in its own
+  group, or, on macOS, a process that another thread started while std was
+  between `pipe()` and `FD_CLOEXEC` (macOS has no `pipe2`). A wait for EOF
+  then lasts as long as that process lives; on CI a stopped `sleep 30` once
+  took all 30 seconds. So each reader `poll`s its pipe. After the end, it reads
+  while data comes and stops after 0.5 s of silence (`DRAIN`) or 5 s in all
+  (`DRAIN_LIMIT`). Data that is already in the pipe still comes.
 - **A broken commands file stays in its place.** kknow renames a vault registry
   with content that it cannot read to `.broken`. The app writes that file, and
   you lose nothing there. A person writes the commands file. It would be rude

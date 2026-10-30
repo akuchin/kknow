@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -255,6 +256,20 @@ const CAPTURE_LIMIT: usize = 64 * 1024;
 /// once, and a slow one does not cause a busy loop.
 const FIRST_POLL: Duration = Duration::from_millis(1);
 const MAX_POLL: Duration = Duration::from_millis(50);
+
+/// How long the output may stay silent after the process ended before the
+/// readers stop.
+///
+/// The end of the process is not the end of the pipe. A process outside the
+/// group can hold the write end: a daemon that the command started in its own
+/// group, or, on macOS, a process of another thread that got the pipe before
+/// std marked it close-on-exec (there is no `pipe2` there). The kill does not
+/// reach it, and a wait for EOF lasts as long as it lives. Output that is
+/// already in the pipe still comes: the readers stop only on silence.
+const DRAIN: Duration = Duration::from_millis(500);
+
+/// A stranger that does not stop printing does not hold the run either.
+const DRAIN_LIMIT: Duration = Duration::from_secs(5);
 
 /// The variables that the script sees.
 ///
@@ -521,10 +536,25 @@ fn wait(
 
     let out = child.stdout.take().expect("stdout запрошен трубой");
     let err = child.stderr.take().expect("stderr запрошен трубой");
+    let (out_pipe, err_pipe) = (Pipe::of(&out), Pipe::of(&err));
+    // When the process ended: from then on the readers stop on silence.
+    let ended = OnceLock::new();
 
     std::thread::scope(|scope| {
-        let reading_out = scope.spawn(|| capture(out, |line| (watch.line)(Stream::Stdout, line)));
-        let reading_err = scope.spawn(|| capture(err, |line| (watch.line)(Stream::Stderr, line)));
+        let reading_out = scope.spawn(|| {
+            capture(
+                out,
+                || out_pipe.has_more(&ended),
+                |line| (watch.line)(Stream::Stdout, line),
+            )
+        });
+        let reading_err = scope.spawn(|| {
+            capture(
+                err,
+                || err_pipe.has_more(&ended),
+                |line| (watch.line)(Stream::Stderr, line),
+            )
+        });
 
         let deadline = Instant::now() + timeout;
         let mut pause = FIRST_POLL;
@@ -548,6 +578,7 @@ fn wait(
             std::thread::sleep(pause);
             pause = (pause * 2).min(MAX_POLL);
         };
+        let _ = ended.set(Instant::now());
 
         // A panic in a reader thread means a bug in our code. Then the output
         // is empty, but we still return the command result.
@@ -584,6 +615,70 @@ fn kill(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
+/// The read end of an output pipe, for the check before each read.
+#[derive(Clone, Copy)]
+struct Pipe {
+    #[cfg(unix)]
+    fd: std::os::fd::RawFd,
+}
+
+impl Pipe {
+    #[cfg(unix)]
+    fn of(source: &impl std::os::fd::AsRawFd) -> Self {
+        Pipe {
+            fd: source.as_raw_fd(),
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn of<T>(_: &T) -> Self {
+        Pipe {}
+    }
+
+    /// Waits until the pipe has data or its end; then a read does not block.
+    /// `false` when the process ended and the pipe stays silent for [`DRAIN`],
+    /// or [`DRAIN_LIMIT`] passed: see [`DRAIN`] for who holds it then.
+    #[cfg(unix)]
+    fn has_more(self, ended: &OnceLock<Instant>) -> bool {
+        let mut silent_since = None;
+        loop {
+            if ended.get().is_some_and(|at| at.elapsed() >= DRAIN_LIMIT) {
+                return false;
+            }
+            let mut fd = libc::pollfd {
+                fd: self.fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: one valid `pollfd`; the scoped reader owns the fd for
+            // the whole call.
+            let ready = unsafe { libc::poll(&mut fd, 1, MAX_POLL.as_millis() as libc::c_int) };
+            if ready > 0 {
+                return true;
+            }
+            // An error other than a signal: the read tells what it is.
+            if ready < 0
+                && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+            {
+                return true;
+            }
+            if ended.get().is_none() {
+                continue;
+            }
+            let since = *silent_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= DRAIN {
+                return false;
+            }
+        }
+    }
+
+    /// Without `poll` the read waits for the end of the pipe, as before.
+    #[cfg(not(unix))]
+    fn has_more(self, _: &OnceLock<Instant>) -> bool {
+        true
+    }
+}
+
 /// Reads a stream to the end, keeps its start and gives each kept line to
 /// `line`.
 ///
@@ -594,14 +689,18 @@ fn kill(child: &mut std::process::Child) {
 /// very long line without an end cannot use up the memory, and the lines add
 /// up to exactly the text of the outcome. A line split by the cut or without
 /// a final line end comes at the end of the stream.
-fn capture(mut source: impl Read, line: impl Fn(&str)) -> (String, bool) {
+fn capture(
+    mut source: impl Read,
+    mut has_more: impl FnMut() -> bool,
+    line: impl Fn(&str),
+) -> (String, bool) {
     let mut kept: Vec<u8> = Vec::new();
     let mut buffer = [0u8; 8192];
     let mut truncated = false;
     // Where the next line starts in `kept`.
     let mut sent = 0;
 
-    loop {
+    while has_more() {
         let read = match source.read(&mut buffer) {
             Ok(0) => break,
             Ok(read) => read,
@@ -1008,6 +1107,56 @@ mod tests {
 
         assert!(outcome.stopped, "{outcome:?}");
         assert!(outcome.millis < 20_000, "{outcome:?}");
+    }
+
+    /// A process outside the group can hold the pipe: a daemon the command
+    /// started in its own group, or (on macOS) a process of another thread
+    /// that got the pipe end before it became close-on-exec. The kill does
+    /// not reach it, and the run must not wait for it.
+    #[cfg(unix)]
+    #[test]
+    fn a_stop_does_not_wait_for_a_stranger_that_holds_the_pipe() {
+        let stop = AtomicBool::new(false);
+        let dir = tempfile::tempdir().unwrap();
+        let watch = Watch {
+            line: &|_, text| {
+                if text == "начали" {
+                    stop.store(true, Ordering::Relaxed);
+                }
+            },
+            stop: &stop,
+        };
+
+        let outcome = run_watched(
+            // The stranger prints the line itself, so the stop comes only
+            // after it has left the group.
+            &spec(r#"perl -e '$| = 1; setpgrp(0, 0); print "начали\n"; sleep 20' & sleep 30"#),
+            &note(dir.path()),
+            &BTreeMap::new(),
+            &watch,
+        )
+        .unwrap();
+
+        assert!(outcome.stopped, "{outcome:?}");
+        assert!(outcome.millis < 10_000, "{outcome:?}");
+        assert_eq!(outcome.stdout, "начали\n");
+    }
+
+    /// Output that is in the pipe when the process ends still comes, and a
+    /// background child of the shell that prints soon after is not cut.
+    #[test]
+    fn the_end_of_the_process_does_not_cut_the_output() {
+        let stop = AtomicBool::new(false);
+
+        let (outcome, _) = watched("(sleep 0.2; echo поздно) & seq 1 5000", &stop);
+
+        assert!(outcome.ok(), "{outcome:?}");
+        assert!(
+            outcome.stdout.contains("\n5000\n"),
+            "{}",
+            outcome.stdout.len()
+        );
+        assert!(outcome.stdout.ends_with("поздно\n"), "{outcome:?}");
     }
 
     #[test]
