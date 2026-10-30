@@ -64,7 +64,7 @@ cargo test -p kknow-sync --test minio -- --ignored
 The documentation is a [VitePress](https://vitepress.dev) site in `site/`.
 
 ```bash
-pnpm docs:dev       # http://localhost:5173/kknow/
+pnpm docs:dev       # http://localhost:5173/
 pnpm docs:build
 ```
 

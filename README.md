@@ -7,7 +7,7 @@ Markdown files are the source of truth. A vault is an ordinary folder of `.md`
 files, and any editor can open it. All other data is a cache that kknow can
 build again. This data is the link graph, the search index and the sync state.
 
-The user documentation is at <https://akuchin.github.io/kknow/>. Its source is
+The user documentation is at <https://kknow.kuca.dev/>. Its source is
 in `site/`.
 
 ## Status

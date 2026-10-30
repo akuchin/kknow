@@ -1,9 +1,9 @@
 import { defineConfig } from "vitepress";
 
-// GitHub Pages serves the site from https://akuchin.github.io/kknow/,
-// so all links get the `/kknow/` prefix. `KKNOW_SITE_BASE` overrides it,
-// for example `/` for a custom domain.
-const base = process.env.KKNOW_SITE_BASE ?? "/kknow/";
+// GitHub Pages serves the site on the custom domain https://kknow.kuca.dev/,
+// from the root. Without the domain, Pages would serve it from
+// https://akuchin.github.io/kknow/: then set `KKNOW_SITE_BASE=/kknow/`.
+const base = process.env.KKNOW_SITE_BASE ?? "/";
 
 export default defineConfig({
   base,

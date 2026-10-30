@@ -1,7 +1,9 @@
 # Builds the documentation site (`site/`, VitePress) and publishes it to
-# GitHub Pages: https://akuchin.github.io/kknow/.
+# GitHub Pages: https://kknow.kuca.dev/.
 #
-# One time: Settings → Pages → Source: "GitHub Actions".
+# One time: Settings → Pages → Source: "GitHub Actions", and the custom domain
+# there. A deploy from Actions takes the domain from these settings, not from
+# a CNAME file.
 name: Docs
 
 on:
