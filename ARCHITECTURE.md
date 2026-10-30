@@ -467,6 +467,20 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 
   The file also has its own `env`. All commands get it, and the `env` of a
   command goes on top of it.
+- **A missing `commands.json` gives the shipped commands** (`spec::defaults`):
+  `confluence` and `agent`. Both `Manifest::load` and `CommandSet::load` give
+  them, so the window, the form and the CLI agree. kknow does not write the
+  file on a read. The first save in the form, "Reveal" and `kknow commands
+  --example` write it. After that the file is the only source: an empty list
+  is the choice of the user, and the defaults do not come back.
+- `agent` gives the `@agent` comments of a note to a coding agent. `AGENT` in
+  the `env` of the command picks the program: `claude` or `copilot`. It is a
+  variable, not two commands, because the task text is the same for both and
+  must stay in one place. The script is `sh`, not fish: a shipped command must
+  work on a machine without fish. Thus the script adds `~/.local/bin` and
+  `/opt/homebrew/bin` to `PATH` itself. Each agent gets only read and edit
+  (`--allowedTools "Read,Edit"`, `--allow-tool "write($KKNOW_PATH)"`), `cwd`
+  is the folder of the note, and `confirm` is on.
 - `kknow_run::Runner` is a trait with three methods: the kind name, the default
   program and the arguments around the script. Implementations: `shell`,
   `bash`, `fish`, `zsh`, `python`. `shell` is `sh`, not the shell of the user

@@ -1048,9 +1048,38 @@ find a problem in a command, for example a typo in the kind or an empty script.
 Then the form shows the problem next to the list, before the first run.
 
 kknow keeps all of this in `commands.json` next to the vault list. The file is
-still there. `kknow commands --example` writes a template. The "Reveal" button
-shows the file. You can still edit the file manually, because the form reads it
-each time it opens.
+still there. The "Reveal" button shows the file. You can still edit the file
+manually, because the form reads it each time it opens.
+
+### Commands that kknow ships
+
+If there is no `commands.json`, kknow gives two commands:
+
+- `confluence`, "Обновить страницу в Confluence". It runs
+  `confluence-tools replace` with the page number of the note (see "A per-file
+  parameter" below). It appears only on notes with the number.
+- `agent`, "Обработать комментарии агентом". It gives the comments
+  `<!-- @agent «words»: task -->` of the note to a coding agent. The agent
+  edits the note, removes each comment that it did, and replaces each comment
+  that it cannot do with `<!-- @agent-note: reason -->`. The command asks
+  before it runs.
+
+The variable `AGENT` in the `env` of the `agent` command selects the agent:
+
+- `claude` (the default): Claude Code, the `claude` program;
+- `copilot`: GitHub Copilot CLI, the `copilot` program.
+
+Each agent can only read files and edit files. To change the agent, change the
+value in the command form, or in the file:
+
+```json
+"env": { "AGENT": "copilot" }
+```
+
+The first save in the form writes the shipped commands to the file together
+with your changes. `kknow commands --example` and the "Reveal" button also
+write them. After that, the file is the only source. If you delete a shipped
+command, it does not come back.
 
 ```json
 {

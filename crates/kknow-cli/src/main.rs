@@ -104,7 +104,7 @@ enum Command {
         /// A markdown file outside any vault, as a note target.
         #[arg(long, conflicts_with_all = ["target", "kind"])]
         file: Option<PathBuf>,
-        /// Write an example file if it does not exist yet.
+        /// Write the shipped commands to the file if it does not exist yet.
         #[arg(long)]
         example: bool,
     },
@@ -981,10 +981,10 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
         if path.exists() {
             return Err(format!("файл уже есть: {}", path.display()));
         }
-        kknow_run::spec::example()
+        kknow_run::spec::defaults()
             .save(&path)
             .map_err(|error| error.to_string())?;
-        println!("заготовка записана: {}", path.display());
+        println!("команды по умолчанию записаны: {}", path.display());
     }
 
     let set = CommandSet::load(&path).map_err(|error| error.to_string())?;
@@ -1006,8 +1006,7 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     // user must check the command scope.
     if picked.is_empty() && set.problems.is_empty() {
         if set.is_empty() {
-            println!("команд нет: положите манифест в {}", path.display());
-            println!("заготовку запишет `kknow commands --example`");
+            println!("команд нет: файл {} пуст", path.display());
         } else {
             println!(
                 "к этой цели не относится ни одна из {} команд файла",

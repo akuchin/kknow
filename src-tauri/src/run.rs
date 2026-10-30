@@ -224,8 +224,8 @@ impl ManifestView {
 
 /// The manifest for the settings form.
 ///
-/// A missing file is not an error but an empty list. The user adds the first
-/// command in the same form, and no template on disk is necessary.
+/// A missing file is not an error: the form shows the shipped commands, and
+/// the first save writes them with the changes of the user.
 #[tauri::command(async)]
 pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
@@ -265,8 +265,8 @@ pub fn save_commands(
     Ok(ManifestView::new(&path, manifest, None))
 }
 
-/// Shows the commands file in the file manager. If there is no file, creates it
-/// from a template.
+/// Shows the commands file in the file manager. If there is no file, writes the
+/// shipped commands to it.
 ///
 /// Users edit commands in the settings form, but the file is still there. It is
 /// useful to look at it, copy it to another machine, or fix what the form
@@ -276,7 +276,7 @@ pub fn reveal_commands(state: State<'_, AppState>) -> Result<()> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 
     if !path.exists() {
-        kknow_run::spec::example().save(&path)?;
+        kknow_run::spec::defaults().save(&path)?;
     }
     crate::commands::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
 }
@@ -584,10 +584,9 @@ mod tests {
         assert!(opened.commands.is_empty());
     }
 
-    /// No file yet means an empty form, not an error. The user adds the first
-    /// command there.
+    /// No file yet means the shipped commands in the form, not an error.
     #[test]
-    fn no_file_yet_is_an_empty_form() {
+    fn no_file_yet_shows_the_shipped_commands() {
         let dir = vault();
         let config = tempfile::tempdir().unwrap();
         let state = crate::state::testing(&[dir.path()]);
@@ -599,7 +598,7 @@ mod tests {
 
         let opened = edit_commands(app.state()).unwrap();
 
-        assert!(opened.commands.is_empty());
+        assert_eq!(opened.commands, kknow_run::spec::defaults().commands);
         assert!(opened.broken.is_none());
     }
 

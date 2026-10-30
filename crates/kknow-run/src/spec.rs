@@ -236,7 +236,7 @@ impl Manifest {
         config_dir.as_ref().join(COMMANDS_FILE)
     }
 
-    /// Reads the file and drops nothing. A missing file gives an empty manifest.
+    /// Reads the file and drops nothing. A missing file gives [`defaults`].
     ///
     /// An unclosed bracket gives [`Error::Manifest`], not an empty result. A
     /// person writes this file, and the editor must learn that the read failed.
@@ -245,7 +245,7 @@ impl Manifest {
         let json = match fs::read_to_string(path) {
             Ok(json) => json,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Manifest::default());
+                return Ok(defaults());
             }
             Err(source) => return Err(Error::io(path, source)),
         };
@@ -337,7 +337,7 @@ impl CommandSet {
         Manifest::path(config_dir)
     }
 
-    /// Reads the file. A missing file means no commands, which is normal.
+    /// Reads the file. A missing file gives the commands of [`defaults`].
     ///
     /// Unlike the vault registry, a broken file is **not** moved aside. The app
     /// writes the registry, but a person writes this file, and an unclosed
@@ -362,20 +362,6 @@ impl CommandSet {
     pub fn parse(json: &str) -> std::result::Result<Self, String> {
         let manifest: Manifest = serde_json::from_str(json).map_err(|error| error.to_string())?;
         Ok(CommandSet::from(&manifest))
-    }
-
-    /// Writes through a temporary file, like the vault registry and settings.
-    ///
-    /// `kknow commands --example` uses it to write a starter file. The settings
-    /// form writes [`Manifest`] directly: the set has already dropped invalid
-    /// entries, so a save from it would lose them.
-    pub fn save(&self, path: &Path) -> Result<()> {
-        Manifest {
-            version: VERSION,
-            env: self.env.clone(),
-            commands: self.commands.clone(),
-        }
-        .save(path)
     }
 
     pub fn get(&self, id: &str) -> Option<&CommandSpec> {
@@ -416,36 +402,107 @@ impl CommandSet {
     }
 }
 
-/// A starter commands file.
-pub fn example() -> CommandSet {
-    CommandSet {
-        commands: vec![CommandSpec {
-            id: "confluence".to_string(),
-            name: "Обновить страницу в Confluence".to_string(),
-            // fish reads its config on every start, so the command sees the
-            // same PATH as the terminal. For sh and zsh, use `login`.
-            kind: "fish".to_string(),
-            // The page number comes from the note: the line
-            // `confluence: 123456789` in its frontmatter, or the comment
-            // `<!-- confluence: 123456789 -->` in its body.
-            script: "wiki-publish replace $KKNOW_FM_CONFLUENCE \"$KKNOW_PATH\"".to_string(),
-            targets: vec![TargetKind::Note],
-            vaults: Vec::new(),
-            patterns: Vec::new(),
-            // So the menu item appears only on notes with this field.
-            requires: vec!["confluence".to_string()],
-            login: false,
-            program: None,
-            cwd: Cwd::Vault,
-            timeout_seconds: DEFAULT_TIMEOUT,
-            confirm: false,
-            env: BTreeMap::new(),
-        }],
+/// The commands that ship with kknow.
+///
+/// A missing file gives these, not an empty list: a new user gets useful
+/// commands at once and sees how to write their own. Once the file exists,
+/// it is the only source. A user who deletes the commands in the form gets an
+/// empty file, and the defaults do not come back.
+pub fn defaults() -> Manifest {
+    Manifest {
+        version: VERSION,
         // Empty: a guessed `PATH` here would be true only on one machine.
         env: BTreeMap::new(),
-        problems: Vec::new(),
+        commands: vec![confluence(), agent()],
     }
 }
+
+fn confluence() -> CommandSpec {
+    CommandSpec {
+        id: "confluence".to_string(),
+        name: "Обновить страницу в Confluence".to_string(),
+        // fish reads its config on every start, so the command sees the
+        // same PATH as the terminal. For sh and zsh, use `login`.
+        kind: "fish".to_string(),
+        // The page number comes from the note: the line
+        // `confluence: 123456789` in its frontmatter, or the comment
+        // `<!-- confluence: 123456789 -->` in its body.
+        script: "confluence-tools replace $KKNOW_FM_CONFLUENCE \"$KKNOW_PATH\"".to_string(),
+        targets: vec![TargetKind::Note],
+        vaults: Vec::new(),
+        patterns: Vec::new(),
+        // So the menu item appears only on notes with this field.
+        requires: vec!["confluence".to_string()],
+        login: false,
+        program: None,
+        cwd: Cwd::Vault,
+        timeout_seconds: DEFAULT_TIMEOUT,
+        confirm: false,
+        env: BTreeMap::new(),
+    }
+}
+
+/// The variable of [`agent`] that picks the agent program.
+pub const AGENT_VAR: &str = "AGENT";
+
+/// Gives the agent notes of a note (`<!-- @agent «words»: task -->`) to a
+/// coding agent, which edits the file.
+///
+/// `AGENT` in the command `env` picks the program: `claude` (Claude Code) or
+/// `copilot` (GitHub Copilot CLI). Both get the same task and may only read
+/// and edit files.
+fn agent() -> CommandSpec {
+    CommandSpec {
+        id: "agent".to_string(),
+        name: "Обработать комментарии агентом".to_string(),
+        // `sh`, not fish: the command must work on a machine without fish.
+        kind: "shell".to_string(),
+        script: AGENT_SCRIPT.to_string(),
+        targets: vec![TargetKind::Note],
+        vaults: Vec::new(),
+        patterns: Vec::new(),
+        requires: Vec::new(),
+        login: false,
+        program: None,
+        // The agent only sees files under its working directory.
+        cwd: Cwd::Target,
+        // An agent works for minutes, not seconds.
+        timeout_seconds: 3600,
+        // The agent changes the note, so the person agrees first.
+        confirm: true,
+        env: BTreeMap::from([(AGENT_VAR.to_string(), "claude".to_string())]),
+    }
+}
+
+/// The script of [`agent`].
+///
+/// The `PATH` line is necessary for a window opened from Finder: its `PATH`
+/// has neither `~/.local/bin` (claude) nor `/opt/homebrew/bin` (copilot).
+const AGENT_SCRIPT: &str = r#"PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+prompt="Process the review comments in $KKNOW_PATH.
+
+Each comment has this format: <!-- @agent «TARGET»: INSTRUCTION -->.
+TARGET is the text that the comment refers to. Find it just before the comment.
+A comment without «TARGET» (<!-- @agent: INSTRUCTION -->) refers to its whole paragraph.
+
+For each comment:
+1. Read the instruction and the context around TARGET.
+2. If you can do the change, edit the text. Keep the style and format of the document.
+3. Find all related places in the document and make them consistent with the change.
+   Related places are: the same term or fact, references to it, links and anchors to changed headings.
+4. If you cannot do the change, replace the comment with <!-- @agent-note: REASON -->.
+5. Remove each comment that you processed.
+
+Do not ask questions. Make the best decision and continue or leave @agent-note comment.
+At the end, write a short list: each change with its location, and each comment that you did not process."
+
+case "$AGENT" in
+  claude) exec claude -p "$prompt" --allowedTools "Read,Edit" ;;
+  copilot) exec copilot -p "$prompt" --silent --allow-tool "write($KKNOW_PATH)" ;;
+  *) echo "AGENT=«$AGENT»: укажите claude или copilot" >&2; exit 2 ;;
+esac
+"#;
 
 #[cfg(test)]
 mod tests {
@@ -570,12 +627,38 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_file_means_no_commands_and_no_complaints() {
+    fn a_missing_file_gives_the_shipped_commands() {
         let dir = tempfile::tempdir().unwrap();
+        let path = CommandSet::path(dir.path());
 
-        let set = CommandSet::load(&CommandSet::path(dir.path())).unwrap();
+        let set = CommandSet::load(&path).unwrap();
 
-        assert_eq!(set, CommandSet::default());
+        assert!(set.problems.is_empty(), "{:?}", set.problems);
+        let ids: Vec<&str> = set.commands.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["confluence", "agent"]);
+        assert_eq!(Manifest::load(&path).unwrap(), defaults());
+        assert!(!path.exists(), "чтение файл не создаёт");
+    }
+
+    /// An empty file is the choice of the user, not a missing file: the
+    /// shipped commands do not come back after the user deletes them.
+    #[test]
+    fn an_empty_file_stays_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = Manifest::path(dir.path());
+        Manifest::default().save(&path).unwrap();
+
+        assert!(CommandSet::load(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_agent_is_claude_unless_the_user_picks_another() {
+        let set = CommandSet::from(&defaults());
+        let agent = set.get("agent").unwrap();
+
+        assert_eq!(agent.env[AGENT_VAR], "claude");
+        assert!(agent.script.contains("claude)"));
+        assert!(agent.script.contains("copilot)"));
     }
 
     #[test]
@@ -648,10 +731,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = CommandSet::path(dir.path());
 
-        example().save(&path).unwrap();
+        defaults().save(&path).unwrap();
         let loaded = CommandSet::load(&path).unwrap();
 
-        assert_eq!(loaded, example());
+        assert_eq!(loaded, CommandSet::from(&defaults()));
         assert!(loaded.get("confluence").is_some());
         assert!(!dir.path().join("commands.json.tmp").exists());
         assert!(
