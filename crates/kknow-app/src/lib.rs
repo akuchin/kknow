@@ -23,8 +23,8 @@ use kknow_index::{
     AgentComment, Edge, LinkGraph, ParsedNote, Relink, Resolver, SearchHit, SearchIndex, Task,
 };
 use kknow_sync::{
-    CONFLICT_MARK, Fetched, Plan as SyncPlan, Report as SyncReport, Staged, SyncEngine,
-    SyncProvider,
+    CONFLICT_MARK, Fetched, Git, GitAuth, GitReport, GitSettings, Merged, Plan as SyncPlan,
+    Report as SyncReport, Staged, SyncEngine, SyncProvider,
 };
 
 use crate::bookmarks::{Bookmark, Bookmarks, Mark};
@@ -32,6 +32,20 @@ use crate::theme::ThemeSet;
 use crate::watch::{VaultEvent, VaultWatcher};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// The token for a git repository, from where its settings say.
+///
+/// `stored` is the token from the keychain of the window; the terminal has no
+/// keychain and gives `None`. A variable is read from the process first and
+/// then from the login shell: an app from the Dock does not see the variables
+/// of `config.fish` otherwise.
+pub fn git_token(settings: &GitSettings, stored: Option<String>) -> Option<String> {
+    match settings.auth {
+        GitAuth::System => None,
+        GitAuth::Token => stored,
+        GitAuth::Env => settings.env.as_deref().and_then(kknow_run::login::variable),
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -390,6 +404,27 @@ impl Workspace {
             .collect();
         self.apply(&events)?;
         Ok(())
+    }
+
+    /// Merges the commits that [`Git::fetch`] got and reads the vault again.
+    ///
+    /// This is the only git step that changes files, so the window holds the
+    /// vault lock only for it. A merge can change any file, also bookmarks and
+    /// themes, so the whole vault is read again, not the changed notes only.
+    pub fn git_merge(&mut self, git: &Git) -> Result<Merged> {
+        let merged = git.merge()?;
+        if !merged.changed.is_empty() {
+            self.reload()?;
+        }
+        Ok(merged)
+    }
+
+    /// The whole git sync for the terminal: fetch, merge, push.
+    pub fn git_sync(&mut self, git: &Git) -> Result<GitReport> {
+        git.fetch()?;
+        let merged = self.git_merge(git)?;
+        let pushed = git.push()?;
+        Ok(GitReport { merged, pushed })
     }
 
     /// Copies that conflicts left; the user must resolve them.

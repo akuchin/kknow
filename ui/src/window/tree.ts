@@ -35,6 +35,8 @@ export interface TreeHooks {
   switchVault: (id: string) => Promise<void>;
   /** Opens the new note or folder form with the folder as a prefix. */
   openNewNoteForm: (prefix: string, mode: "note" | "folder") => void;
+  /** Opens the git changes panel of the active vault. */
+  openGit: () => Promise<void>;
 }
 
 let hooks: TreeHooks;
@@ -247,7 +249,9 @@ function vaultItem(entry: VaultView): HTMLLIElement {
 
   const plus = rowPlus(t("sidebar.folder.newNote", { name: entry.name }), entry.id, "");
   plus.disabled = !entry.available;
-  row.append(button, rowActions(more, plus));
+  const buttons = [more, plus];
+  if (entry.git) buttons.unshift(rowGit(entry));
+  row.append(button, rowActions(...buttons));
   // A right click opens the same menu, as users expect in a tree.
   row.oncontextmenu = (event) => {
     event.preventDefault();
@@ -375,6 +379,28 @@ function rowPlus(title: string, vaultId: string, folder: string): HTMLButtonElem
     hooks.openNewNoteForm(folder ? `${folder}/` : "", "note");
   };
   return plus;
+}
+
+/**
+ * The git button of a vault row: the changes panel of that vault.
+ *
+ * The status bar segment opens the same panel, but only for the active vault,
+ * and nothing there says that it is a git vault. The panel works on the active
+ * vault, so an inactive one becomes active first.
+ */
+function rowGit(entry: VaultView): HTMLButtonElement {
+  const git = document.createElement("button");
+  git.className = "row-git";
+  const title = t("sidebar.vault.git", { name: entry.name });
+  git.title = title;
+  git.setAttribute("aria-label", title);
+  git.append(icon("git"));
+  git.disabled = !entry.available;
+  git.onclick = async () => {
+    if (entry.id !== state.vault?.id) await hooks.switchVault(entry.id);
+    await hooks.openGit();
+  };
+  return git;
 }
 
 function folderItem(folder: Folder, vaultId: string): HTMLLIElement {

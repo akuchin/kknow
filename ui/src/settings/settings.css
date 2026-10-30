@@ -487,6 +487,58 @@
   padding: 0;
 }
 
+/* The rows above set `display`, which beats the `hidden` attribute: the git
+   form hides the variable and the token rows that its sign-in does not use. */
+.settings-s3 [hidden] {
+  display: none;
+}
+
+/* The address of a connected repository does not change: one vault is one
+   repository. */
+.settings-s3 input[readonly] {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+/* The git form uses the S3 layout; its sign-in list is a select in a row. */
+.settings-s3 select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.settings-s3 .settings-form-error {
+  width: auto;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.settings-s3 .settings-form-hint {
+  width: auto;
+  font-size: 12px;
+}
+
+/* A field and its button on one line: the path to git and "Find". */
+.settings-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.settings-inline input {
+  width: 26ch;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+
 /* Command form. Fields use the full width: the script and the pattern list
    need more than half a row, and "label left, field right" gives them half. */
 .settings-field {

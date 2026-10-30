@@ -9,6 +9,7 @@
 //! text inserted into the script. See [`environment`] for the variable list.
 
 pub mod glob;
+pub mod login;
 pub mod runner;
 pub mod spec;
 
@@ -329,7 +330,10 @@ const WELL_KNOWN_BINS: &[&str] = &[
 /// A name with a slash is used as is, because it is already a path. A leading
 /// `~/` is expanded here: normally the shell expands it, but we start the
 /// program without a shell, so `~` would stay a literal directory name.
-fn locate(program: &str) -> Option<PathBuf> {
+///
+/// It is public for the same trap outside commands: the window looks for
+/// `git` here to suggest a path in the settings.
+pub fn locate(program: &str) -> Option<PathBuf> {
     if let Some(rest) = program.strip_prefix("~/") {
         let home = std::env::var_os("HOME")?;
         let path = PathBuf::from(home).join(rest);

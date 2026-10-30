@@ -42,6 +42,13 @@ function query() {
     syncSummary: document.querySelector<HTMLParagraphElement>("#sync-summary")!,
     syncList: document.querySelector<HTMLUListElement>("#sync-list")!,
     syncHide: document.querySelector<HTMLButtonElement>("#sync-hide")!,
+    gitView: document.querySelector<HTMLElement>("#git-view")!,
+    gitSummary: document.querySelector<HTMLParagraphElement>("#git-summary")!,
+    gitBody: document.querySelector<HTMLDivElement>("#git-body")!,
+    gitSync: document.querySelector<HTMLButtonElement>("#git-sync")!,
+    gitHide: document.querySelector<HTMLButtonElement>("#git-hide")!,
+    gitDiffHead: document.querySelector<HTMLElement>("#git-diff-head")!,
+    gitDiffBody: document.querySelector<HTMLPreElement>("#git-diff-body")!,
     runFloat: document.querySelector<HTMLElement>("#run-float")!,
     trashView: document.querySelector<HTMLElement>("#trash-view")!,
     trashViewTitle: document.querySelector<HTMLSpanElement>("#trash-view-title")!,
@@ -224,6 +231,33 @@ export function initDom(): void {
     <section class="backlinks">
       <h2>${t("panel.backlinks.title")}</h2>
       <ul id="backlink-list"></ul>
+    </section>
+  </section>
+
+  <!-- The changes of a git vault. Like the trash view, it covers the editor
+       and the preview: a narrow list of files on the left (staged, changed,
+       the commit message) and the diff of the picked file on the right. -->
+  <section id="git-view" class="git-view" aria-labelledby="git-title" hidden>
+    <div class="git-side">
+      <h2>
+        <span id="git-title">${t("panel.git.title")}</span>
+        <span class="panel-tools">
+          <button id="git-sync" class="ghost bare" title="${withShortcut(t("palette.action.sync"), "vault.sync")}"
+                  aria-label="${t("palette.action.sync")}">
+            ${iconMarkup("refresh")}
+          </button>
+          <button id="git-hide" class="ghost bare" title="${t("panel.git.hide")}"
+                  aria-label="${t("panel.git.hide")}">
+            ${iconMarkup("close")}
+          </button>
+        </span>
+      </h2>
+      <p id="git-summary" class="muted"></p>
+      <div id="git-body" class="git-body"></div>
+    </div>
+    <section class="git-diff">
+      <header id="git-diff-head" class="git-diff-head"></header>
+      <pre id="git-diff-body" class="git-diff-body"></pre>
     </section>
   </section>
 

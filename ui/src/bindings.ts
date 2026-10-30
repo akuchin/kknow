@@ -34,7 +34,14 @@ noteScale: number,
  * Check for a new version in the background and download it. The new
  * version starts after a restart. A developer build never checks.
  */
-autoUpdate: boolean, };
+autoUpdate: boolean, 
+/**
+ * The `git` program for vaults that sync through git. kknow asks for it
+ * and does not guess: an app from the Dock does not have the `PATH` of
+ * the terminal, and `/usr/bin/git` on macOS can be a stub that offers to
+ * install Xcode tools.
+ */
+gitPath?: string | null, };
 
 /**
  * Built-in theme that the manifest goes on top of.
@@ -58,6 +65,11 @@ line: number, name?: string, };
  * A bookmark in the palette list.
  */
 export type BookmarkView = { note: string, title: string, folder: string | null, line: number, text: string, name?: string, };
+
+/**
+ * What changed in one file, separately for the index and the work tree.
+ */
+export type ChangeKind = "added" | "modified" | "deleted" | "renamed" | "untracked" | "conflicted";
 
 /**
  * The working directory of a command.
@@ -218,6 +230,63 @@ export type FileSaveOutcome = { "status": "saved", note: FileView, } | { "status
 export type FileView = { id: string, title: string, content: string, html: string, backlinks: Array<LinkRef>, outgoing: Array<LinkRef>, tags: Array<string>, file: boolean, };
 
 /**
+ * Where the token for a git repository comes from.
+ */
+export type GitAuth = "system" | "token" | "env";
+
+/**
+ * One changed file.
+ */
+export type GitChange = { 
+/**
+ * The path from the vault root with `/`.
+ */
+path: string, 
+/**
+ * The old path of a renamed file.
+ */
+from?: string | null, 
+/**
+ * The change in the index: what the next commit takes.
+ */
+staged?: ChangeKind | null, 
+/**
+ * The change in the work tree that is not in the index.
+ */
+unstaged?: ChangeKind | null, };
+
+/**
+ * Settings of a git repository.
+ */
+export type GitSettings = { 
+/**
+ * The address of the repository. For a vault that was already a
+ * repository, it is the URL of `origin`.
+ */
+url: string, auth: GitAuth, 
+/**
+ * The variable name for [`GitAuth::Env`], for example `GITHUB_TOKEN`.
+ */
+env?: string | null, };
+
+/**
+ * The state of the repository for the changes panel.
+ */
+export type GitStatus = { 
+/**
+ * The current branch; `None` for a detached HEAD.
+ */
+branch?: string | null, 
+/**
+ * Local commits that the remote does not have yet, as of the last fetch.
+ */
+ahead: number, 
+/**
+ * Remote commits that are not here yet, as of the last fetch.
+ */
+behind: number, changes: Array<GitChange>, };
+
+/**
  * A global search result: a normal result plus the vault it came from.
  */
 export type GlobalResult = { vault: string, vaultName: string, color: string, id: string, title: string, folder: string | null, snippet: string, };
@@ -298,11 +367,11 @@ export type Opened = { "kind": "note", vault: string, id: string, } | { "kind": 
  * The kind of storage on the other end.
  *
  * Cloud drive services do not get their own variants: they sync a plain
- * folder, so for kknow they are [`Provider::Folder`] with a path. Git does not
- * fit here: it has commits and its own conflict model, that is, a different
- * algorithm, not a different trait implementation.
+ * folder, so for kknow they are [`Provider::Folder`] with a path. Git is a
+ * variant here only as a setting: it has commits and its own conflict model,
+ * that is, a different algorithm (`crate::git`), not a trait implementation.
  */
-export type Provider = { "kind": "s3" } & S3Settings | { "kind": "folder", path: string, };
+export type Provider = { "kind": "s3" } & S3Settings | { "kind": "folder", path: string, } | { "kind": "git" } & GitSettings;
 
 /**
  * Storage address and conflict policy.
@@ -410,7 +479,12 @@ copy: string, };
 /**
  * What the sync did.
  */
-export type SyncReport = { uploaded: number, downloaded: number, removedLocal: number, removedRemote: number, conflicts: Array<SyncConflict>, };
+export type SyncReport = { uploaded: number, downloaded: number, removedLocal: number, removedRemote: number, 
+/**
+ * Commits that went to a git repository. The other providers have no
+ * commits, so it is zero for them.
+ */
+pushed: number, conflicts: Array<SyncConflict>, };
 
 /**
  * Sync settings as the UI sees them.
@@ -580,7 +654,12 @@ labels: Array<string>, active: boolean,
 /**
  * The folder exists. An external disk can be disconnected.
  */
-available: boolean, };
+available: boolean, 
+/**
+ * The vault syncs through git: its row gets a button for the changes
+ * panel.
+ */
+git: boolean, };
 
 /**
  * How a note is shown: where the markup is drawn and if it can be edited.

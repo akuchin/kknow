@@ -28,6 +28,7 @@
 pub mod config;
 mod engine;
 pub mod folder;
+pub mod git;
 pub mod manifest;
 mod plan;
 pub mod provider;
@@ -39,11 +40,12 @@ use std::path::{Path, PathBuf};
 
 use kknow_core::NoteId;
 
-pub use config::{Provider, RemoteConfig, S3Settings};
+pub use config::{GitAuth, GitSettings, Provider, RemoteConfig, S3Settings};
 pub use engine::{
     Conflict, Fetched, MANIFEST_KEY, NOTES_PREFIX, Progress, Report, Staged, SyncEngine, note_key,
 };
 pub use folder::FolderProvider;
+pub use git::{ChangeKind, Git, GitChange, GitConflict, GitReport, GitStatus, Merged};
 pub use manifest::Manifest;
 pub use plan::{Action, CONFLICT_MARK, ConflictPolicy, Plan, is_conflict_copy};
 pub use provider::{MemoryProvider, SyncProvider};
@@ -87,6 +89,8 @@ pub fn connect(config: &RemoteConfig, secret: Option<String>) -> Result<Box<dyn 
 
         #[cfg(not(feature = "s3"))]
         Provider::S3(_) => Err(Error::NoS3),
+
+        Provider::Git(_) => Err(Error::GitIsNotAProvider),
     }
 }
 
@@ -111,6 +115,43 @@ pub enum Error {
 
     #[error("эта сборка собрана без поддержки S3")]
     NoS3,
+
+    #[error("настройка синхронизации: не задан адрес репозитория")]
+    NoGitUrl,
+
+    #[error("git синхронизирует хранилище своей командой, а не через манифест")]
+    GitIsNotAProvider,
+
+    #[error("git не найден: {}. Укажите путь к git в настройках", .0.display())]
+    GitMissing(PathBuf),
+
+    #[error("git: {0}")]
+    Git(String),
+
+    #[error(
+        "папка хранилища не пустая и не репозиторий git. Подключите пустую папку или папку, где уже есть репозиторий"
+    )]
+    GitNotEmpty,
+
+    #[error("хранилище — не корень репозитория git (корень: {}). Одно хранилище — один репозиторий", .0.display())]
+    GitNotRoot(PathBuf),
+
+    #[error("в репозитории нет remote origin: укажите адрес")]
+    GitNoOrigin,
+
+    #[error(
+        "в адресе репозитория есть логин или токен. Уберите его из адреса и укажите токен отдельно"
+    )]
+    GitUrlCredentials,
+
+    #[error("HEAD не на ветке: переключитесь на ветку")]
+    GitDetached,
+
+    #[error("пустое сообщение коммита")]
+    GitEmptyMessage,
+
+    #[error("сначала закоммитьте изменения: их перезапишет слияние ({})", .0.join(", "))]
+    GitLocalChanges(Vec<String>),
 
     #[error("манифест обещает заметку {0}, но в хранилище её нет")]
     MissingRemote(NoteId),

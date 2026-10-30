@@ -10,7 +10,7 @@
 //! waits for the write step. The UI indicator exists for this reason.
 
 use kknow_app::Workspace;
-use kknow_sync::{Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider};
+use kknow_sync::{GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -59,6 +59,9 @@ pub struct SyncReport {
     downloaded: usize,
     removed_local: usize,
     removed_remote: usize,
+    /// Commits that went to a git repository. The other providers have no
+    /// commits, so it is zero for them.
+    pub(crate) pushed: usize,
     conflicts: Vec<ConflictView>,
 }
 
@@ -73,7 +76,19 @@ fn config_of(workspace: &Workspace) -> Result<Option<RemoteConfig>> {
     Ok(RemoteConfig::load(&RemoteConfig::path(workspace.root()))?)
 }
 
-fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
+impl SyncSettings {
+    #[cfg(test)]
+    pub fn location(&self) -> &str {
+        &self.location
+    }
+
+    #[cfg(test)]
+    pub fn has_secret(&self) -> bool {
+        self.has_secret
+    }
+}
+
+pub(crate) fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
     let location = config.location();
     let needs_secret = config.needs_secret();
 
@@ -150,6 +165,11 @@ fn tidy_provider(provider: Provider) -> Provider {
             access_key_id: tidy(s3.access_key_id),
         }),
         Provider::Folder { path } => Provider::Folder { path },
+        Provider::Git(git) => Provider::Git(GitSettings {
+            url: git.url.trim().to_string(),
+            auth: git.auth,
+            env: tidy(git.env),
+        }),
     }
 }
 
@@ -207,7 +227,7 @@ pub fn auto_sync_minutes(slot: &VaultSlot) -> u32 {
     slot.read(config_of)
         .ok()
         .flatten()
-        .map(|config| config.auto_sync_minutes)
+        .map(|config| config.auto_sync())
         .unwrap_or(0)
 }
 
@@ -222,6 +242,10 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
 
     let config = slot.read(config_of)?.ok_or(Error::NotConfigured)?;
     let location = config.location();
+
+    if config.is_git() {
+        return exchange_git(app, slot, &config);
+    }
 
     // The connection is part of the sync too. Unavailable storage must show in
     // the status, not escape as an error past the status bar.
@@ -239,7 +263,7 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
     statuses.update(app, &id, |status| {
         status.state = SyncState::Syncing;
         status.location = Some(location.clone());
-        status.auto_sync_minutes = config.auto_sync_minutes;
+        status.auto_sync_minutes = config.auto_sync();
         status.done = 0;
         status.total = staged.len();
         status.message = None;
@@ -281,26 +305,14 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
         let _ = app.emit(live::EVENT, changed);
     }
 
-    let conflicts = slot.read(|workspace| Ok(workspace.conflicts().len()))?;
-    statuses.update(app, &id, |status| {
-        status.state = if conflicts > 0 {
-            SyncState::Conflict
-        } else {
-            SyncState::Idle
-        };
-        status.done = status.total;
-        status.at = Some(sync_status::now_millis());
-        status.conflicts = conflicts;
-        status.message = None;
-        status.location = Some(location.clone());
-        status.auto_sync_minutes = config.auto_sync_minutes;
-    });
+    succeeded(app, slot, &config)?;
 
     Ok(SyncReport {
         uploaded: report.uploaded.len(),
         downloaded: report.downloaded.len(),
         removed_local: report.removed_local.len(),
         removed_remote: report.removed_remote.len(),
+        pushed: 0,
         conflicts: report
             .conflicts
             .iter()
@@ -310,6 +322,78 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
             })
             .collect(),
     })
+}
+
+/// A git sync: fetch, merge under the lock, push. Git counts commits, not
+/// files, so the progress has no steps: the segment shows "busy".
+fn exchange_git<R: Runtime>(
+    app: &AppHandle<R>,
+    slot: &Arc<VaultSlot>,
+    config: &RemoteConfig,
+) -> Result<SyncReport> {
+    let id = slot.entry.id.clone();
+    let statuses = app.state::<SyncStatuses>();
+    let location = config.location();
+
+    statuses.update(app, &id, |status| {
+        status.state = SyncState::Syncing;
+        status.location = Some(location.clone());
+        status.done = 0;
+        status.total = 0;
+        status.message = None;
+    });
+
+    let (merged, pushed) = match crate::git::exchange(app, slot, config) {
+        Ok(done) => done,
+        Err(error) => return Err(failed(app, &statuses, &id, &location, error)),
+    };
+    succeeded(app, slot, config)?;
+
+    Ok(SyncReport {
+        downloaded: merged.changed.len(),
+        pushed,
+        conflicts: merged
+            .conflicts
+            .into_iter()
+            .map(|conflict| ConflictView {
+                id: note_or_path(&conflict.path),
+                copy: note_or_path(&conflict.copy),
+            })
+            .collect(),
+        ..SyncReport::default()
+    })
+}
+
+/// A conflict in a note shows as the note ID, so a click opens it; a
+/// conflict in another file (a picture, bookmarks) shows as its path.
+fn note_or_path(path: &str) -> String {
+    kknow_core::NoteId::from_relative_path(std::path::Path::new(path))
+        .map_or_else(|| path.to_string(), |id| id.as_str().to_string())
+}
+
+/// The status after a successful sync: the time, and the conflicts that the
+/// copies in the vault show.
+fn succeeded<R: Runtime>(
+    app: &AppHandle<R>,
+    slot: &VaultSlot,
+    config: &RemoteConfig,
+) -> Result<()> {
+    let conflicts = slot.read(|workspace| Ok(workspace.conflicts().len()))?;
+    app.state::<SyncStatuses>()
+        .update(app, &slot.entry.id, |status| {
+            status.state = if conflicts > 0 {
+                SyncState::Conflict
+            } else {
+                SyncState::Idle
+            };
+            status.done = status.total;
+            status.at = Some(sync_status::now_millis());
+            status.conflicts = conflicts;
+            status.message = None;
+            status.location = Some(config.location());
+            status.auto_sync_minutes = config.auto_sync();
+        });
+    Ok(())
 }
 
 /// A sync failure. It lives in the status bar segment, not in a modal dialog,
@@ -374,7 +458,7 @@ fn refresh_status<R: Runtime>(
     statuses.update(app, &slot.entry.id, |status| {
         status.conflicts = conflicts;
         status.location = config.as_ref().map(|config| config.location());
-        status.auto_sync_minutes = config.as_ref().map_or(0, |config| config.auto_sync_minutes);
+        status.auto_sync_minutes = config.as_ref().map_or(0, RemoteConfig::auto_sync);
 
         // Do not touch a running sync: it has its own status and progress.
         if status.state == SyncState::Syncing {
@@ -438,7 +522,7 @@ mod tests {
     fn s3_of(settings: &SyncSettings) -> &S3Settings {
         match &settings.config.provider {
             Provider::S3(s3) => s3,
-            Provider::Folder { .. } => panic!("ожидалась настройка S3"),
+            _ => panic!("ожидалась настройка S3"),
         }
     }
 

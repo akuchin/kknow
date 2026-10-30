@@ -32,7 +32,7 @@ in the repository.
 flowchart TB
   core["kknow-core<br/>Vault, Note, NoteId, trash"]
   index["kknow-index<br/>parsing, links, graph, HTML, tantivy"]
-  sync["kknow-sync<br/>manifests, plan, S3, folder"]
+  sync["kknow-sync<br/>manifests, plan, S3, folder, git"]
   run["kknow-run<br/>custom commands, timeouts"]
   app["kknow-app<br/>Workspace, registry, settings, themes, watcher, MCP"]
   cli["kknow-cli<br/>the kknow binary"]
@@ -163,6 +163,30 @@ devices that sync at the same time do not remove each other's entries.
 `delete` and `list`. Only the S3 implementation needs `tokio`, behind a cargo
 feature. The tests run the same algorithm on storage in memory and on a
 folder.
+
+### Git
+
+Git is not a `SyncProvider`. It has commits and its own merge, so it is a
+separate algorithm in `kknow_sync::git`. kknow does not use a git library: it
+runs the `git` program of the user, so SSH keys, credential helpers and LFS
+work as in the terminal.
+
+- The settings say where the token comes from: the git setup of the machine,
+  the keychain, or an environment variable. kknow reads the variable from the
+  process first, then from the login shell (`kknow_run::login`). The token goes
+  to git through a credential helper in a `-c` option and an environment
+  variable. It never goes into the URL, the arguments or `.git/config`.
+- `attach` accepts two cases only: an empty vault (`init` and `checkout` of
+  the default remote branch) or a vault that is already the root of a
+  repository (the address of `origin`).
+- The person stages and commits. A sync is `fetch`, `merge` and `push`.
+  Fetch and push run without the vault lock; the merge holds it, because only
+  the merge writes files. After a merge, the workspace reads the vault again.
+- A conflict gives no markers: the local file stays, and the remote version
+  (merge stage 3) goes to a conflict copy. The window finds the copies in the
+  same way as for the other providers.
+- git runs with `GIT_TERMINAL_PROMPT=0`: in a window, nobody can answer a
+  question in a terminal.
 
 ## MCP server
 

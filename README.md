@@ -17,7 +17,8 @@ All functions in this document work:
 - the core and the command-line interface (CLI);
 - a window with an editor and live preview;
 - search in all vaults at the same time;
-- sync with S3-compatible storage (the Amazon S3 protocol) and with a plain folder;
+- sync with S3-compatible storage (the Amazon S3 protocol), with a plain folder
+  and with a git repository (with a view to stage and commit changes and see their diff);
 - themes;
 - settings in a separate window;
 - custom commands for a note, a folder, a vault or a file outside a vault.
@@ -32,7 +33,7 @@ this design.
 crates/
   kknow-core   vault model: Vault, Note, NoteId
   kknow-index  markdown parsing, link graph, HTML rendering, tantivy search
-  kknow-sync   sync: manifest, conflicts, configuration, S3 and folder
+  kknow-sync   sync: manifest, conflicts, configuration, S3, folder and git
   kknow-run    custom commands: manifest, interpreters, running with a timeout
   kknow-app    open vaults, registry and settings, index, file watching, themes
   kknow-cli    the kknow binary: the same data in the terminal
@@ -473,7 +474,8 @@ In a drawn table:
 The status bar at the bottom shows the status. Its left side is about the vault:
 
 - the active vault (click it to open the vault menu);
-- the time of the last sync (click it to sync now);
+- the time of the last sync (click it to sync now; for a git vault, the click
+  opens the changes view);
 - the app message.
 
 Its right side is about the note and the window:

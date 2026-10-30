@@ -357,7 +357,7 @@ export async function reloadVault(): Promise<void> {
     const info = await api.reload();
     await refreshTree(state.vault.id);
     setStatus(t("status.notes", { count: info.noteCount }));
-    if (state.note && !state.note.file) applyNote(await api.loadNote(state.note.id));
+    if (state.note && !state.note.file) applyNote(await api.loadNote(state.note.id), { reload: true });
   } catch (error) {
     fail(error);
   }

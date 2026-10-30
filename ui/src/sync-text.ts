@@ -33,6 +33,7 @@ export function describeReport(report: SyncReport, { t }: SyncWords): string {
     ["sync.report.downloaded", report.downloaded],
     ["sync.report.removedLocal", report.removedLocal],
     ["sync.report.removedRemote", report.removedRemote],
+    ["sync.report.pushed", report.pushed],
     ["sync.report.conflicts", report.conflicts.length],
   ];
 

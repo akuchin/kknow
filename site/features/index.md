@@ -42,8 +42,9 @@ details.
 
 ## Share and automate
 
-- **Sync** with S3-compatible storage or any folder (iCloud Drive, Dropbox).
-  Conflicts keep both versions. → [Sync](/features/sync)
+- **Sync** with S3-compatible storage, any folder (iCloud Drive, Dropbox) or
+  a git repository with a changes view and a diff. Conflicts keep both versions.
+  → [Sync](/features/sync)
 - **MCP server for AI agents.** Claude Code, Cursor and other clients read your
   vaults, do tasks and resolve your comments. → [Agents](/features/agents)
 - **Custom commands.** Run your own script on a note, a folder or a vault.

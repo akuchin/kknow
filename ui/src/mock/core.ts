@@ -11,6 +11,8 @@ import type {
   CommandSpec,
   CommandView,
   FileEntry,
+  GitAuth,
+  GitStatus,
   KeymapView,
   GlobalResult,
   MarkdownAssociation,
@@ -387,6 +389,8 @@ function vaultView(vault: MockVault): VaultView {
     labels: [...vault.labels],
     active: vault.id === activeVault.id,
     available: vault.available,
+    // The mock keeps one sync setting, the one of the active vault.
+    git: vault.id === activeVault.id && remote?.provider.kind === "git",
   };
 }
 
@@ -447,6 +451,7 @@ function readSettings(): AppSettings {
     lineNumbers: true,
     noteScale: 100,
     autoUpdate: true,
+    gitPath: null,
   };
 
   try {
@@ -494,7 +499,11 @@ function configureSync(settings: SyncSettingsForm, secret: boolean): SyncSetting
   const location =
     provider.kind === "folder"
       ? provider.path
-      : `${provider.endpoint ?? "s3:/"}/${provider.bucket}/${provider.prefix ?? ""}`;
+      : provider.kind === "git"
+        ? provider.url
+        : `${provider.endpoint ?? "s3:/"}/${provider.bucket}/${provider.prefix ?? ""}`;
+  const needsSecret =
+    provider.kind === "s3" || (provider.kind === "git" && provider.auth === "token");
 
   statuses.set(activeVault.id, {
     ...statusOf(activeVault.id),
@@ -507,10 +516,91 @@ function configureSync(settings: SyncSettingsForm, secret: boolean): SyncSetting
     ...settings,
     location,
     // A folder never has secrets; the core answers the same way.
-    needsSecret: provider.kind === "s3",
-    hasSecret: provider.kind === "s3" && (secret || (remote?.hasSecret ?? false)),
+    needsSecret,
+    hasSecret: needsSecret && (secret || (remote?.hasSecret ?? false)),
   };
   return remote;
+}
+
+/**
+ * The git repository of the active vault: a few changes, so the panel has
+ * something to show. Staging moves a file between the lists, a commit empties
+ * the staged list and adds to "ahead".
+ */
+const gitState: GitStatus = {
+  branch: "main",
+  ahead: 0,
+  behind: 1,
+  changes: [
+    { path: "Index.md", from: null, staged: null, unstaged: "modified" },
+    { path: "Идеи/Новая мысль.md", from: null, staged: "added", unstaged: null },
+    { path: "картинки/схема.png", from: null, staged: null, unstaged: "untracked" },
+  ],
+};
+
+function gitStatus(): GitStatus {
+  if (remote?.provider.kind !== "git") {
+    throw coded("syncNotConfigured", "синхронизация не настроена");
+  }
+  return structuredClone(gitState);
+}
+
+/** Moves files into the index or out of it, as `git add` and `git reset` do. */
+function gitMove(paths: string[], stage: boolean): GitStatus {
+  gitStatus();
+  for (const change of gitState.changes) {
+    if (!paths.includes(change.path)) continue;
+    if (stage && change.unstaged) {
+      change.staged = change.unstaged === "untracked" ? "added" : change.unstaged;
+      change.unstaged = null;
+    } else if (!stage && change.staged) {
+      change.unstaged = change.staged === "added" ? "untracked" : change.staged;
+      change.staged = null;
+    }
+  }
+  return gitStatus();
+}
+
+/** A made-up diff of one file, in the shape of `git diff`. */
+function gitDiff(path: string, staged: boolean): string {
+  const change = gitStatus().changes.find((entry) => entry.path === path);
+  const kind = staged ? change?.staged : change?.unstaged;
+  if (!kind) return "";
+  if (path.endsWith(".png")) {
+    return `diff --git a/${path} b/${path}\nnew file mode 100644\nBinary files /dev/null and b/${path} differ\n`;
+  }
+  const head = `diff --git a/${path} b/${path}\n`;
+  if (kind === "added" || kind === "untracked") {
+    return `${head}new file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,3 @@\n+# Новая мысль\n+\n+Черновик идеи.\n`;
+  }
+  return (
+    `${head}--- a/${path}\n+++ b/${path}\n@@ -1,4 +1,5 @@\n # Оглавление\n \n-Старая строка.\n+Новая строка.\n+Ещё одна.\n Конец.\n`
+  );
+}
+
+/** Connects git with the checks of the core: the program, the address, the token. */
+function connectGit(args: Record<string, unknown> | undefined): SyncSettings {
+  if (!appSettings.gitPath) {
+    throw coded("gitPathNotSet", "не указан путь к git: задайте его в настройках");
+  }
+  const url = (args?.url as string | null) ?? (remote?.provider.kind === "git" ? remote.provider.url : null);
+  if (!url) throw coded("noGitUrl", "настройка синхронизации: не задан адрес репозитория");
+  if (/^https?:\/\/[^/]*@/.test(url)) {
+    throw coded("gitUrlCredentials", "в адресе репозитория есть логин или токен");
+  }
+  const auth = args?.auth as GitAuth;
+  const token = Boolean(args?.token);
+  if (auth === "token" && !token && !remote?.hasSecret) {
+    throw coded("noGitToken", "токен репозитория не найден");
+  }
+  return configureSync(
+    {
+      provider: { kind: "git", url, auth, env: (args?.env as string | null) ?? null },
+      policy: "keepBoth",
+      autoSyncMinutes: 0,
+    },
+    token,
+  );
 }
 
 /**
@@ -1445,8 +1535,64 @@ export async function invoke<T>(
       statuses.delete(activeVault.id);
       return undefined as T;
 
+    case "git_locate":
+      return "/opt/homebrew/bin/git" as T;
+
+    case "git_version": {
+      const path = String(args?.path ?? "");
+      if (!path.endsWith("git")) throw coded("gitMissing", `git не найден: ${path}`, { value: path });
+      return "git version 2.47.1" as T;
+    }
+
+    case "connect_git":
+      return connectGit(args) as T;
+
+    case "git_status":
+      return gitStatus() as T;
+
+    case "git_stage":
+      return gitMove(args?.paths as string[], true) as T;
+
+    case "git_unstage":
+      return gitMove(args?.paths as string[], false) as T;
+
+    case "git_diff":
+      return gitDiff(args?.path as string, args?.staged as boolean) as T;
+
+    case "git_commit": {
+      gitStatus();
+      if (!String(args?.message ?? "").trim()) {
+        throw coded("gitEmptyMessage", "пустое сообщение коммита");
+      }
+      gitState.changes = gitState.changes.filter((change) => {
+        change.staged = null;
+        return change.unstaged !== null;
+      });
+      gitState.ahead += 1;
+      return gitStatus() as T;
+    }
+
     case "sync_now": {
       if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+      if (remote.provider.kind === "git") {
+        const pushed = gitState.ahead;
+        const downloaded = gitState.behind;
+        gitState.ahead = 0;
+        gitState.behind = 0;
+        statuses.set(activeVault.id, {
+          ...statusOf(activeVault.id),
+          state: "idle",
+          at: Date.now(),
+        });
+        return {
+          uploaded: 0,
+          downloaded,
+          removedLocal: 0,
+          removedRemote: 0,
+          pushed,
+          conflicts: [],
+        } satisfies SyncReport as T;
+      }
       statuses.set(activeVault.id, {
         ...statusOf(activeVault.id),
         state: "conflict",
@@ -1461,6 +1607,7 @@ export async function invoke<T>(
         downloaded: 1,
         removedLocal: 0,
         removedRemote: 0,
+        pushed: 0,
         conflicts: [{ id: "Index", copy: "Index (конфликт 3f9a1c2b)" }],
       } satisfies SyncReport as T;
     }

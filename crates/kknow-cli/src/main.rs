@@ -10,13 +10,13 @@ use std::time::{Duration, SystemTime};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kknow_app::Workspace;
 use kknow_app::bookmarks::clean_name;
+use kknow_app::text::{describe, plain_snippet, task_row};
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
-use kknow_app::text::{describe, plain_snippet, task_row};
 use kknow_index::Task;
 use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
-use kknow_sync::{ConflictPolicy, Provider, RemoteConfig, S3Settings};
+use kknow_sync::{ConflictPolicy, Git, GitAuth, GitSettings, Provider, RemoteConfig, S3Settings};
 
 mod mcp;
 
@@ -146,7 +146,8 @@ enum Command {
         #[arg(long = "label")]
         labels: Vec<String>,
     },
-    /// Sync the vault with S3-compatible storage or a shared folder.
+    /// Sync the vault with S3-compatible storage, a shared folder or a git
+    /// repository.
     Sync {
         /// Show the plan and change nothing.
         #[arg(long)]
@@ -583,13 +584,20 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
             watcher,
         });
     }
-    let names: Vec<&str> = served.iter().map(|vault| vault.vault.name.as_str()).collect();
+    let names: Vec<&str> = served
+        .iter()
+        .map(|vault| vault.vault.name.as_str())
+        .collect();
     // stderr: stdout belongs to the protocol.
     eprintln!("kknow mcp: {}", names.join(", "));
 
     let mut vaults = mcp::Vaults::new(served);
-    mcp::serve(&mut vaults, std::io::stdin().lock(), std::io::stdout().lock())
-        .map_err(|error| error.to_string())
+    mcp::serve(
+        &mut vaults,
+        std::io::stdin().lock(),
+        std::io::stdout().lock(),
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn id_of(registry: &VaultRegistry, wanted: &str) -> Result<String, String> {
@@ -1100,12 +1108,16 @@ fn report(outcome: &Outcome) -> Result<ExitCode, String> {
 fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Result<(), String> {
     println!("хранилище: {}", config.location());
 
+    if let Provider::Git(settings) = &config.provider {
+        return sync_git(workspace, settings, dry_run);
+    }
+
     // The app keeps the secret key in the OS keychain, but the terminal cannot
     // get it from there: here it comes from an environment variable. A folder
     // needs no secret.
     let secret = match &config.provider {
         Provider::S3(_) => std::env::var("KKNOW_S3_SECRET_KEY").ok(),
-        Provider::Folder { .. } => None,
+        Provider::Folder { .. } | Provider::Git(_) => None,
     };
 
     let engine = kknow_sync::engine(&config, secret).map_err(|error| error.to_string())?;
@@ -1145,6 +1157,73 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
         );
     }
 
+    Ok(())
+}
+
+/// A git sync from the terminal: fetch, merge, push.
+///
+/// The program is `KKNOW_GIT` or `git` from `PATH`: the terminal has the
+/// `PATH` of the user, so there is nothing to ask. The keychain token of the
+/// window is not reachable here, so the "token" way reads `KKNOW_GIT_TOKEN`.
+/// Commits stay a decision of the person: this command does not commit.
+fn sync_git(
+    workspace: &mut Workspace,
+    settings: &GitSettings,
+    dry_run: bool,
+) -> Result<(), String> {
+    let program = std::env::var("KKNOW_GIT").unwrap_or_else(|_| "git".to_string());
+    let stored = std::env::var("KKNOW_GIT_TOKEN").ok();
+    let token = kknow_app::git_token(settings, stored);
+    if settings.auth != GitAuth::System && token.is_none() {
+        return Err(match settings.auth {
+            GitAuth::Env => format!(
+                "переменная {} не задана",
+                settings.env.as_deref().unwrap_or("с токеном")
+            ),
+            _ => "токен не задан: KKNOW_GIT_TOKEN".to_string(),
+        });
+    }
+    let git = Git::new(program, workspace.root()).with_token(token);
+    let failure = |error: kknow_sync::Error| error.to_string();
+
+    if dry_run {
+        let status = git.status().map_err(failure)?;
+        if let Some(branch) = &status.branch {
+            println!("ветка: {branch}");
+        }
+        println!("не отправлено коммитов: {}", status.ahead);
+        if status.changes.is_empty() {
+            println!("незакоммиченных изменений нет");
+        }
+        for change in &status.changes {
+            let place = if change.staged.is_some() {
+                "в индексе"
+            } else {
+                "не в индексе"
+            };
+            println!("{place}: {}", change.path);
+        }
+        return Ok(());
+    }
+
+    let report = workspace
+        .git_sync(&git)
+        .map_err(|error| error.to_string())?;
+    if report.merged.changed.is_empty() && report.pushed == 0 {
+        println!("всё синхронизировано");
+    }
+    if !report.merged.changed.is_empty() {
+        println!("изменено файлов: {}", report.merged.changed.len());
+    }
+    if report.pushed > 0 {
+        println!("отправлено коммитов: {}", report.pushed);
+    }
+    for conflict in &report.merged.conflicts {
+        println!(
+            "конфликт: {} — чужая версия сохранена как {}",
+            conflict.path, conflict.copy
+        );
+    }
     Ok(())
 }
 

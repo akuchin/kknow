@@ -29,7 +29,7 @@ same in any keyboard layout, for example in Russian.
 | <kbd>⌘⌥B</kbd> | bookmarks of the vault |
 | <kbd>⌘⌥T</kbd> | open tasks of the vault |
 | <kbd>⌘⌥←</kbd>, <kbd>⌘⌥→</kbd> | back and forward through opened notes |
-| <kbd>Esc</kbd> | close the palette or the search panel |
+| <kbd>Esc</kbd> | close the palette, the search panel or the changes view |
 
 ## Window and vaults
 

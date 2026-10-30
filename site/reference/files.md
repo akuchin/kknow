@@ -10,16 +10,20 @@ kknow keeps data in two places: in each vault and in the app config directory.
   attachments/          pasted and dropped images
   .kknow/
     sync.json           the snapshot of the last sync
-    remote.json         the storage address, the conflict policy, the interval
+    remote.json         the storage address, the conflict policy, the interval;
+                        for git: the address and the sign-in
     bookmarks.json      bookmarks
     themes/*.json       themes of this vault
     trash/<entry>/…     deleted notes and folders
 ```
 
-kknow skips all hidden folders, for example `.git` and `.obsidian`. Sync does
-not copy `.kknow/`. Add `.kknow/` to `.gitignore` if you keep the vault in git.
+kknow skips all hidden folders, for example `.git` and `.obsidian`. S3 and
+folder sync do not copy `.kknow/`.
 
-`remote.json` has no secret key. The window keeps the key in the system
+With git sync, kknow adds `.kknow/remote.json`, `.kknow/sync.json` and the
+trash to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.
+
+`remote.json` has no secret key or token. The window keeps them in the system
 keychain.
 
 ## App config directory
@@ -35,7 +39,7 @@ The window and the CLI share this directory.
 | File | Content |
 |---|---|
 | `vaults.json` | the vault list: names, paths, colors, labels |
-| `settings.json` | language, theme, editor settings |
+| `settings.json` | language, theme, editor settings, the path to git |
 | `keybindings.json` | your changed shortcuts |
 | `commands.json` | custom commands |
 | `files.json` | standalone files |

@@ -2,8 +2,15 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { api, type ConflictPolicy, type Provider, type SyncSettings, type VaultView } from "../api";
-import { t, type Key } from "../i18n";
+import {
+  api,
+  type ConflictPolicy,
+  type GitAuth,
+  type Provider,
+  type SyncSettings,
+  type VaultView,
+} from "../api";
+import { describeError, t, type Key } from "../i18n";
 
 /**
  * Draws the vault page again after a change. `vaults.ts` owns the page and
@@ -17,6 +24,18 @@ export function initSyncForm(onChange: () => Promise<void>): void {
 }
 
 /**
+ * Vaults where "Git" is picked but not connected yet. Git needs an address
+ * and maybe a token before anything is saved, so the choice lives here until
+ * "Connect" succeeds.
+ */
+const gitDrafts = new Set<string>();
+
+/** Whether the vault shows the git form before it is connected. */
+export function draftsGit(vault: VaultView): boolean {
+  return gitDrafts.has(vault.id);
+}
+
+/**
  * Changes the provider from the list: "do not sync" turns sync off, folder asks
  * for a folder, S3 switches the provider and shows the key form below.
  */
@@ -25,6 +44,13 @@ export async function switchProvider(
   remote: SyncSettings | null,
   kind: string,
 ): Promise<void> {
+  gitDrafts.delete(vault.id);
+  if (kind === "git") {
+    if (remote?.provider.kind !== "git") gitDrafts.add(vault.id);
+    await redraw();
+    return;
+  }
+
   if (kind === "off") {
     try {
       await api.forgetSyncSettings(vault.id);
@@ -119,6 +145,105 @@ export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
     );
   };
 
+  tools.append(save);
+  form.append(tools);
+  return form;
+}
+
+/**
+ * Git fields: the address, the way to sign in, the variable and the token.
+ *
+ * Nothing is saved before "Connect": an empty vault gets the repository
+ * cloned into it, and a vault with `.git` takes the address of `origin`. The
+ * address cannot change after that: one vault is one repository.
+ */
+export function gitForm(vault: VaultView, remote: SyncSettings | null): HTMLElement {
+  const git = remote?.provider.kind === "git" ? remote.provider : null;
+  const form = document.createElement("div");
+  form.className = "settings-s3 settings-git";
+
+  const line = (label: Key, control: HTMLElement): HTMLLabelElement => {
+    const item = document.createElement("label");
+    const caption = document.createElement("span");
+    caption.textContent = t(label);
+    item.append(caption, control);
+    form.append(item);
+    return item;
+  };
+  const input = (value: string, placeholder: string): HTMLInputElement => {
+    const field = document.createElement("input");
+    field.value = value;
+    field.placeholder = placeholder;
+    field.autocomplete = "off";
+    field.spellcheck = false;
+    return field;
+  };
+
+  const url = input(git?.url ?? "", t("dialog.git.url.placeholder"));
+  url.readOnly = git !== null;
+  line("dialog.git.url", url);
+
+  const auth = document.createElement("select");
+  for (const value of ["system", "token", "env"] as GitAuth[]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = t(`dialog.git.auth.${value}` as Key);
+    auth.append(option);
+  }
+  auth.value = git?.auth ?? "system";
+  line("dialog.git.auth", auth);
+
+  const env = input(git?.env ?? "", "GITHUB_TOKEN");
+  const envLine = line("dialog.git.env", env);
+  const token = input(
+    "",
+    t(remote?.hasSecret ? "dialog.sync.secret.saved" : "dialog.git.token.placeholder"),
+  );
+  token.type = "password";
+  const tokenLine = line("dialog.git.token", token);
+
+  const show = () => {
+    envLine.hidden = auth.value !== "env";
+    tokenLine.hidden = auth.value !== "token";
+  };
+  auth.onchange = show;
+  show();
+
+  const hint = document.createElement("span");
+  hint.className = "settings-form-hint muted";
+  hint.textContent = t(git ? "dialog.git.hint.connected" : "dialog.git.hint.new");
+  form.append(hint);
+
+  const problem = document.createElement("span");
+  problem.className = "settings-form-error";
+  problem.hidden = true;
+  form.append(problem);
+
+  const tools = document.createElement("menu");
+  const save = document.createElement("button");
+  save.className = "primary";
+  save.textContent = t(git ? "dialog.sync.save" : "dialog.git.connect");
+  save.onclick = async () => {
+    save.disabled = true;
+    problem.hidden = true;
+    save.textContent = t("dialog.git.connecting");
+    try {
+      await api.connectGit(
+        vault.id,
+        url.value.trim() || null,
+        auth.value as GitAuth,
+        env.value.trim() || null,
+        token.value.trim() || null,
+      );
+      gitDrafts.delete(vault.id);
+      await redraw();
+    } catch (error) {
+      problem.textContent = describeError(error);
+      problem.hidden = false;
+      save.disabled = false;
+      save.textContent = t(git ? "dialog.sync.save" : "dialog.git.connect");
+    }
+  };
   tools.append(save);
   form.append(tools);
   return form;

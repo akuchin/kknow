@@ -47,7 +47,7 @@ attention away from Rust, and Rust is the purpose of the project.
 crates/
   kknow-core    Vault, Note, NoteId — the vault model, reading and writing files
   kknow-index   markdown parsing, wiki links, tags, link graph, HTML, tantivy
-  kknow-sync    manifests, sync plan, conflicts, configuration, S3, folder
+  kknow-sync    manifests, sync plan, conflicts, configuration, S3, folder, git
   kknow-run     commands on targets: manifest, Runner trait, running with a timeout
   kknow-app     Workspace, vault registry, app settings, themes, watcher
   kknow-cli     the kknow binary — the same thing in the terminal
@@ -67,7 +67,8 @@ A vault keeps its service data in a hidden folder inside the vault. The vault
 does not treat this folder as notes. The files are:
 
 - `.kknow/sync.json` — the snapshot of the last sync.
-- `.kknow/remote.json` — the storage address and the conflict policy.
+- `.kknow/remote.json` — the storage address and the conflict policy. For git,
+  the address and the sign-in.
 - `.kknow/bookmarks.json` — bookmarks.
 - `.kknow/themes/*.json` — themes.
 - `.kknow/trash/<entry>/…` — deleted notes and folders.
@@ -221,7 +222,7 @@ External edit:
   (`off | idle | syncing | conflict | error`). It also keeps the time of the
   last successful sync, the conflict count and the address. It sends each
   change as a `sync-status` event.
-- Auto-sync: the interval is in the vault configuration. Each vault has a
+- Auto-sync: the interval is in the vault configuration (git has none). Each vault has a
   scheduler thread. The thread reads the interval again each second. It skips a
   tick during a sync.
 
@@ -232,6 +233,85 @@ External edit:
 - The window keeps the secret key in the OS (operating system) keychain under
   the storage address. The terminal has no keychain. There the key comes from an
   environment variable (`KKNOW_S3_*`, `KKNOW_FOLDER`).
+
+### Git
+
+- **Git is not a `SyncProvider`.** It has commits, branches and its own merge.
+  Four operations on files cannot describe it, so it is a separate algorithm
+  in `kknow_sync::git`. In the settings it is one more variant of `Provider`
+  (`{"kind":"git","url":…,"auth":…}`), and `connect` refuses it. `exchange`
+  in the window and `sync` in the CLI take a different branch for git.
+- **kknow runs the `git` program, not a library.** SSH keys, credential
+  helpers, `~/.gitconfig` and LFS then work as in the terminal. `git2` needs C
+  code in the build and its own work for each sign-in method; `gix` cannot push
+  well yet. It is fair to ask a git user to have git.
+- **The path to git is an app setting, and kknow asks for it.** An app from
+  the Dock has the `PATH` of launchd, without homebrew, and `/usr/bin/git` on
+  macOS can be a stub that offers to install the Xcode tools. "Find" in the
+  settings uses `kknow_run::locate`, the same search as for interpreters. The
+  CLI has the `PATH` of the terminal: it uses `KKNOW_GIT` or `git`.
+- **Sign-in has three ways** (`GitAuth`): the git setup of the machine (SSH
+  agent, credential helper), a token of this repository in the keychain, or a
+  token in an environment variable. A variable comes from the process first and
+  then from the login shell: `kknow_run::login` runs `$SHELL -l -c` and prints
+  the value between marks. This is the same reason as for `login` in commands:
+  an app from the Dock does not see the variables of `config.fish`. kknow reads
+  the variable on each sync and keeps nothing.
+- **The token never goes to disk.** It goes to git in `KKNOW_GIT_TOKEN`, and a
+  credential helper in a `-c` option prints it. An empty helper before it turns
+  off the helpers of the user for this run: otherwise git would save our token
+  in their keychain. An address with a login or a token is refused, because git
+  writes the address to `.git/config`.
+- **Two ways to connect, and no third.** An empty vault (service files only)
+  gets `init`, `origin` and a checkout of the default remote branch. kknow asks
+  `ls-remote` first, so a wrong address or token leaves no half-made `.git`. A
+  vault that is already a repository must be its root, and the address comes
+  from `origin`. A folder with notes and no `.git` is refused: two histories of
+  the same notes need decisions that a form cannot ask about.
+- **The person commits; sync does not.** The changes view stages, unstages
+  and commits (`git add -A`, `git reset`, `git commit`). `git reset`, not
+  `git restore --staged`: the second fails before the first commit. A sync is
+  `fetch`, `merge`, `push`. Git has no auto-sync and no conflict policy
+  (`RemoteConfig::auto_sync` gives 0).
+- **Merge, not rebase.** A rebase replays each local commit and can stop on
+  each one, with "ours" and "theirs" swapped. A merge stops once, and stage 2
+  is always local and stage 3 remote. Git merges different parts of one note by
+  itself. For a real conflict the local file stays, the remote version goes to
+  a conflict copy with the same mark as the other providers, and kknow commits
+  the merge. A note never gets `<<<<<<<` marks.
+- **Uncommitted edits stop a merge, not get stashed.** A stash that does not
+  apply again leaves marks in the work tree. git refuses a merge that would
+  overwrite uncommitted edits, and kknow shows the file names
+  (`GitLocalChanges`).
+- **The lock covers the merge only.** Fetch and push do not touch files and
+  run without the vault lock. The merge writes files, so it holds the lock, and
+  the workspace reads the vault again after it. The changes view commands also
+  take the lock, so a commit never meets a running merge. The window announces
+  the changed notes itself (`git::announce`): after the reload, the watcher
+  does not see them as new.
+- **The machine files stay out of the repository.** kknow adds
+  `/.kknow/remote.json`, `/.kknow/sync.json`, `/.kknow/*.tmp` and `/.trash/`
+  to `.git/info/exclude`, once. This file is local: the `.gitignore` of the
+  user does not change. Bookmarks, themes and commands go into the repository.
+- **Commits work without an identity.** If git has no `user.name` or
+  `user.email`, kknow adds `-c user.name=kknow -c user.email=kknow@localhost`
+  to the commit and the merge. The message about `user.email` does not help a
+  person who only writes notes.
+- **No questions to a terminal.** git runs with `GIT_TERMINAL_PROMPT=0` and
+  `GCM_INTERACTIVE=never`, and a stalled connection fails after 30 seconds
+  (`http.lowSpeedTime`).
+- The window opens the changes view from the sync segment of the status bar:
+  for git, commits come before a sync. The shortcut and the palette still
+  sync at once.
+- **The changes view covers the editor and the preview**, as the trash view
+  does: the diff needs the width, and a panel in the right pane had no room
+  for it. A narrow column holds the lists and the commit form, the rest is the
+  diff of the selected file. The diff is the text of `git diff` (`Git::diff`,
+  command `git_diff`), with a colour for each line kind; a better diff view
+  can replace it later. An untracked file is not in the index, so its diff is
+  `git diff --no-index /dev/null <file>`, which exits with 1 when the files
+  differ. A note the user opens closes the view; a re-read of the open note
+  from the disk does not.
 
 ## Vaults
 

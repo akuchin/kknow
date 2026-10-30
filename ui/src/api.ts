@@ -13,6 +13,7 @@ import type {
   AppSettings,
   BookmarkMark,
   BookmarkView,
+  ChangeKind,
   CommandCwd,
   CommandList,
   CommandManifest,
@@ -20,6 +21,9 @@ import type {
   CommandView,
   ConflictPolicy,
   FileEntry,
+  GitAuth,
+  GitChange,
+  GitStatus,
   GlobalResult,
   KeymapView,
   LinkRef,
@@ -59,6 +63,7 @@ export type {
   AppSettings,
   BookmarkMark,
   BookmarkView,
+  ChangeKind,
   CommandCwd,
   CommandList,
   CommandManifest,
@@ -66,6 +71,9 @@ export type {
   CommandView,
   ConflictPolicy,
   FileEntry,
+  GitAuth,
+  GitChange,
+  GitStatus,
   GlobalResult,
   KeymapView,
   LinkRef,
@@ -363,6 +371,32 @@ export const api = {
   claimMarkdown: () => invoke<MarkdownAssociation>("claim_markdown"),
 
   syncNow: (vault?: string) => invoke<SyncReport>("sync_now", { vault: vault ?? null }),
+
+  /** Where git is on this machine: a suggestion for the settings field. */
+  gitLocate: () => invoke<string | null>("git_locate"),
+  /** `git version` of a path; fails if the path is not git. */
+  gitVersion: (path: string) => invoke<string>("git_version", { path }),
+  /**
+   * Connects a vault to a repository or changes how it signs in. `url` is
+   * needed only for an empty vault; `token: null` keeps the stored token.
+   */
+  connectGit: (
+    vault: string,
+    url: string | null,
+    auth: GitAuth,
+    env: string | null,
+    token: string | null,
+  ) => invoke<SyncSettings>("connect_git", { vault, url, auth, env, token }),
+  gitStatus: (vault?: string) => invoke<GitStatus>("git_status", { vault: vault ?? null }),
+  gitStage: (paths: string[], vault?: string) =>
+    invoke<GitStatus>("git_stage", { paths, vault: vault ?? null }),
+  gitUnstage: (paths: string[], vault?: string) =>
+    invoke<GitStatus>("git_unstage", { paths, vault: vault ?? null }),
+  /** The unified diff of one file: of the index when `staged`, else of the work tree. */
+  gitDiff: (path: string, from: string | null, staged: boolean, vault?: string) =>
+    invoke<string>("git_diff", { path, from, staged, vault: vault ?? null }),
+  gitCommit: (message: string, vault?: string) =>
+    invoke<GitStatus>("git_commit", { message, vault: vault ?? null }),
   /** Sync state of the active vault. */
   syncStatus: () => invoke<SyncStatus>("sync_status"),
   /** Sync states of all open vaults: the chip also shows conflicts in other vaults. */

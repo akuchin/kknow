@@ -4,6 +4,7 @@ mod bindings;
 mod commands;
 mod errors;
 mod files;
+mod git;
 mod keymap;
 mod live;
 mod mcp_http;
@@ -355,6 +356,14 @@ pub fn run() {
             sync::sync_now,
             sync::sync_status,
             sync::sync_statuses,
+            git::git_locate,
+            git::git_version,
+            git::connect_git,
+            git::git_status,
+            git::git_stage,
+            git::git_unstage,
+            git::git_commit,
+            git::git_diff,
             settings::get_settings,
             settings::set_settings,
             keymap::get_keymap,

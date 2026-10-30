@@ -14,7 +14,7 @@ import { describeError, locale, t } from "../i18n";
 import { iconMarkup } from "../icons";
 import { heading, row, select } from "./controls";
 import { state, view } from "./state";
-import { pickFolder, s3Form, saveSync, switchProvider } from "./sync-form";
+import { draftsGit, gitForm, pickFolder, s3Form, saveSync, switchProvider } from "./sync-form";
 
 /** Label colors: the same set as in the vault registry. */
 const COLORS = ["blue", "violet", "amber", "red", "green", "teal"];
@@ -297,7 +297,8 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
     console.error(error);
   }
 
-  const kind = remote?.provider.kind ?? "off";
+  const drafting = draftsGit(vault);
+  const kind = drafting ? "git" : (remote?.provider.kind ?? "off");
   page.append(
     row(
       t("settings.vaults.provider"),
@@ -306,6 +307,7 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
           { value: "off", label: t("settings.vaults.provider.off") },
           { value: "folder", label: t("dialog.sync.provider.folder") },
           { value: "s3", label: t("dialog.sync.provider.s3") },
+          { value: "git", label: t("dialog.sync.provider.git") },
         ],
         kind,
         (value) => void switchProvider(vault, remote, value),
@@ -313,9 +315,17 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
     ),
   );
 
+  if (drafting) {
+    page.append(gitForm(vault, remote));
+    return;
+  }
   if (!remote) return;
 
-  if (remote.provider.kind === "folder") {
+  if (remote.provider.kind === "git") {
+    // Git syncs by hand and keeps both versions in a conflict, so it has no
+    // interval and no policy rows.
+    page.append(gitForm(vault, remote));
+  } else if (remote.provider.kind === "folder") {
     const folder = document.createElement("button");
     folder.className = "ghost";
     folder.textContent = remote.provider.path;
@@ -325,6 +335,20 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
     page.append(s3Form(vault, remote));
   }
 
+  if (remote.provider.kind !== "git") renderSyncRules(page, vault, remote);
+
+  const sync = document.createElement("button");
+  sync.className = "primary";
+  sync.textContent = t("palette.action.sync");
+  sync.onclick = () => void syncNow(vault.id);
+
+  const last = row(t("settings.vaults.lastSync"), sync, describeLastSync(vault.id));
+  lastSyncHint = last.querySelector<HTMLElement>(".settings-row-detail");
+  page.append(last);
+}
+
+/** Auto sync and the conflict policy: the rules of a folder or a bucket. */
+function renderSyncRules(page: HTMLElement, vault: VaultView, remote: SyncSettings): void {
   page.append(
     row(
       t("dialog.sync.auto"),
@@ -355,15 +379,6 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
       ),
     ),
   );
-
-  const sync = document.createElement("button");
-  sync.className = "primary";
-  sync.textContent = t("palette.action.sync");
-  sync.onclick = () => void syncNow(vault.id);
-
-  const last = row(t("settings.vaults.lastSync"), sync, describeLastSync(vault.id));
-  lastSyncHint = last.querySelector<HTMLElement>(".settings-row-detail");
-  page.append(last);
 }
 
 /** When the vault last synced. */

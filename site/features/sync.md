@@ -3,7 +3,9 @@
 kknow syncs a vault without a kknow server. You select the storage:
 
 - **S3-compatible storage**: Amazon S3, MinIO, Cloudflare R2 and others;
-- **a plain folder**: iCloud Drive, Dropbox, a network disk or a USB stick.
+- **a plain folder**: iCloud Drive, Dropbox, a network disk or a USB stick;
+- **a git repository**: GitHub, GitLab or any git server. You stage and commit
+  the changes by hand. See [Git](#git).
 
 Each vault has its own sync configuration. A vault without sync works as usual.
 
@@ -79,8 +81,9 @@ lock.
 
 ## What sync does not copy
 
-Sync copies only notes. The `.kknow/` folder stays on each machine:
-bookmarks, the trash and the sync state.
+S3 and folder sync copy only notes. The `.kknow/` folder stays on each
+machine: bookmarks, the trash and the sync state. Git is different: see
+[What goes into the repository](#what-goes-into-the-repository).
 
 ## iCloud placeholders
 
@@ -90,9 +93,121 @@ it. Otherwise sync would think that the note was deleted.
 
 ## Git
 
-Git is not a sync provider. Its model of commits, branches and merges does not
-fit four simple operations on files. You can still keep a vault in a git
-repository: kknow shows the changes from `git pull` as any outside edit.
+A git vault works differently from S3 and a folder. Git has commits, branches
+and its own merge, so kknow does not copy files. It runs the `git` program of
+your computer. Your SSH keys, credential helpers and `~/.gitconfig` work as
+they work in the terminal.
+
+### Before you start
+
+kknow needs git on your computer. Press <kbd>⌘,</kbd>, go to **General** and
+set **Git**. Click **Find** to fill in the path that kknow finds. Then the
+text under the field shows the `git version` of that path.
+
+kknow does not guess the path. An app that starts from the Dock does not get
+the `PATH` of your terminal. Also, `/usr/bin/git` on macOS can be a stub that
+asks you to install the Xcode tools.
+
+### Connect a vault
+
+1. Go to **Vaults**, select the vault and set the provider to
+   **Git repository**.
+2. Enter the address, for example `https://github.com/me/notes.git` or
+   `git@github.com:me/notes.git`.
+3. Select the sign-in:
+   - **as git is set up**: kknow gives no token. Git uses an SSH key or its
+     credential helper (for example, after `gh auth setup-git`);
+   - **token**: the window keeps the token of this repository in the system
+     keychain;
+   - **token from an environment variable**: enter the variable name, for
+     example `GITHUB_TOKEN`. kknow reads the variable from its own process
+     first, then from your login shell (`$SHELL -l`). Thus a variable from
+     `config.fish` or `.zprofile` works also in an app from the Dock.
+4. Click **Connect**.
+
+kknow accepts two kinds of vault folders:
+
+- **an empty folder**: kknow makes a repository and checks out the default
+  branch of the address. An empty remote repository is also correct;
+- **a folder that is already a repository**: kknow takes the address of
+  `origin`. The vault must be the root of the repository: one vault is one
+  repository.
+
+kknow refuses a folder with notes and without `.git`. Two histories of the
+same notes cannot merge without questions. Also, kknow refuses an address with
+a login or a token in it, because git writes the address to `.git/config` as
+plain text.
+
+### Commit the changes
+
+Click the branch icon on the vault row in the sidebar, or the sync segment in
+the status bar. The icon shows when you move the pointer over the row, next to
+**⋯** and **+**. Both open the **Changes** view. It covers the editor and
+the preview and has two parts.
+
+The narrow column on the left has:
+
+- the branch and the commits to push or to pull;
+- **Staged**: what the next commit takes. **−** removes a file from it;
+- **Changed**: the files that are not staged. **+** stages a file;
+- the commit message and **Commit**. <kbd>⌘↵</kbd> in the message also
+  commits.
+
+The right part shows the diff of the selected file, as `git diff` gives it:
+for a staged file, the diff of the index; for a changed file, the diff of
+the work tree. The first file is selected when the view opens. Click another
+file to see its diff. When you stage or unstage a file, the diff follows it
+to the other list.
+
+Double-click a note to open it. The view closes, as it does when you open a
+note in the sidebar. <kbd>Esc</kbd> or **×** also closes the view. The view
+follows your saves.
+
+### Sync
+
+The refresh button in the view, the palette action and <kbd>⌘⇧S</kbd> sync
+the vault:
+
+1. `git fetch`;
+2. a merge of the remote branch;
+3. `git push`.
+
+The sync does not commit. Only you decide what goes into a commit. A git
+vault has no automatic sync and no conflict policy.
+
+Git merges edits in different parts of one note by itself. If both sides
+changed the same lines, your version stays in place and the remote version
+goes next to it as a conflict copy, as with the other providers. The note gets
+no `<<<<<<<` marks.
+
+If you have uncommitted edits in a file that the merge must change, the sync
+stops and names the files. Commit them, then sync again.
+
+### What goes into the repository
+
+kknow adds these lines to `.git/info/exclude`. It does not change your
+`.gitignore`:
+
+```text
+/.kknow/remote.json
+/.kknow/sync.json
+/.kknow/*.tmp
+/.trash/
+```
+
+These are the settings of this computer and the trash. The rest of `.kknow/`
+goes into the repository: bookmarks, themes and commands.
+
+### Git in the terminal
+
+```bash
+kknow --vault ~/notes sync --dry-run   # the branch, unpushed commits, changes
+kknow --vault ~/notes sync             # fetch, merge, push
+```
+
+The terminal uses `KKNOW_GIT` or `git` from `PATH`. For the "token" sign-in it
+reads `KKNOW_GIT_TOKEN`, because the terminal cannot read the keychain of the
+window.
 
 To learn how the sync algorithm works, read
 [Architecture → Sync](/architecture#sync).

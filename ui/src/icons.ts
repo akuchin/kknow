@@ -30,6 +30,13 @@ const PATHS = {
   book: ["M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z", "M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"],
   // Cloud: the vault that is synced.
   cloud: ["M17.5 19H7a4.5 4.5 0 0 1-.9-8.9 6 6 0 0 1 11.4 1.4A3.8 3.8 0 0 1 17.5 19Z"],
+  // Git branch: a vault that syncs through git.
+  git: [
+    "M6 3v12",
+    "M18 3a3 3 0 1 0 0 6 3 3 0 1 0 0-6",
+    "M6 15a3 3 0 1 0 0 6 3 3 0 1 0 0-6",
+    "M18 9a9 9 0 0 1-9 9",
+  ],
   // Reload: two circular arrows.
   refresh: [
     "M21 12a9 9 0 0 0-15.2-6.5L3 8",

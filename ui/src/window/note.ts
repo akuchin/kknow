@@ -29,8 +29,8 @@ import { fail, setStatus, status } from "./status";
 
 /** Steps of higher zones that the note zone starts. */
 export interface NoteHooks {
-  /** Closes the read-only trash view: a note the user opens replaces it. */
-  closeTrashView: () => void;
+  /** Closes the trash and git views: a note the user opens replaces them. */
+  closeViews: () => void;
   /** Reloads the separate file list: a conflict copy or a missing file. */
   refreshFiles: () => Promise<void>;
   /** Reloads the tree of a vault if it is shown: a conflict copy. */
@@ -187,6 +187,9 @@ async function saveNow(text: string): Promise<void> {
     if (outcome.status === "saved") {
       applyNote(outcome.note, { keepEditor: true });
       setStatus(t("status.saved"));
+      // The git changes panel follows saves; an event keeps the note zone
+      // free of a dependency on it.
+      document.dispatchEvent(new Event("kknow:note-saved"));
       return;
     }
 
@@ -223,7 +226,7 @@ export async function syncWithDisk(): Promise<void> {
     const view = file ? await api.loadFile(id) : await api.loadNote(id);
     // Compare first, so the cursor and undo history do not reset for nothing.
     if (state.note?.id !== id || isDirty() || view.content === state.note.content) return;
-    applyNote(view);
+    applyNote(view, { reload: true });
     setStatus(t("status.reloaded"));
   } catch (error) {
     // The separate file was deleted or moved. The core already forgot it; the
@@ -320,7 +323,7 @@ function headingName(view: NoteView): string {
 
 /** Empty state after the open note is deleted: nothing is open. */
 export function closeNote(): void {
-  hooks.closeTrashView();
+  hooks.closeViews();
   state.setNote(null);
   setImageOwner(null);
   showHeading(null);
@@ -334,12 +337,19 @@ export function closeNote(): void {
   renderNoteTools();
 }
 
-/** Shows a note. Use `keepEditor` when the editor text is already current. */
-export function applyNote(view: NoteView, options: { keepEditor?: boolean } = {}): void {
+/**
+ * Shows a note. Use `keepEditor` when the editor text is already current, and
+ * `reload` when the same note is re-read from the disk: the user did not open
+ * it, so a view on top of it stays.
+ */
+export function applyNote(
+  view: NoteView,
+  options: { keepEditor?: boolean; reload?: boolean } = {},
+): void {
   if (!options.keepEditor) {
     stashPosition();
-    // A note the user opens replaces the trash note on top of it.
-    hooks.closeTrashView();
+    // A note the user opens replaces the view on top of it.
+    if (!options.reload) hooks.closeViews();
   }
   state.setNote(view);
   // Before the editor text: its widgets request images for this note at once.

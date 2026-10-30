@@ -103,6 +103,79 @@ test("sync from the status bar shows the report and the conflict", async ({ page
   await expect(panel).toBeHidden();
 });
 
+test("a git vault opens its changes, stages, commits and pushes", async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "kknow:mock:sync",
+      JSON.stringify({
+        provider: { kind: "git", url: "https://github.com/me/notes.git", auth: "system", env: null },
+        policy: "keepBoth",
+        autoSyncMinutes: 0,
+      }),
+    ),
+  );
+  await openWindow(page);
+
+  // For git the segment opens the changes: commits come before a sync.
+  await page.locator("#status-sync").click();
+  const panel = page.locator("#git-view");
+  await expect(panel).toBeVisible();
+  const staged = panel.locator('.git-group[data-side="staged"]');
+  const changed = panel.locator('.git-group[data-side="unstaged"]');
+  await expect(staged).toContainText("Идеи/Новая мысль.md");
+  await expect(changed).toContainText("Index.md");
+
+  // The first file shows its diff at once; a click picks another one.
+  const diff = page.locator("#git-diff-body");
+  await expect(page.locator("#git-diff-head")).toContainText("Идеи/Новая мысль.md");
+  await expect(diff.locator(".add")).toContainText(["+# Новая мысль"]);
+  await changed.getByRole("button", { name: "Index.md", exact: true }).click();
+  await expect(page.locator("#git-diff-head")).toContainText("Index.md");
+  await expect(diff.locator(".del")).toContainText(["-Старая строка."]);
+  await expect(diff.locator(".hunk")).toHaveCount(1);
+
+  await changed.getByRole("button", { name: `${t("panel.git.stage")}: Index.md` }).click();
+  await expect(staged).toContainText("Index.md");
+  // The diff follows the picked file to the other list.
+  await expect(staged.locator("li.picked")).toContainText("Index.md");
+
+  const commit = panel.getByRole("button", { name: t("panel.git.commit") });
+  await expect(commit).toBeDisabled();
+  await panel.getByPlaceholder(t("panel.git.message")).fill("заметки за неделю");
+  await commit.click();
+  await expect(statusMessage(page)).toHaveText(t("status.committed"));
+  await expect(page.locator("#git-summary")).toContainText(t("panel.git.ahead", { count: 1 }));
+
+  await page.locator("#git-sync").click();
+  await expect(page.locator("#sync-summary")).toContainText(t("sync.report.pushed"));
+  await expect(page.locator("#git-summary")).toHaveText("main");
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+});
+
+test("the row of a git vault has a button for its changes", async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "kknow:mock:sync",
+      JSON.stringify({
+        provider: { kind: "git", url: "https://github.com/me/notes.git", auth: "system", env: null },
+        policy: "keepBoth",
+        autoSyncMinutes: 0,
+      }),
+    ),
+  );
+  await openWindow(page);
+
+  // Only the git vault gets the button; the others keep "⋯" and "+".
+  const own = page.locator('.vault-row[data-vault="notes"]');
+  await expect(page.locator(".vault-row .row-git")).toHaveCount(1);
+  await own.hover();
+  await own.getByRole("button", { name: t("sidebar.vault.git", { name: "notes (мок)" }) }).click();
+  await expect(page.locator("#git-view")).toBeVisible();
+  await expect(page.locator('.git-group[data-side="unstaged"]')).toContainText("Index.md");
+});
+
 test("sync without settings opens the vault settings", async ({ page, context }) => {
   await expect(page.locator("#status-sync")).toHaveAttribute("data-tone", "off");
   const [settings] = await Promise.all([

@@ -1174,7 +1174,8 @@ kbd {
 }
 
 .note-list .row-menu,
-.note-list .row-plus {
+.note-list .row-plus,
+.note-list .row-git {
   flex: none;
   width: 26px;
   padding: 6px 4px;
@@ -1186,18 +1187,21 @@ kbd {
 }
 
 .note-list .row-menu .icon,
-.note-list .row-plus .icon {
+.note-list .row-plus .icon,
+.note-list .row-git .icon {
   width: 16px;
   height: 16px;
 }
 
 .note-list .tree-row .row-menu:hover,
-.note-list .tree-row .row-plus:hover:not(:disabled) {
+.note-list .tree-row .row-plus:hover:not(:disabled),
+.note-list .tree-row .row-git:hover:not(:disabled) {
   color: var(--text);
   background: rgb(127 127 127 / 14%);
 }
 
-.note-list .row-plus:disabled {
+.note-list .row-plus:disabled,
+.note-list .row-git:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -2238,6 +2242,228 @@ pre.mermaid[data-error]::after {
   gap: 6px;
   align-items: baseline;
   flex-wrap: wrap;
+}
+
+/* The git changes view. Like the trash view, it covers the editor and the
+   preview in every mode: a narrow column of files on the left and the diff,
+   which needs the width, on the right. */
+.git-view {
+  grid-row: 2;
+  grid-column: 2 / -1;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.git-view[hidden] {
+  display: none;
+}
+
+.git-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 12px 12px;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.git-side h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.git-side p {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.git-side .panel-tools,
+.panel .panel-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.git-side ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+}
+
+.git-group li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0 2px;
+  border-radius: 5px;
+}
+
+.git-group li.picked {
+  background: var(--accent-soft);
+}
+
+.git-diff {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.git-diff-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.git-diff-head:empty {
+  display: none;
+}
+
+.git-diff-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.git-diff-head .muted {
+  flex: none;
+  font-size: 12px;
+}
+
+/* Plain `git diff` text for now; each line is a block, so its background
+   spans the whole width when the text scrolls sideways. */
+.git-diff-body {
+  flex: 1;
+  margin: 0;
+  padding: 8px 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+.git-diff-body > span {
+  display: block;
+  min-width: max-content;
+  padding: 0 14px;
+}
+
+.git-diff-body > .muted {
+  font-family: var(--font-text);
+  padding-top: 12px;
+}
+
+.git-diff-body .meta {
+  color: var(--text-muted);
+}
+
+.git-diff-body .hunk {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.git-diff-body .add {
+  background: color-mix(in oklab, var(--success, #2f8a4a) 14%, transparent);
+}
+
+.git-diff-body .del {
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+}
+
+.git-group h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 8px 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.git-mark {
+  width: 1.4em;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.git-group li[data-kind="added"] .git-mark,
+.git-group li[data-kind="untracked"] .git-mark {
+  color: var(--success, var(--accent));
+}
+
+.git-group li[data-kind="deleted"] .git-mark,
+.git-group li[data-kind="conflicted"] .git-mark {
+  color: var(--danger);
+}
+
+/* A plain row button: a click shows the diff. Names are long, so the start
+   stays visible and the end is cut. */
+.git-path {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.git-move {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.git-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.git-commit textarea {
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+
+.git-commit button {
+  align-self: flex-end;
 }
 
 /* The sync plan aligns actions in a column, because that is how people read it. */

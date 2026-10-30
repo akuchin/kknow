@@ -105,6 +105,12 @@ pub struct AppSettings {
     /// Check for a new version in the background and download it. The new
     /// version starts after a restart. A developer build never checks.
     pub auto_update: bool,
+    /// The `git` program for vaults that sync through git. kknow asks for it
+    /// and does not guess: an app from the Dock does not have the `PATH` of
+    /// the terminal, and `/usr/bin/git` on macOS can be a stub that offers to
+    /// install Xcode tools.
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub git_path: Option<String>,
 }
 
 /// Defaults are written by hand: `#[derive(Default)]` gives an empty language,
@@ -121,6 +127,7 @@ impl Default for AppSettings {
             line_numbers: true,
             note_scale: DEFAULT_NOTE_SCALE,
             auto_update: true,
+            git_path: None,
         }
     }
 }
@@ -225,6 +232,12 @@ impl AppSettings {
         // The slider has only whole steps: 125% would put it between marks.
         let stepped = (self.note_scale + NOTE_SCALE_STEP / 2) / NOTE_SCALE_STEP * NOTE_SCALE_STEP;
         self.note_scale = stepped.clamp(*NOTE_SCALE.start(), *NOTE_SCALE.end());
+        // An empty field in the form means "not set", not a program named "".
+        self.git_path = self
+            .git_path
+            .take()
+            .map(|path| path.trim().to_string())
+            .filter(|path| !path.is_empty());
     }
 }
 
@@ -263,6 +276,7 @@ mod tests {
             line_numbers: false,
             note_scale: 130,
             auto_update: false,
+            git_path: Some("/opt/homebrew/bin/git".to_string()),
         };
 
         settings.save(&path).unwrap();

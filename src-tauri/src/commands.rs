@@ -12,6 +12,7 @@ use kknow_app::vaults::VaultEntry;
 use kknow_app::{Saved, Workspace};
 use kknow_core::NoteId;
 use kknow_index::Edge;
+use kknow_sync::RemoteConfig;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -48,6 +49,9 @@ pub struct VaultView {
     active: bool,
     /// The folder exists. An external disk can be disconnected.
     available: bool,
+    /// The vault syncs through git: its row gets a button for the changes
+    /// panel.
+    git: bool,
 }
 
 /// Vault totals for the settings window.
@@ -182,6 +186,10 @@ fn view(entry: &VaultEntry, active: Option<&str>) -> VaultView {
         path: entry.path.to_string_lossy().into_owned(),
         color: entry.color.as_str().to_string(),
         labels: entry.labels.clone(),
+        git: RemoteConfig::load(&RemoteConfig::path(&entry.path))
+            .ok()
+            .flatten()
+            .is_some_and(|config| config.is_git()),
     }
 }
 

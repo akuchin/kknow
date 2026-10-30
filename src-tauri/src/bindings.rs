@@ -65,6 +65,8 @@ fn generate() -> String {
     collect.visit::<crate::sync::SyncSettings>();
     collect.visit::<crate::sync::SyncReport>();
     collect.visit::<crate::sync_status::SyncStatus>();
+    collect.visit::<kknow_sync::GitStatus>();
+    collect.visit::<kknow_sync::GitAuth>();
     collect.visit::<crate::keymap::KeymapView>();
     collect.visit::<crate::association::Association>();
     collect.visit::<crate::files::Opened>();

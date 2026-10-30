@@ -16,7 +16,8 @@ import { pickFile } from "./files";
 import { goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, openFound, openNote, setMode, travel } from "./note";
 import { state } from "./state";
-import { runSync } from "./sync";
+import { showGit } from "./git";
+import { isGit, runSync } from "./sync";
 import { activeNotes, filteredVaults, pickedLabelsText, toggleSidebar } from "./tree";
 import { openSettings } from "./util";
 import { reloadVault, switchVault } from "./vaults";
@@ -95,6 +96,10 @@ export function initPalette(): void {
       { label: t("palette.action.back"), action: "history.back", run: () => void travel(-1) },
       { label: t("palette.action.forward"), action: "history.forward", run: () => void travel(1) },
       { label: t("palette.action.sync"), action: "vault.sync", run: () => void runSync() },
+      {
+        label: t("palette.action.gitChanges"),
+        run: () => (isGit() ? void showGit() : void openSettings("vaults")),
+      },
       {
         label: t("palette.action.syncSettings"),
         action: "settings.open",

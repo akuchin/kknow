@@ -31,6 +31,7 @@ export function renderGeneral(): void {
   );
 
   page.append(markdownRow());
+  page.append(gitRow());
 
   page.append(
     row(
@@ -161,6 +162,68 @@ function markdownRow(): HTMLElement {
   api.markdownAssociation().then(show, (error) => {
     state.textContent = describeError(error);
   });
+  return item;
+}
+
+/**
+ * "Git": the path to the program for vaults that sync through git.
+ *
+ * kknow does not guess the path: an app from the Dock does not have the
+ * `PATH` of the terminal. "Find" fills the field with the program it finds,
+ * and the text under it shows `git version`, so the person sees that the
+ * path works before the first sync.
+ */
+function gitRow(): HTMLElement {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "settings-git-path";
+  input.placeholder = t("settings.general.git.placeholder");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = state.settings!.gitPath ?? "";
+
+  const find = document.createElement("button");
+  find.type = "button";
+  find.textContent = t("settings.general.git.find");
+
+  const controls = document.createElement("div");
+  controls.className = "settings-inline";
+  controls.append(input, find);
+
+  const item = row(t("settings.general.git"), controls, t("settings.general.git.detail"));
+  const version = document.createElement("span");
+  version.className = "settings-row-detail";
+  item.querySelector(".settings-row-text")!.append(version);
+
+  const check = async (path: string) => {
+    if (!path) {
+      version.textContent = t("settings.general.git.unset");
+      return;
+    }
+    try {
+      version.textContent = await api.gitVersion(path);
+    } catch (error) {
+      version.textContent = describeError(error);
+    }
+  };
+
+  const save = async (path: string) => {
+    input.value = path;
+    if (path !== (state.settings!.gitPath ?? "")) await patch({ gitPath: path || null });
+    await check(path);
+  };
+
+  input.onchange = () => void save(input.value.trim());
+  find.onclick = async () => {
+    const found = await api.gitLocate().catch(() => null);
+    if (found) {
+      await save(found);
+    } else {
+      version.textContent = t("settings.general.git.notFound");
+    }
+  };
+
+  void check(input.value);
   return item;
 }
 

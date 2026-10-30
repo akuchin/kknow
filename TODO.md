@@ -64,6 +64,11 @@ The plan for the redesign is closed. Its archive copy is
   Also add a "Make it a vault" button on the file row, for a folder that needs
   it.
 
+- **Git: "discard changes" and a better diff in the changes view.** The view
+  shows the plain text of `git diff` now. A real diff view (side by side or
+  inline, with word changes) must replace it. A discard can use the diff that
+  the view shows; the discarded version must go to the trash.
+
 ## Larger tasks
 
 These are the next large features, in this order:
@@ -74,9 +79,6 @@ These are the next large features, in this order:
 2. **Import CSS themes from other Markdown editors** (for example, Obsidian).
    Such a theme is a CSS (Cascading Style Sheets) file. The app reads only the
    variable values from it and does not execute the other rules.
-3. **Git as a sync provider.** This task waits on purpose. Git has commits,
-   branches and its own conflict model. It needs a different algorithm, not one
-   more implementation of the trait.
 
 ## Postponed on purpose
 

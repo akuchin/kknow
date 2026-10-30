@@ -152,3 +152,37 @@ test("the vault page renames, recolors and sets up sync", async ({ page }) => {
   await expect(page.locator(".settings-s3")).toHaveCount(0);
   await expect(provider).toHaveValue("off");
 });
+
+test("git asks for the program first and then connects the vault", async ({ page }) => {
+  await page.goto("/settings.html#vaults");
+  const provider = page
+    .locator(".settings-row", { hasText: t("settings.vaults.provider") })
+    .locator("select");
+  await provider.selectOption("git");
+
+  const form = page.locator(".settings-git");
+  await form.getByPlaceholder(t("dialog.git.url.placeholder")).fill("https://github.com/me/notes.git");
+  // Only the field of the picked sign-in shows.
+  await expect(form.getByPlaceholder("GITHUB_TOKEN")).toBeHidden();
+  const connect = form.getByRole("button", { name: t("dialog.git.connect") });
+  await connect.click();
+  await expect(form.locator(".settings-form-error")).toHaveText(t("error.gitPathNotSet"));
+
+  // "Find" fills the path to git in the general section.
+  await page.goto("/settings.html#general");
+  await page.getByRole("button", { name: t("settings.general.git.find") }).click();
+  await expect(page.locator(".settings-git-path")).toHaveValue("/opt/homebrew/bin/git");
+  await expect(page.getByText("git version 2.47.1")).toBeVisible();
+
+  await page.goto("/settings.html#vaults");
+  await provider.selectOption("git");
+  await form.getByPlaceholder(t("dialog.git.url.placeholder")).fill("https://github.com/me/notes.git");
+  await form.locator("select").selectOption("env");
+  await form.getByPlaceholder("GITHUB_TOKEN").fill("GITHUB_TOKEN");
+  await connect.click();
+
+  // Connected: the address comes from the repository and does not change.
+  await expect(form.getByRole("button", { name: t("dialog.sync.save") })).toBeVisible();
+  await expect(form.getByPlaceholder(t("dialog.git.url.placeholder"))).toHaveAttribute("readonly", "");
+  await expect(page.locator(".settings-row", { hasText: t("dialog.sync.policy") })).toHaveCount(0);
+});

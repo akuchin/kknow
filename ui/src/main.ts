@@ -19,13 +19,7 @@ import {
 } from "./api";
 import { locale, t } from "./i18n";
 import "./styles.css";
-import {
-  applySettings,
-  loadSettings,
-  openMoreMenu,
-  pickTheme,
-  toggleLineNumbers,
-} from "./window/appearance";
+import { applySettings, loadSettings, openMoreMenu, pickTheme, toggleLineNumbers } from "./window/appearance";
 import { initCommands, showRunOutput } from "./window/commands";
 import { el, initDom } from "./window/dom";
 import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
@@ -49,7 +43,8 @@ import { initMcp, mcpFloat, showMcpSetup } from "./window/mcp";
 import { initPalette, resolveConflicts } from "./window/palette";
 import { state } from "./window/state";
 import { fail, initStatus, setStatus, showUpdate, status } from "./window/status";
-import { describeRemote, initSync, openChipMenu, runSync, takeStatus } from "./window/sync";
+import { clickSync, describeRemote, initSync, openChipMenu, runSync, takeStatus } from "./window/sync";
+import { hideGit, initGit, showGit } from "./window/git";
 import { initToolbar } from "./window/toolbar";
 import { initTree, refreshTree, renderTree, restoreExpanded, restoreSidebar } from "./window/tree";
 import { closeTrashView, initTrash } from "./window/trash";
@@ -83,7 +78,7 @@ async function boot(): Promise<void> {
   initStatus(
     {
       vault: (anchor) => openVaultMenu(anchor),
-      sync: () => void runSync(),
+      sync: () => void clickSync(),
       run: () => showRunOutput(el.runFloat.hidden),
       chip: (anchor) => openChipMenu(anchor),
       scale: (steps) => changeCurrentScale(steps),
@@ -99,13 +94,17 @@ async function boot(): Promise<void> {
     openCommandMenu,
     switchVault,
     openNewNoteForm,
+    openGit: showGit,
   });
   initCommands();
   initFiles();
   initTrash({ renderTree, refreshTree });
-  initNote({ closeTrashView, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
+  // A note the user opens replaces the trash note and the changes view.
+  const closeViews = () => (closeTrashView(), hideGit());
+  initNote({ closeViews, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
   initToolbar();
   initSync({ resolve: resolveConflicts });
+  initGit({ sync: runSync, closeTrashView });
   initVaults();
   initEdits({ switchVault });
   initPalette();

@@ -45,18 +45,50 @@ pub struct S3Settings {
     pub access_key_id: Option<String>,
 }
 
+/// Where the token for a git repository comes from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub enum GitAuth {
+    /// kknow gives no token: git signs in as it is set up on this machine
+    /// (an SSH key, its credential helper).
+    #[default]
+    System,
+    /// A token of this repository in the OS keychain.
+    Token,
+    /// A token in an environment variable, also from the login shell.
+    Env,
+}
+
+/// Settings of a git repository.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct GitSettings {
+    /// The address of the repository. For a vault that was already a
+    /// repository, it is the URL of `origin`.
+    pub url: String,
+    #[serde(default)]
+    pub auth: GitAuth,
+    /// The variable name for [`GitAuth::Env`], for example `GITHUB_TOKEN`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub env: Option<String>,
+}
+
 /// The kind of storage on the other end.
 ///
 /// Cloud drive services do not get their own variants: they sync a plain
-/// folder, so for kknow they are [`Provider::Folder`] with a path. Git does not
-/// fit here: it has commits and its own conflict model, that is, a different
-/// algorithm, not a different trait implementation.
+/// folder, so for kknow they are [`Provider::Folder`] with a path. Git is a
+/// variant here only as a setting: it has commits and its own conflict model,
+/// that is, a different algorithm (`crate::git`), not a trait implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Provider {
     S3(S3Settings),
     Folder { path: PathBuf },
+    Git(GitSettings),
 }
 
 /// Storage address and conflict policy.
@@ -142,6 +174,30 @@ impl RemoteConfig {
         }
     }
 
+    pub fn git(settings: GitSettings) -> Self {
+        RemoteConfig {
+            provider: Provider::Git(settings),
+            policy: ConflictPolicy::default(),
+            auto_sync_minutes: 0,
+        }
+    }
+
+    /// Git syncs by hand: commits are a decision of the person, and a sync
+    /// without new commits only gets the remote ones. So it has no auto sync
+    /// and no conflict policy: a conflict always keeps both versions.
+    pub fn is_git(&self) -> bool {
+        matches!(self.provider, Provider::Git(_))
+    }
+
+    /// The auto sync interval that applies: always off for git.
+    pub fn auto_sync(&self) -> u32 {
+        if self.is_git() {
+            0
+        } else {
+            self.auto_sync_minutes
+        }
+    }
+
     /// Path to the settings inside the vault.
     ///
     /// Takes the root, not an open [`Vault`](kknow_core::Vault): some callers
@@ -180,6 +236,7 @@ impl RemoteConfig {
         match &self.provider {
             Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket),
             Provider::Folder { path } if path.as_os_str().is_empty() => Err(Error::NoFolder),
+            Provider::Git(git) if git.url.trim().is_empty() => Err(Error::NoGitUrl),
             _ => Ok(()),
         }
     }
@@ -206,12 +263,18 @@ impl RemoteConfig {
                 s3_location(s3.endpoint.as_deref(), &s3.bucket, s3.prefix.as_deref())
             }
             Provider::Folder { path } => path.to_string_lossy().into_owned(),
+            Provider::Git(git) => git.url.clone(),
         }
     }
 
-    /// Whether this storage needs a secret key. A folder has no secrets.
+    /// Whether this storage needs a secret key from the keychain. A folder has
+    /// no secrets; git has one only when the token is stored in kknow.
     pub fn needs_secret(&self) -> bool {
-        matches!(self.provider, Provider::S3(_))
+        match &self.provider {
+            Provider::S3(_) => true,
+            Provider::Folder { .. } => false,
+            Provider::Git(git) => git.auth == GitAuth::Token,
+        }
     }
 }
 
@@ -288,6 +351,53 @@ mod tests {
         loaded.save(&path).unwrap();
         let written = fs::read_to_string(&path).unwrap();
         assert!(written.contains(r#""kind": "s3""#), "{written}");
+    }
+
+    #[test]
+    fn a_git_repository_round_trips_without_its_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_PATH);
+        let config = RemoteConfig::git(GitSettings {
+            url: "https://github.com/me/notes.git".into(),
+            auth: GitAuth::Env,
+            env: Some("GITHUB_TOKEN".into()),
+        });
+
+        config.save(&path).unwrap();
+
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains(r#""kind": "git""#), "{written}");
+        assert_eq!(RemoteConfig::load(&path).unwrap(), Some(config.clone()));
+        assert_eq!(config.location(), "https://github.com/me/notes.git");
+        assert!(!config.needs_secret(), "токен из переменной, не из связки");
+        assert!(
+            RemoteConfig::git(GitSettings::default())
+                .save(&path)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn git_has_no_auto_sync() {
+        let config = RemoteConfig {
+            auto_sync_minutes: 5,
+            ..RemoteConfig::git(GitSettings {
+                url: "git@github.com:me/notes.git".into(),
+                auth: GitAuth::Token,
+                env: None,
+            })
+        };
+
+        assert_eq!(config.auto_sync(), 0);
+        assert!(config.needs_secret());
+        assert_eq!(
+            RemoteConfig {
+                auto_sync_minutes: 5,
+                ..s3()
+            }
+            .auto_sync(),
+            5
+        );
     }
 
     #[test]

@@ -56,11 +56,17 @@ kknow sync --bucket kknow --endpoint http://localhost:9000 --prefix work
 kknow sync --on-conflict both|local|remote
 ```
 
+For a vault with git sync, `kknow sync` runs fetch, merge and push, and
+`--dry-run` shows the branch, the unpushed commits and the changes. The command
+does not commit.
+
 | Variable | Meaning |
 |---|---|
 | `KKNOW_S3_BUCKET`, `KKNOW_S3_ENDPOINT`, `KKNOW_S3_REGION`, `KKNOW_S3_PREFIX` | the same as the flags |
 | `KKNOW_S3_ACCESS_KEY`, `KKNOW_S3_SECRET_KEY` | access keys; there are no flags for them |
 | `KKNOW_FOLDER` | the same as `--folder` |
+| `KKNOW_GIT` | the git program; the default is `git` from `PATH` |
+| `KKNOW_GIT_TOKEN` | the repository token for the "token" sign-in |
 
 ## Custom commands
 

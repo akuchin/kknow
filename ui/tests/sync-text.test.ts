@@ -32,6 +32,7 @@ function report(counts: Partial<Omit<SyncReport, "conflicts">>, conflicts = 0): 
     downloaded: 0,
     removedLocal: 0,
     removedRemote: 0,
+    pushed: 0,
     ...counts,
     conflicts: Array.from({ length: conflicts }, (_, index) => ({
       id: `Заметка ${index}`,

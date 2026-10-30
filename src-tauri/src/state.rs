@@ -63,6 +63,14 @@ pub enum Error {
     #[error("связка ключей: {0}")]
     Keychain(String),
 
+    #[error("не указан путь к git: задайте его в настройках, раздел «Общие»")]
+    GitPathNotSet,
+
+    #[error(
+        "токен репозитория не найден: введите его в настройках хранилища или выберите другой способ входа"
+    )]
+    NoGitToken,
+
     #[error(transparent)]
     App(#[from] kknow_app::Error),
 

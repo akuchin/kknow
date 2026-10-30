@@ -17,6 +17,7 @@ import { mcpFloat, showMcpSetup } from "./mcp";
 import { palette } from "./palette";
 import { state } from "./state";
 import { runSync } from "./sync";
+import { hideGit } from "./git";
 import { closeTrashView } from "./trash";
 import { toggleSidebar } from "./tree";
 import { openSettings } from "./util";
@@ -82,6 +83,11 @@ export function initKeys(): void {
     if (matches(event, "cancel") && !el.trashView.hidden) {
       event.preventDefault();
       closeTrashView();
+      return;
+    }
+    if (matches(event, "cancel") && !el.gitView.hidden) {
+      event.preventDefault();
+      hideGit();
       return;
     }
 

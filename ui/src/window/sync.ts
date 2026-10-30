@@ -10,6 +10,7 @@ import { describeError, t } from "../i18n";
 import { openMenu } from "../menu";
 import { describeReport, syncSegment, type SyncWords } from "../sync-text";
 import { el } from "./dom";
+import { hideGit, refreshGit, toggleGit } from "./git";
 import { flushPendingSave, openNote, setMode } from "./note";
 import { state } from "./state";
 import { fail, setStatus, status } from "./status";
@@ -46,6 +47,8 @@ function showSyncPanel(summary: string, items: HTMLLIElement[]): void {
   el.syncSummary.textContent = summary;
   el.syncList.replaceChildren(...items);
   el.syncPanel.hidden = false;
+  // Conflicts need the notes: the changes view would hide the list.
+  if (items.length > 0) hideGit();
 }
 
 /** Conflicts: the local version stays in place, the remote one is a copy next to it. */
@@ -70,6 +73,23 @@ function conflictItems(conflicts: SyncConflict[]): HTMLLIElement[] {
     item.append(mine, arrow, theirs);
     return item;
   });
+}
+
+/** Whether the active vault syncs through git. */
+export function isGit(): boolean {
+  return remote?.provider.kind === "git";
+}
+
+/**
+ * A click on the sync segment. A git vault opens its changes panel: commits
+ * come first, and the panel has the sync button. Other vaults sync at once.
+ */
+export async function clickSync(): Promise<void> {
+  if (isGit()) {
+    await toggleGit();
+    return;
+  }
+  await runSync();
 }
 
 export async function runSync(): Promise<void> {
@@ -101,6 +121,7 @@ export async function runSync(): Promise<void> {
   } finally {
     syncing = false;
     await refreshStatuses();
+    await refreshGit();
   }
 }
 
@@ -194,6 +215,7 @@ export function openChipMenu(anchor: HTMLElement): void {
 /** Sync settings belong to the vault folder, so they load with it. */
 export async function refreshSync(): Promise<void> {
   el.syncPanel.hidden = true;
+  hideGit();
   try {
     remote = await api.syncSettings();
   } catch (error) {
