@@ -1,10 +1,19 @@
 # Checks on each push and pull request: tests, clippy and the UI build.
+#
+# A change only in the documentation site does not touch the app, so it does
+# not start this workflow. `docs.yml` builds the site.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/docs.yml"
   pull_request:
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/docs.yml"
 
 concurrency:
   group: ci-${{ github.ref }}
