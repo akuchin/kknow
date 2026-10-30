@@ -268,8 +268,9 @@ External edit:
   vault that is already a repository must be its root, and the address comes
   from `origin`. A folder with notes and no `.git` is refused: two histories of
   the same notes need decisions that a form cannot ask about.
-- **The person commits; sync does not.** The changes view stages, unstages
-  and commits (`git add -A`, `git reset`, `git commit`). `git reset`, not
+- **The person commits; sync does not.** The changes view stages, unstages,
+  discards and commits (`git add -A`, `git reset`, `git checkout`,
+  `git commit`). `git reset`, not
   `git restore --staged`: the second fails before the first commit. A sync is
   `fetch`, `merge`, `push`. Git has no auto-sync and no conflict policy
   (`RemoteConfig::auto_sync` gives 0).
@@ -290,9 +291,16 @@ External edit:
   the changed notes itself (`git::announce`): after the reload, the watcher
   does not see them as new.
 - **The machine files stay out of the repository.** kknow adds
-  `/.kknow/remote.json`, `/.kknow/sync.json`, `/.kknow/*.tmp` and `/.trash/`
-  to `.git/info/exclude`, once. This file is local: the `.gitignore` of the
-  user does not change. Bookmarks, themes and commands go into the repository.
+  `/.kknow/remote.json`, `/.kknow/sync.json`, `/.kknow/*.tmp`,
+  `/.kknow/trash/` and `/.trash/` to `.git/info/exclude`, once. This file is
+  local: the `.gitignore` of the user does not change. Bookmarks, themes and
+  commands go into the repository. `Git::status` checks the lines too, not
+  only `attach`: a vault connected before a line was added gets it then.
+- **A discard keeps the old version in the trash.** `Workspace::git_discard`
+  moves the work tree file to the vault trash and only then runs
+  `git checkout` (to the index, or to HEAD for the staged side; a file that
+  HEAD does not have leaves the index with `git rm --cached`). git cannot give
+  back what it overwrites; the trash can.
 - **Commits work without an identity.** If git has no `user.name` or
   `user.email`, kknow adds `-c user.name=kknow -c user.email=kknow@localhost`
   to the commit and the merge. The message about `user.email` does not help a

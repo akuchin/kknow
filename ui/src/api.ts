@@ -392,6 +392,9 @@ export const api = {
     invoke<GitStatus>("git_stage", { paths, vault: vault ?? null }),
   gitUnstage: (paths: string[], vault?: string) =>
     invoke<GitStatus>("git_unstage", { paths, vault: vault ?? null }),
+  /** Throws away the changes of one file; its work tree version goes to the trash. */
+  gitDiscard: (path: string, from: string | null, staged: boolean, vault?: string) =>
+    invoke<GitStatus>("git_discard", { path, from, staged, vault: vault ?? null }),
   /** The unified diff of one file: of the index when `staged`, else of the work tree. */
   gitDiff: (path: string, from: string | null, staged: boolean, vault?: string) =>
     invoke<string>("git_diff", { path, from, staged, vault: vault ?? null }),

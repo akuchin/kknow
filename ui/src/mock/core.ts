@@ -561,6 +561,21 @@ function gitMove(paths: string[], stage: boolean): GitStatus {
   return gitStatus();
 }
 
+/**
+ * Throws away one side of a change, as `git checkout` does: the work tree
+ * side goes back to the index, the index side back to HEAD with the work tree.
+ */
+function gitDiscard(path: string, staged: boolean): GitStatus {
+  gitStatus();
+  gitState.changes = gitState.changes.filter((change) => {
+    if (change.path !== path) return true;
+    if (staged) return false;
+    change.unstaged = null;
+    return change.staged !== null;
+  });
+  return gitStatus();
+}
+
 /** A made-up diff of one file, in the shape of `git diff`. */
 function gitDiff(path: string, staged: boolean): string {
   const change = gitStatus().changes.find((entry) => entry.path === path);
@@ -1555,6 +1570,9 @@ export async function invoke<T>(
 
     case "git_unstage":
       return gitMove(args?.paths as string[], false) as T;
+
+    case "git_discard":
+      return gitDiscard(args?.path as string, args?.staged as boolean) as T;
 
     case "git_diff":
       return gitDiff(args?.path as string, args?.staged as boolean) as T;

@@ -52,6 +52,7 @@ const EXCLUDE: &[&str] = &[
     "/.kknow/remote.json",
     "/.kknow/sync.json",
     "/.kknow/*.tmp",
+    "/.kknow/trash/",
     "/.trash/",
 ];
 
@@ -347,7 +348,11 @@ impl Git {
     }
 
     /// Changed files, the branch and the distance to the remote.
+    ///
+    /// The exclude lines are checked here too, not only on attach: a vault
+    /// connected by an older version gets the lines that came later.
     pub fn status(&self) -> Result<GitStatus> {
+        self.exclude()?;
         let out = self.run(&[
             "status",
             "--porcelain=v2",
@@ -409,6 +414,31 @@ impl Git {
         args.extend(from);
         args.push(path);
         self.text(&args)
+    }
+
+    /// Throws away the changes of one file. The caller must keep the work
+    /// tree version first (kknow moves it to the trash): git cannot give it
+    /// back.
+    ///
+    /// With `staged`, the file goes back to HEAD in the index and the work
+    /// tree; a file that HEAD does not have leaves the index. A rename also
+    /// brings back `from`. Without `staged`, the work tree file goes back to
+    /// the index version; an untracked file has none and stays deleted.
+    pub fn discard(&self, path: &str, from: Option<&str>, staged: bool) -> Result<()> {
+        if !staged {
+            if !self.text(&["ls-files", "--", path])?.is_empty() {
+                self.run(&["checkout", "-q", "--", path])?;
+            }
+            return Ok(());
+        }
+        for path in from.into_iter().chain([path]) {
+            if self.head().is_some() && self.exists(&format!("HEAD:{path}")) {
+                self.run(&["checkout", "-q", "HEAD", "--", path])?;
+            } else {
+                self.run(&["rm", "-q", "--cached", "--ignore-unmatch", "--", path])?;
+            }
+        }
+        Ok(())
     }
 
     /// `git diff --no-index` exits with 1 when the files differ, and that is
@@ -1062,6 +1092,44 @@ mod tests {
     }
 
     #[test]
+    fn a_discard_takes_one_side_back() {
+        let world = World::new();
+        let laptop = world.machine("laptop");
+        put(&laptop, "Index.md", "раз\n");
+        put(&laptop, "Старое.md", "старое\n");
+        commit_all(&laptop, "старт");
+
+        // Work tree side: back to the index, the staged part stays.
+        put(&laptop, "Index.md", "раз\nдва\n");
+        laptop.stage(&["Index.md".to_string()]).unwrap();
+        put(&laptop, "Index.md", "раз\nдва\nтри\n");
+        laptop.discard("Index.md", None, false).unwrap();
+        assert_eq!(read(&laptop, "Index.md"), "раз\nдва\n");
+
+        // Index side: back to HEAD in the index and the work tree.
+        laptop.discard("Index.md", None, true).unwrap();
+        assert_eq!(read(&laptop, "Index.md"), "раз\n");
+
+        // A staged rename brings the old name back; the new one leaves the index.
+        fs::rename(laptop.root().join("Старое.md"), laptop.root().join("Новое.md")).unwrap();
+        laptop.stage(&["Старое.md".to_string(), "Новое.md".to_string()]).unwrap();
+        fs::remove_file(laptop.root().join("Новое.md")).unwrap();
+        laptop.discard("Новое.md", Some("Старое.md"), true).unwrap();
+        assert_eq!(read(&laptop, "Старое.md"), "старое\n");
+
+        // A staged new file leaves the index; an untracked one is left alone.
+        put(&laptop, "Новая.md", "текст\n");
+        laptop.stage(&["Новая.md".to_string()]).unwrap();
+        laptop.discard("Новая.md", None, true).unwrap();
+        laptop.discard("Новая.md", None, false).unwrap();
+
+        let status = laptop.status().unwrap();
+        assert_eq!(status.changes.len(), 1, "{status:?}");
+        assert_eq!(status.changes[0].path, "Новая.md");
+        assert_eq!(status.changes[0].unstaged, Some(ChangeKind::Untracked));
+    }
+
+    #[test]
     fn a_commit_works_without_an_identity_and_refuses_an_empty_message() {
         let world = World::new();
         let laptop = world.machine("laptop");
@@ -1083,6 +1151,7 @@ mod tests {
         put(&laptop, ".kknow/sync.json", "{}");
         put(&laptop, ".kknow/bookmarks.json", "[]");
         put(&laptop, ".trash/старое.md", "x");
+        put(&laptop, ".kknow/trash/1700000000/старое.md", "x");
 
         let paths: Vec<String> = laptop
             .status()

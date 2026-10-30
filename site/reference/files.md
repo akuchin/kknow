@@ -21,7 +21,7 @@ kknow skips all hidden folders, for example `.git` and `.obsidian`. S3 and
 folder sync do not copy `.kknow/`.
 
 With git sync, kknow adds `.kknow/remote.json`, `.kknow/sync.json` and the
-trash to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.
+trash (`.kknow/trash/`) to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.
 
 `remote.json` has no secret key or token. The window keeps them in the system
 keychain.

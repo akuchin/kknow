@@ -364,6 +364,7 @@ pub fn run() {
             git::git_unstage,
             git::git_commit,
             git::git_diff,
+            git::git_discard,
             settings::get_settings,
             settings::set_settings,
             keymap::get_keymap,

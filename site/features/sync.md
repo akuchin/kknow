@@ -159,6 +159,18 @@ the work tree. The first file is selected when the view opens. Click another
 file to see its diff. When you stage or unstage a file, the diff follows it
 to the other list.
 
+The ↺ button on a file throws away its changes. It shows on the selected
+file and on the file under the pointer, and asks first:
+
+- in **Changed**, the file goes back to its staged version, or to the last
+  commit if nothing is staged. A new file that git does not track is removed;
+- in **Staged**, the file goes back to the last commit, both in the index and
+  on the disk. A new file leaves the index. A renamed file gets its old name
+  back.
+
+The current version of the file goes to the [trash](/features/organize#trash) first,
+so you can restore it. A file with a merge conflict has no ↺ button.
+
 Double-click a note to open it. The view closes, as it does when you open a
 note in the sidebar. <kbd>Esc</kbd> or **×** also closes the view. The view
 follows your saves.
@@ -192,11 +204,14 @@ kknow adds these lines to `.git/info/exclude`. It does not change your
 /.kknow/remote.json
 /.kknow/sync.json
 /.kknow/*.tmp
+/.kknow/trash/
 /.trash/
 ```
 
 These are the settings of this computer and the trash. The rest of `.kknow/`
-goes into the repository: bookmarks, themes and commands.
+goes into the repository: bookmarks, themes and commands. kknow checks the
+lines each time it reads the changes, so a vault that you connected with an
+older version gets the new lines too.
 
 ### Git in the terminal
 

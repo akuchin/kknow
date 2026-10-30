@@ -209,6 +209,24 @@ pub fn git_unstage<R: Runtime>(
     })
 }
 
+/// Throws away the changes of one file; its work tree version goes to the
+/// trash. `staged` picks the side, as for the diff.
+#[tauri::command(async)]
+pub fn git_discard<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    vault: Option<String>,
+    path: String,
+    from: Option<String>,
+    staged: bool,
+) -> Result<GitStatus> {
+    let slot = state.slot(vault.as_deref())?;
+    let git = git_of(&app, &slot)?;
+    slot.write(|workspace| Ok(workspace.git_discard(&git, &path, from.as_deref(), staged)?))?;
+    announce(&app, &slot, &[from, Some(path)].into_iter().flatten().collect::<Vec<_>>());
+    slot.read(|_| Ok(git.status()?))
+}
+
 /// The diff of one file for the changes view; `staged` picks the side.
 #[tauri::command(async)]
 pub fn git_diff<R: Runtime>(

@@ -104,7 +104,7 @@ async function boot(): Promise<void> {
   initNote({ closeViews, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
   initToolbar();
   initSync({ resolve: resolveConflicts });
-  initGit({ sync: runSync, closeTrashView });
+  initGit({ sync: runSync, closeTrashView, refreshTree });
   initVaults();
   initEdits({ switchVault });
   initPalette();

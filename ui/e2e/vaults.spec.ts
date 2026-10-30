@@ -146,6 +146,14 @@ test("a git vault opens its changes, stages, commits and pushes", async ({ page 
   await expect(statusMessage(page)).toHaveText(t("status.committed"));
   await expect(page.locator("#git-summary")).toContainText(t("panel.git.ahead", { count: 1 }));
 
+  // A discard asks first; the untracked picture was the last change.
+  page.once("dialog", (dialog) => void dialog.accept());
+  await changed
+    .getByRole("button", { name: `${t("panel.git.discard")}: картинки/схема.png` })
+    .click();
+  await expect(statusMessage(page)).toHaveText(t("status.discarded"));
+  await expect(page.locator("#git-body")).toHaveText(t("panel.git.clean"));
+
   await page.locator("#git-sync").click();
   await expect(page.locator("#sync-summary")).toContainText(t("sync.report.pushed"));
   await expect(page.locator("#git-summary")).toHaveText("main");

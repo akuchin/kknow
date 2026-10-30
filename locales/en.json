@@ -695,6 +695,9 @@
   "panel.git.pick": "Pick a file on the left to see its changes",
   "panel.git.noDiff": "No text changes",
   "panel.git.openNote": "Double-click opens the note",
+  "panel.git.discard": "Discard changes",
+  "panel.git.discard.unstaged": "Discard the changes in “{{name}}”? The current version of the file goes to the trash.",
+  "panel.git.discard.staged": "Take “{{name}}” back to the last commit? The staged changes go away; the current version of the file goes to the trash.",
   "panel.git.kind.added": "new in the index",
   "panel.git.kind.modified": "modified",
   "panel.git.kind.deleted": "deleted",
@@ -703,5 +706,6 @@
   "panel.git.kind.conflicted": "merge conflict",
   "palette.action.gitChanges": "Git: changes",
   "status.committed": "committed",
+  "status.discarded": "changes discarded; the old version is in the trash",
   "sync.report.pushed": "commits pushed"
 }

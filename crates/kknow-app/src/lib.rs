@@ -419,6 +419,33 @@ impl Workspace {
         Ok(merged)
     }
 
+    /// Throws away the changes of one file (see [`Git::discard`]) and reads
+    /// the vault again.
+    ///
+    /// The work tree version goes to the trash first, so a wrong click costs
+    /// nothing: git cannot give back what it overwrites. A file that is not in
+    /// the work tree (a deletion) has nothing to keep.
+    pub fn git_discard(
+        &mut self,
+        git: &Git,
+        path: &str,
+        from: Option<&str>,
+        staged: bool,
+    ) -> Result<()> {
+        let relative = Path::new(path);
+        if !relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(kknow_core::Error::OutsideVault(relative.to_path_buf()).into());
+        }
+        if self.vault.root().join(relative).is_file() {
+            self.trash().put(relative)?;
+        }
+        git.discard(path, from, staged)?;
+        self.reload()
+    }
+
     /// The whole git sync for the terminal: fetch, merge, push.
     pub fn git_sync(&mut self, git: &Git) -> Result<GitReport> {
         git.fetch()?;

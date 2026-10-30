@@ -2444,6 +2444,22 @@ pre.mermaid[data-error]::after {
   height: 22px;
 }
 
+/* The discard button shows on the row under the pointer and on the picked
+   one: on every row it would be a column of risky buttons. */
+.git-discard {
+  opacity: 0;
+}
+
+.git-group li:hover .git-discard,
+.git-group li.picked .git-discard,
+.git-discard:focus-visible {
+  opacity: 1;
+}
+
+.git-discard[hidden] {
+  display: none;
+}
+
 .git-commit {
   display: flex;
   flex-direction: column;

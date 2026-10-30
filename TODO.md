@@ -64,10 +64,9 @@ The plan for the redesign is closed. Its archive copy is
   Also add a "Make it a vault" button on the file row, for a folder that needs
   it.
 
-- **Git: "discard changes" and a better diff in the changes view.** The view
-  shows the plain text of `git diff` now. A real diff view (side by side or
-  inline, with word changes) must replace it. A discard can use the diff that
-  the view shows; the discarded version must go to the trash.
+- **Git: a better diff in the changes view.** The view shows the plain text
+  of `git diff` now. A real diff view (side by side or inline, with word
+  changes) must replace it.
 
 ## Larger tasks
 

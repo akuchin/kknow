@@ -11,7 +11,8 @@ import { api, type ChangeKind, type GitChange, type GitStatus } from "../api";
 import { iconMarkup } from "../icons";
 import { describeError, t, type Key } from "../i18n";
 import { el } from "./dom";
-import { openNote } from "./note";
+import { flushPendingSave, openNote } from "./note";
+import { state } from "./state";
 import { fail, setStatus } from "./status";
 
 /** Steps of higher zones that the panel starts. */
@@ -20,6 +21,8 @@ export interface GitHooks {
   sync: () => Promise<void>;
   /** The trash view takes the same place: the two do not stack. */
   closeTrashView: () => void;
+  /** A discard puts a file into the trash: the sidebar shows its count. */
+  refreshTree: (vaultId: string) => Promise<void>;
 }
 
 let hooks: GitHooks;
@@ -283,8 +286,34 @@ function changeItem(change: GitChange, side: Side): HTMLLIElement {
       side === "staged" ? api.gitUnstage([change.path]) : api.gitStage([change.path]),
     );
 
-  item.append(mark, name, move);
+  // A conflict is resolved by a merge, not thrown away.
+  const discard = document.createElement("button");
+  discard.className = "ghost bare git-move git-discard";
+  discard.title = t("panel.git.discard");
+  discard.setAttribute("aria-label", `${t("panel.git.discard")}: ${change.path}`);
+  discard.innerHTML = iconMarkup("discard");
+  discard.hidden = kind === "conflicted";
+  discard.onclick = () => void discardChange(change, side);
+
+  item.append(mark, name, discard, move);
   return item;
+}
+
+/**
+ * Throws away the changes of one file after a confirmation. The core moves
+ * the current version to the trash first, so the click can be undone there.
+ */
+async function discardChange(change: GitChange, side: Side): Promise<void> {
+  const question = side === "staged" ? "panel.git.discard.staged" : "panel.git.discard.unstaged";
+  if (!window.confirm(t(question, { name: change.path }))) return;
+  // A pending save after the discard would write the old text back.
+  await flushPendingSave();
+  await act(async () => {
+    const status = await api.gitDiscard(change.path, change.from ?? null, side === "staged");
+    setStatus(t("status.discarded"));
+    if (state.vault) await hooks.refreshTree(state.vault.id);
+    return status;
+  });
 }
 
 /** A vault note opens by its ID: the path without `.md`. */

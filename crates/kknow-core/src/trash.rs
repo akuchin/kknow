@@ -59,7 +59,7 @@ impl Trash {
     /// The trash is on the same file system as the vault, so this is one
     /// atomic `rename`. The watcher sees the old path disappear, as on a
     /// delete. The new path is hidden, and the watcher skips it.
-    pub(crate) fn put(&self, relative: &Path) -> Result<()> {
+    pub fn put(&self, relative: &Path) -> Result<()> {
         let now = unix_now();
         self.purge(now)?;
 

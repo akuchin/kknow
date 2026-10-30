@@ -712,6 +712,9 @@
   "panel.git.pick": "Выберите файл слева, чтобы увидеть его изменения",
   "panel.git.noDiff": "Нет текстовых изменений",
   "panel.git.openNote": "Двойной щелчок открывает заметку",
+  "panel.git.discard": "Отменить изменения",
+  "panel.git.discard.unstaged": "Отменить изменения в «{{name}}»? Текущая версия файла уйдёт в корзину.",
+  "panel.git.discard.staged": "Вернуть «{{name}}» к последнему коммиту? Подготовленные изменения пропадут, текущая версия файла уйдёт в корзину.",
   "panel.git.kind.added": "новый в индексе",
   "panel.git.kind.modified": "изменён",
   "panel.git.kind.deleted": "удалён",
@@ -720,5 +723,6 @@
   "panel.git.kind.conflicted": "конфликт слияния",
   "palette.action.gitChanges": "Git: изменения",
   "status.committed": "закоммичено",
+  "status.discarded": "изменения отменены, прежняя версия в корзине",
   "sync.report.pushed": "отправлено коммитов"
 }

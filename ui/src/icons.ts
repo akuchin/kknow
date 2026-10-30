@@ -158,6 +158,8 @@ const PATHS = {
   // Confluence page of a note: two waves, as in the product logo.
   confluence: ["M3 17c3.5-5.5 7.5-6.5 13-3l4 2.5", "M21 7c-3.5 5.5-7.5 6.5-13 3L4 7.5"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
+  // Git: throw away the changes of a file.
+  discard: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
 } satisfies Record<string, string[]>;
 
 export type IconName = keyof typeof PATHS;
