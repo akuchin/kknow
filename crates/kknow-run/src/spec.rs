@@ -420,7 +420,7 @@ pub fn defaults() -> Manifest {
 fn confluence() -> CommandSpec {
     CommandSpec {
         id: "confluence".to_string(),
-        name: "Обновить страницу в Confluence".to_string(),
+        name: "Update the Confluence page".to_string(),
         // fish reads its config on every start, so the command sees the
         // same PATH as the terminal. For sh and zsh, use `login`.
         kind: "fish".to_string(),
@@ -454,7 +454,7 @@ pub const AGENT_VAR: &str = "AGENT";
 fn agent() -> CommandSpec {
     CommandSpec {
         id: "agent".to_string(),
-        name: "Обработать комментарии агентом".to_string(),
+        name: "Process comments with an agent".to_string(),
         // `sh`, not fish: the command must work on a machine without fish.
         kind: "shell".to_string(),
         script: AGENT_SCRIPT.to_string(),
