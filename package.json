@@ -12,6 +12,9 @@
     "ui:test": "pnpm --filter kknow-ui test",
     "ui:e2e": "pnpm --filter kknow-ui e2e",
     "ui:e2e:webkit": "pnpm --filter kknow-ui e2e:webkit",
+    "docs:dev": "pnpm --filter kknow-site dev",
+    "docs:build": "pnpm --filter kknow-site build",
+    "docs:preview": "pnpm --filter kknow-site preview",
     "tauri": "tauri",
     "icons:mac": "python3 scripts/gen-macos-icon.py"
   },

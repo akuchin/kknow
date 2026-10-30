@@ -54,6 +54,7 @@ crates/
 src-tauri/      commands on top of kknow-app, background watchers, keychain
 ui/             the interface: TypeScript, Vite, CodeMirror 6; two windows — main and settings
 testdata/vault  a small vault for manual checks
+site/           the user documentation: VitePress, `.github/workflows/docs.yml` publishes it
 docs/mockup/    the redesign mockup the header, status bar and settings were built from
 ```
 

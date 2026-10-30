@@ -7,6 +7,9 @@ Markdown files are the source of truth. A vault is an ordinary folder of `.md`
 files, and any editor can open it. All other data is a cache that kknow can
 build again. This data is the link graph, the search index and the sync state.
 
+The user documentation is at <https://akuchin.github.io/kknow/>. Its source is
+in `site/`.
+
 ## Status
 
 All functions in this document work:
@@ -37,6 +40,7 @@ src-tauri/     desktop app: commands on top of kknow-app
 ui/            interface: TypeScript, Vite, CodeMirror 6; two windows — the main
                one (`src/window/`, entry `src/main.ts`) and settings
                (`src/settings/`, entry `src/settings/main.ts`)
+site/          the documentation site: VitePress, published to GitHub Pages
 ```
 
 `kknow-core` knows nothing about text parsing. `kknow-index` knows nothing about
@@ -1055,10 +1059,10 @@ manually, because the form reads it each time it opens.
 
 If there is no `commands.json`, kknow gives two commands:
 
-- `confluence`, "Обновить страницу в Confluence". It runs
+- `confluence`, "Update the Confluence page". It runs
   `confluence-tools replace` with the page number of the note (see "A per-file
   parameter" below). It appears only on notes with the number.
-- `agent`, "Обработать комментарии агентом". It gives the comments
+- `agent`, "Process comments with an agent". It gives the comments
   `<!-- @agent «words»: task -->` of the note to a coding agent. The agent
   edits the note, removes each comment that it did, and replaces each comment
   that it cannot do with `<!-- @agent-note: reason -->`. The command asks

@@ -17,3 +17,7 @@ src-tauri/gen/
 # Playwright output of the smoke tests.
 ui/test-results/
 ui/playwright-report/
+
+# The documentation site build and cache.
+site/.vitepress/dist/
+site/.vitepress/cache/
