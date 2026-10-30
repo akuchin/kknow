@@ -24,3 +24,28 @@ Rules for work in this repository:
   runs the smoke tests in Chromium on the same stubs.
 - Do not start the app window if the user does not ask for it. The window opens
   on the desktop of the user.
+
+## Documentation
+
+The documentation site is in `site/` and is live at <https://kknow.kuca.dev/>.
+`pnpm docs:dev` starts it locally, and `pnpm docs:build` checks the build.
+
+You must update the site in the same change as an important change in the app:
+
+- a new feature or a new setting;
+- a change in a shortcut, a CLI command or a file format;
+- a removed feature or a changed default behavior;
+- a change in the crates or in the data flow (update `site/architecture.md`).
+
+A small fix, a style change or a refactor does not need a site update. If you
+are not sure, update the site.
+
+Where to write:
+
+- a feature: `site/features/<feature>.md`. Add a new page to the sidebar in
+  `site/.vitepress/config.ts` and to the list in `site/features/index.md`;
+- shortcuts, CLI and files: the pages in `site/reference/`;
+- the install steps: `site/guide/quick-start.md`.
+
+Also update `README.md` if the change is in its short feature list. The site is
+in English and uses the same style as the other docs.
