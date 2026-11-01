@@ -1477,8 +1477,10 @@ img.note-image {
   color: var(--accent);
 }
 
+/* A translucent tint, not `--bg-soft`: the CodeMirror selection layer is drawn
+   under the text, and an opaque background hid the selection inside the code. */
 .cm-inline-code {
-  background: var(--bg-soft);
+  background: color-mix(in oklab, var(--text) 7%, transparent);
   border-radius: 4px;
   padding: 1px 4px;
 }
