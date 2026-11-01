@@ -478,6 +478,11 @@ fn agent() -> CommandSpec {
 ///
 /// The `PATH` line is necessary for a window opened from Finder: its `PATH`
 /// has neither `~/.local/bin` (claude) nor `/opt/homebrew/bin` (copilot).
+///
+/// Claude gets `Edit(./**)`, not a bare `Edit`. The bare rule covers the Edit
+/// tool alone, and an agent that rewrites a large part of the note picks
+/// Write, which `-p` then denies. A rule with a path covers all file-editing
+/// tools, and `./**` keeps them inside the folder of the note (`cwd`).
 const AGENT_SCRIPT: &str = r#"PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 prompt="Process the review comments in $KKNOW_PATH.
@@ -498,7 +503,7 @@ Do not ask questions. Make the best decision and continue or leave @agent-note c
 At the end, write a short list: each change with its location, and each comment that you did not process."
 
 case "$AGENT" in
-  claude) exec claude -p "$prompt" --allowedTools "Read,Edit" ;;
+  claude) exec claude -p "$prompt" --allowedTools "Read,Edit(./**)" ;;
   copilot) exec copilot -p "$prompt" --silent --allow-tool "write($KKNOW_PATH)" ;;
   *) echo "AGENT=«$AGENT»: укажите claude или copilot" >&2; exit 2 ;;
 esac

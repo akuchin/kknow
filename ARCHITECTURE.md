@@ -568,8 +568,11 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   must stay in one place. The script is `sh`, not fish: a shipped command must
   work on a machine without fish. Thus the script adds `~/.local/bin` and
   `/opt/homebrew/bin` to `PATH` itself. Each agent gets only read and edit
-  (`--allowedTools "Read,Edit"`, `--allow-tool "write($KKNOW_PATH)"`), `cwd`
-  is the folder of the note, and `confirm` is on.
+  (`--allowedTools "Read,Edit(./**)"`, `--allow-tool "write($KKNOW_PATH)"`),
+  `cwd` is the folder of the note, and `confirm` is on. For claude the rule
+  must have a path: a bare `Edit` allows the Edit tool alone, and an agent
+  that rewrites much of the note uses Write, which `-p` denies. `Edit(./**)`
+  covers all file-editing tools, but only under `cwd`.
 - `kknow_run::Runner` is a trait with four methods: the kind name, the default
   program, other names of that program and the arguments around the script.
   Implementations: `shell`, `bash`, `fish`, `zsh`, `python`. `shell` is `sh`,
