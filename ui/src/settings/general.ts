@@ -73,10 +73,17 @@ function updateRow(): HTMLElement {
 
   paintUpdate = () => {
     const busy = update.state === "checking" || update.state === "downloading";
-    check.disabled = busy || update.state === "unavailable" || update.state === "ready";
+    check.disabled =
+      busy ||
+      update.state === "unavailable" ||
+      update.state === "managed" ||
+      update.state === "ready";
     switch (update.state) {
       case "unavailable":
         state.textContent = t("settings.general.update.unavailable");
+        break;
+      case "managed":
+        state.textContent = t("settings.general.update.managed", { manager: update.manager });
         break;
       case "idle":
         state.textContent = checkedByHand ? t("settings.general.update.latest") : "";

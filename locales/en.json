@@ -86,6 +86,7 @@
   "settings.general.update": "Updates",
   "settings.general.update.check": "Check now",
   "settings.general.update.unavailable": "Developer build: updates are not checked",
+  "settings.general.update.managed": "Installed through {{manager}}: update through {{manager}}, or you get a second copy",
   "settings.general.update.latest": "You have the latest version",
   "settings.general.update.checking": "Checking…",
   "settings.general.update.downloading": "Downloading version {{version}}…",

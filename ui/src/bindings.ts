@@ -621,7 +621,7 @@ notes: Array<string>, };
 /**
  * What the windows show.
  */
-export type UpdateStatus = { "state": "unavailable" } | { "state": "idle" } | { "state": "checking" } | { "state": "downloading", version: string, } | { "state": "ready", version: string, } | { "state": "failed", message: string, };
+export type UpdateStatus = { "state": "unavailable" } | { "state": "managed", manager: string, } | { "state": "idle" } | { "state": "checking" } | { "state": "downloading", version: string, } | { "state": "ready", version: string, } | { "state": "failed", message: string, };
 
 export type VaultChanged = { 
 /**

@@ -773,6 +773,14 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   the release workflow writes the tag version. A check by `debug_assertions`
   alone is not enough. `pnpm install:app` makes a release build, and it would
   see each published version as an update.
+- **A copy of a package manager does not update itself.** Scoop leaves
+  `scoop-manifest.json` beside the binary, and `initial_status` looks for that
+  file next to `current_exe`. The path is no test: the `SCOOP` variable moves
+  the root. Such a copy starts in the `Managed` state and never checks. The
+  updater would run the MSI, and it installs into `Program Files` beside the
+  Scoop copy: two kknow entries in the Start menu, and the copy that Scoop
+  knows stays on the old version. The settings row says which manager owns the
+  copy.
 - The scheduler is a thread that looks at the wall clock each 10 minutes. A
   sleep of 6 hours would not work: the monotonic clock stops while the laptop
   sleeps. A laptop that sleeps each night would almost never check.

@@ -37,12 +37,18 @@ update through Homebrew, run:
 brew upgrade --cask --greedy kknow
 ```
 
-**Scoop.** The MSI updater installs a second copy into `Program Files`. Thus,
-with Scoop, turn off **Update automatically**, and update only through Scoop:
+**Scoop.** A Scoop copy does not update itself. The updater would run the MSI
+installer, and that installs a second copy into `Program Files`: two kknow
+entries in the Start menu, and the copy Scoop knows about stays on the old
+version. The app sees that Scoop owns it, stops the checks, and the settings
+say so. Update through Scoop:
 
 ```powershell
 scoop update kknow kknow-cli
 ```
+
+If you already have both copies, remove the one in `Program Files` through
+**Settings → Apps → Installed apps**, then run the command above.
 
 ## Developer builds
 

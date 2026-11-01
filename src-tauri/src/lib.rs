@@ -265,9 +265,11 @@ pub fn run() {
             let state = app.state::<AppState>();
 
             let version = app.package_info().version.to_string();
-            app.manage(updater::Updates::new(updater::is_release(
+            let exe = std::env::current_exe().ok();
+            app.manage(updater::Updates::new(updater::initial_status(
                 &version,
                 cfg!(debug_assertions),
+                exe.as_deref(),
             )));
             updater::schedule(handle.clone());
 
