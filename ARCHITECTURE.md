@@ -570,12 +570,24 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   `/opt/homebrew/bin` to `PATH` itself. Each agent gets only read and edit
   (`--allowedTools "Read,Edit"`, `--allow-tool "write($KKNOW_PATH)"`), `cwd`
   is the folder of the note, and `confirm` is on.
-- `kknow_run::Runner` is a trait with three methods: the kind name, the default
-  program and the arguments around the script. Implementations: `shell`,
-  `bash`, `fish`, `zsh`, `python`. `shell` is `sh`, not the shell of the user
+- `kknow_run::Runner` is a trait with four methods: the kind name, the default
+  program, other names of that program and the arguments around the script.
+  Implementations: `shell`, `bash`, `fish`, `zsh`, `python`. `shell` is `sh`,
+  not the shell of the user
   who
   started kknow. The design is the same as for `SyncProvider`: the manifest
   selects the kind at runtime, not the build.
+
+  The other names are for Windows alone: `python` after `python3`, because the
+  installer from python.org lays down `python.exe` only. On unix `python` can
+  still be Python 2, so there the name stays strict. A name written in the
+  manifest has no alternatives — it is used exactly.
+- **`locate` prefers a program file that has bytes in it.** A Microsoft Store
+  "app execution alias" is an empty file that Windows resolves when a process
+  starts; when the app behind it is absent, the start prints `Python ` and
+  fails with 9009. The program looked found and was not. A real file further
+  along `PATH` wins, and an alias stays the last resort — one that works is
+  still better than no program.
 - **The path comes as an environment variable. kknow does not put it into the
   script text.** There are seven variables:
   - `KKNOW_PATH` — the absolute path of the target;
@@ -670,10 +682,12 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   line reader. Thus a long line without an end cannot use up the memory, and
   the lines add up to exactly the text of the `Outcome`. The CLI does not use
   this: the terminal already shows the streams.
-- On timeout and on stop kknow kills the **process group**, not only the
-  process. `sh` almost always runs the real work as a separate process. This is
-  why `kknow-run` has `libc` and one `unsafe` for `killpg`. A stopped command
-  has `stopped` in its outcome, not `timedOut`.
+- On timeout and on stop kknow kills the **whole group**, not only the process.
+  `sh` almost always runs the real work as a separate process. On unix this is
+  a process group, and `kknow-run` has `libc` and one `unsafe` for `killpg`.
+  Windows has no groups, so the run gets a **job object** (`windows-sys`), and
+  a process started inside a job belongs to it too. A stopped command has
+  `stopped` in its outcome, not `timedOut`.
 - An incorrect entry in the file becomes an error message. It does not silently
   disappear. Examples: a typo in `kind`, an empty script, a repeated `id`. The
   list of errors goes to the status bar and to `kknow commands`.
@@ -2430,21 +2444,28 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   `get_settings` and a few more). The test
   `only_memory_getters_are_sync_commands` (`src-tauri/src/lib.rs`) reads the
   sources and fails on a new sync command that is not in its list.
-- **On timeout kknow kills the process group, not the process.**
+- **On timeout kknow kills the whole group, not the process.**
   `sh -c 'work'` almost always runs the work as a separate process. If kknow
   killed only the shell, the work would stay alive and keep the pipe open. The
   wait for output would then continue for exactly the time that we tried to
   limit. The cost was the `libc` crate and one `unsafe` for `killpg`. The
   standard library has no process groups.
+
+  Windows has no process groups at all, so a **job object** plays the part:
+  the child joins it right after the start, a grandchild is born into it, and
+  `TerminateJobObject` ends them all. This is why `kknow-run` has
+  `windows-sys`. Without it the Windows run of a stopped `sleep 30` waited all
+  30 seconds — the shell died, and `sleep` kept the pipe.
 - **After the end of the process, the readers stop on silence, not on EOF.**
   The kill does not reach a process outside the group, and such a process can
   hold the write end of the pipe: a daemon that the command started in its own
   group, or, on macOS, a process that another thread started while std was
   between `pipe()` and `FD_CLOEXEC` (macOS has no `pipe2`). A wait for EOF
   then lasts as long as that process lives; on CI a stopped `sleep 30` once
-  took all 30 seconds. So each reader `poll`s its pipe. After the end, it reads
-  while data comes and stops after 0.5 s of silence (`DRAIN`) or 5 s in all
-  (`DRAIN_LIMIT`). Data that is already in the pipe still comes.
+  took all 30 seconds. So each reader asks its pipe before it reads: `poll` on
+  unix, `PeekNamedPipe` on Windows. After the end, it reads while data comes
+  and stops after 0.5 s of silence (`DRAIN`) or 5 s in all (`DRAIN_LIMIT`).
+  Data that is already in the pipe still comes.
 - **A broken commands file stays in its place.** kknow renames a vault registry
   with content that it cannot read to `.broken`. The app writes that file, and
   you lose nothing there. A person writes the commands file. It would be rude
@@ -2495,6 +2516,7 @@ pnpm ui:e2e           # smoke tests of both windows on the stubs, in Chromium
 pnpm ui:e2e:webkit    # the same in WebKit, the engine of the macOS window
 pnpm build:app        # a ready kknow.app
 pnpm install:app      # the same, installed into /Applications
+pnpm build:msi        # on Windows: the MSI installer; there is no `app` bundle
 ```
 
 ```bash

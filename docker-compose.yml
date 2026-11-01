@@ -1,38 +1,37 @@
-# MinIO for sync tests: the same protocol as S3, but local.
+# A local S3 for the sync tests: the same protocol, but on this machine.
 #
 #   docker compose up -d
 #   cargo test -p kknow-sync --test minio -- --ignored
 #
-# Console: http://localhost:9001 (kknowkknow / kknowkknow).
+# MinIO served this before. Its community images are gone: Docker Hub answers
+# 404 for `minio/minio`, and quay.io asks for a login. s3mock needs no account,
+# starts in a second and holds everything in memory. It has no web console, so
+# the address below is the API only.
 
 services:
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  s3:
+    image: adobe/s3mock:latest
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: kknowkknow
-      MINIO_ROOT_PASSWORD: kknowkknow
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 2s
-      timeout: 5s
-      retries: 15
-    # Data stays in the container. This is a test setup, so data loss is fine.
-    tmpfs:
-      - /data
+      # The tests default to http://localhost:9000 (see tests/minio.rs).
+      - "9000:9090"
 
   # The bucket must exist before the first test, so a separate step creates it.
+  # One PUT is enough: s3mock takes any credentials, and its `initialBuckets`
+  # setting has no effect in this image. `--retry` waits for the server to come
+  # up — a JRE image carries no shell tool for a healthcheck.
   bucket:
-    image: minio/mc:latest
+    image: curlimages/curl:latest
     depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      sh -c "
-        mc alias set local http://minio:9000 kknowkknow kknowkknow &&
-        mc mb --ignore-existing local/kknow &&
-        echo 'bucket kknow ready'
-      "
+      - s3
+    command:
+      - "--silent"
+      - "--show-error"
+      - "--fail"
+      - "--retry"
+      - "30"
+      - "--retry-delay"
+      - "1"
+      - "--retry-all-errors"
+      - "--request"
+      - "PUT"
+      - "http://s3:9090/kknow"

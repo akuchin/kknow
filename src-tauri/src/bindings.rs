@@ -108,7 +108,16 @@ fn bindings_match_the_rust_types() {
     }
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
-        current == fresh,
+        lines(&current) == lines(&fresh),
         "ui/src/bindings.ts устарел: KKNOW_BLESS=1 cargo test -p kknow-desktop bindings"
     );
+}
+
+/// The text without the line endings of the platform.
+///
+/// The generator writes `\n`, but what is on disk depends on git: the
+/// repository keeps this file with CRLF, and a checkout on Windows leaves it
+/// that way. The declarations are what must match; `\r` is not one of them.
+fn lines(text: &str) -> Vec<&str> {
+    text.lines().collect()
 }

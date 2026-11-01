@@ -1,6 +1,6 @@
 //! The same algorithm on real S3.
 //!
-//! The tests are `#[ignore]`: they cannot run without MinIO, and `cargo test`
+//! The tests are `#[ignore]`: they cannot run without a local S3, and `cargo test`
 //! must stay a command with no requirements.
 //!
 //! ```sh
@@ -42,7 +42,7 @@ fn config(test: &str) -> S3Config {
 }
 
 fn engine(config: &S3Config) -> SyncEngine<S3Provider> {
-    SyncEngine::new(S3Provider::connect(config).expect("MinIO не отвечает — docker compose up -d"))
+    SyncEngine::new(S3Provider::connect(config).expect("S3 не отвечает — docker compose up -d"))
 }
 
 fn vault(notes: &[(&str, &str)]) -> (tempfile::TempDir, Vault) {
@@ -61,7 +61,7 @@ fn read(vault: &Vault, id: &str) -> String {
 }
 
 #[test]
-#[ignore = "needs MinIO: docker compose up -d"]
+#[ignore = "needs a local S3: docker compose up -d"]
 fn a_vault_travels_through_s3() {
     let config = config("travels");
     let sender = engine(&config);
@@ -98,7 +98,7 @@ fn a_vault_travels_through_s3() {
 }
 
 #[test]
-#[ignore = "needs MinIO: docker compose up -d"]
+#[ignore = "needs a local S3: docker compose up -d"]
 fn edits_and_deletes_reach_the_other_side() {
     let config = config("edits");
     let first = engine(&config);
@@ -124,7 +124,7 @@ fn edits_and_deletes_reach_the_other_side() {
 }
 
 #[test]
-#[ignore = "needs MinIO: docker compose up -d"]
+#[ignore = "needs a local S3: docker compose up -d"]
 fn a_conflict_keeps_both_versions() {
     let config = config("conflict");
     let first = engine(&config);
@@ -159,10 +159,10 @@ fn a_conflict_keeps_both_versions() {
 }
 
 #[test]
-#[ignore = "needs MinIO: docker compose up -d"]
+#[ignore = "needs a local S3: docker compose up -d"]
 fn the_provider_speaks_plain_objects() {
     let config = config("provider");
-    let provider = S3Provider::connect(&config).expect("MinIO не отвечает");
+    let provider = S3Provider::connect(&config).expect("S3 не отвечает");
 
     assert!(provider.get("notes/нет.md").unwrap().is_none());
     assert!(provider.delete("notes/нет.md").is_ok());
