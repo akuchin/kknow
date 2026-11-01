@@ -106,7 +106,8 @@ text under the field shows the `git version` of that path.
 
 kknow does not guess the path. An app that starts from the Dock does not get
 the `PATH` of your terminal. Also, `/usr/bin/git` on macOS can be a stub that
-asks you to install the Xcode tools.
+asks you to install the Xcode tools. On Windows, **Find** looks for `git.exe`
+in `PATH` and in the usual folders of Git for Windows.
 
 ### Connect a vault
 

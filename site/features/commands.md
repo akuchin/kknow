@@ -148,6 +148,20 @@ An app that starts from Finder or the Dock gets the system `PATH`:
 
 Keep tokens in your shell profile, not in `env`. `commands.json` is plain text.
 
+### On Windows
+
+Windows has no `sh` and `bash` of its own. Install
+[Git for Windows](https://git-scm.com/download/win): its installer adds only
+`git.exe` to `PATH`, but kknow also looks in `Git\bin` and `Git\usr\bin` of
+the usual install folders and next to the `git.exe` from `PATH`. So `shell`
+and `bash` commands work without changes in `PATH`.
+
+kknow skips `bash.exe` in `System32`: that is the WSL launcher, and the script
+would run in Linux without the `KKNOW_*` variables.
+
+A program name without an extension also finds `.exe`, `.cmd` and `.bat` files
+(the list comes from `PATHEXT`).
+
 ## Why commands are not in the vault
 
 `commands.json` belongs to the app, not to a vault. A vault can come from sync

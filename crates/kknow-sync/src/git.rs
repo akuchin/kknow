@@ -660,6 +660,14 @@ impl Git {
 
     fn command(&self) -> Command {
         let mut command = Command::new(&self.program);
+        // On Windows a console program started from the window opens a
+        // console window of its own; the flag starts git without one.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
         command
             .current_dir(&self.root)
             .stdin(Stdio::null())

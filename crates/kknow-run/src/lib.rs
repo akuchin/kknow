@@ -42,7 +42,8 @@ pub enum Error {
     #[error(
         "не найдена программа {program}: её нет ни в PATH, ни в обычных местах \
          ({places}). Окно, запущенное из Finder, видит короткий системный PATH — \
-         укажите полный путь полем program или задайте PATH в env"
+         укажите полный путь полем program или задайте PATH в env. \
+         На Windows sh и bash ставятся вместе с Git for Windows"
     )]
     NoProgram { program: String, places: String },
 
@@ -266,9 +267,11 @@ const MAX_POLL: Duration = Duration::from_millis(50);
 /// std marked it close-on-exec (there is no `pipe2` there). The kill does not
 /// reach it, and a wait for EOF lasts as long as it lives. Output that is
 /// already in the pipe still comes: the readers stop only on silence.
+#[cfg(unix)]
 const DRAIN: Duration = Duration::from_millis(500);
 
 /// A stranger that does not stop printing does not hold the run either.
+#[cfg(unix)]
 const DRAIN_LIMIT: Duration = Duration::from_secs(5);
 
 /// The variables that the script sees.
@@ -332,6 +335,7 @@ pub fn environment(target: &Target) -> BTreeMap<String, String> {
 /// kknow does not invent a shared `PATH` for commands. The user describes
 /// their environment in the shell config, and the shell knows it, not us. Our
 /// job is only to find that shell.
+#[cfg(unix)]
 const WELL_KNOWN_BINS: &[&str] = &[
     "/opt/homebrew/bin", // homebrew on Apple Silicon
     "/usr/local/bin",    // homebrew on Intel and manual installs
@@ -348,15 +352,19 @@ const WELL_KNOWN_BINS: &[&str] = &[
 ///
 /// It is public for the same trap outside commands: the window looks for
 /// `git` here to suggest a path in the settings.
+///
+/// On Windows a program file has an extension: `sh` is `sh.exe`. So each
+/// candidate is also tried with the extensions from `PATHEXT`.
 pub fn locate(program: &str) -> Option<PathBuf> {
+    let extensions = executable_extensions();
     if let Some(rest) = program.strip_prefix("~/") {
-        let home = std::env::var_os("HOME")?;
-        let path = PathBuf::from(home).join(rest);
-        return runnable(&path).then_some(path);
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+        return with_extensions(&PathBuf::from(home).join(rest), &extensions)
+            .find(|candidate| runnable(candidate));
     }
-    if program.contains(std::path::MAIN_SEPARATOR) {
-        let path = PathBuf::from(program);
-        return runnable(&path).then_some(path);
+    if program.contains('/') || program.contains(std::path::MAIN_SEPARATOR) {
+        return with_extensions(Path::new(program), &extensions)
+            .find(|candidate| runnable(candidate));
     }
 
     let from_path = std::env::var_os("PATH")
@@ -365,9 +373,156 @@ pub fn locate(program: &str) -> Option<PathBuf> {
 
     from_path
         .into_iter()
-        .chain(WELL_KNOWN_BINS.iter().map(PathBuf::from))
-        .map(|dir| dir.join(program))
-        .find(|candidate| runnable(candidate))
+        .chain(well_known_bins())
+        .flat_map(|dir| with_extensions(&dir.join(program), &extensions).collect::<Vec<_>>())
+        .find(|candidate| runnable(candidate) && !is_wsl_launcher(candidate))
+}
+
+/// The path as is, then the path with each extension added.
+///
+/// A path that already has an extension (`git.exe`) is also tried as is
+/// first, so a full path from the settings works unchanged.
+fn with_extensions<'a>(
+    path: &'a Path,
+    extensions: &'a [String],
+) -> impl Iterator<Item = PathBuf> + 'a {
+    std::iter::once(path.to_path_buf()).chain(extensions.iter().map(move |extension| {
+        let mut name = path.as_os_str().to_os_string();
+        name.push(extension);
+        PathBuf::from(name)
+    }))
+}
+
+/// Extensions of program files: none on unix, `PATHEXT` on Windows.
+#[cfg(unix)]
+fn executable_extensions() -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(not(unix))]
+fn executable_extensions() -> Vec<String> {
+    parse_pathext(std::env::var("PATHEXT").ok().as_deref())
+}
+
+/// `.COM;.EXE;.BAT;.CMD` into a list. Without the variable, the default of
+/// Windows. Lower case: the file system ignores case, and the found path
+/// looks like the one in the explorer.
+#[cfg(any(not(unix), test))]
+fn parse_pathext(value: Option<&str>) -> Vec<String> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(".COM;.EXE;.BAT;.CMD")
+        .split(';')
+        .map(str::trim)
+        .filter(|extension| extension.starts_with('.') && extension.len() > 1)
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// The places to look after `PATH`.
+#[cfg(unix)]
+fn well_known_bins() -> Vec<PathBuf> {
+    WELL_KNOWN_BINS.iter().map(PathBuf::from).collect()
+}
+
+/// On Windows `sh` and `bash` come with Git for Windows, but its installer
+/// puts only `Git\cmd` (with `git.exe`) in `PATH`. The shells are in
+/// `Git\bin` and `Git\usr\bin`. So we look in the usual install folders, and
+/// next to a `git.exe` from `PATH` for a custom folder.
+#[cfg(not(unix))]
+fn well_known_bins() -> Vec<PathBuf> {
+    let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for name in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(folder) = var(name) {
+            roots.push(folder.join("Git"));
+        }
+    }
+    if let Some(local) = var("LOCALAPPDATA") {
+        roots.push(local.join("Programs").join("Git"));
+    }
+    if let Some(home) = var("USERPROFILE") {
+        roots.push(home.join("scoop").join("apps").join("git").join("current"));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            if dir.join("git.exe").is_file()
+                && let Some(root) = git_root_of(&dir)
+            {
+                roots.push(root);
+            }
+        }
+    }
+    git_for_windows_bins(roots)
+}
+
+/// The folder of a Git for Windows install from the folder of its `git.exe`:
+/// `…\Git\cmd`, `…\Git\bin` or `…\Git\mingw64\bin`.
+#[cfg(any(not(unix), test))]
+fn git_root_of(dir: &Path) -> Option<PathBuf> {
+    let name = dir.file_name()?.to_string_lossy().to_lowercase();
+    let parent = dir.parent()?;
+    match name.as_str() {
+        "cmd" => Some(parent.to_path_buf()),
+        "bin"
+            if parent
+                .file_name()?
+                .to_string_lossy()
+                .eq_ignore_ascii_case("mingw64") =>
+        {
+            parent.parent().map(Path::to_path_buf)
+        }
+        "bin" => Some(parent.to_path_buf()),
+        _ => None,
+    }
+}
+
+/// `bin`, `usr\bin` and `cmd` of each Git root, without repeats.
+#[cfg(any(not(unix), test))]
+fn git_for_windows_bins(roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut bins: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        for dir in [
+            root.join("bin"),
+            root.join("usr").join("bin"),
+            root.join("cmd"),
+        ] {
+            if !bins.contains(&dir) {
+                bins.push(dir);
+            }
+        }
+    }
+    bins
+}
+
+/// `bash.exe` in `System32` or `WindowsApps` is the WSL launcher, not a shell
+/// of this system. It runs the script in Linux: the `KKNOW_*` variables and
+/// the Windows paths do not reach it. Git Bash further down the list is the
+/// right one.
+fn is_wsl_launcher(path: &Path) -> bool {
+    let Some(stem) = path.file_stem() else {
+        return false;
+    };
+    let folder = path
+        .parent()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().to_lowercase());
+    stem.eq_ignore_ascii_case("bash")
+        && matches!(folder.as_deref(), Some("system32" | "windowsapps"))
+}
+
+/// On Windows a console program started from the window opens a console
+/// window of its own: a black window flashes on each command. The flag starts
+/// it without one; the output still comes through the pipes.
+fn hide_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
 }
 
 /// Checks that the file exists and is executable.
@@ -457,10 +612,19 @@ pub fn run_watched(
     let wanted = spec.program.as_deref().unwrap_or(runner.program());
     let program = locate(wanted).ok_or_else(|| Error::NoProgram {
         program: wanted.to_string(),
-        places: WELL_KNOWN_BINS.join(", "),
+        places: well_known_bins()
+            .iter()
+            .map(|dir| dir.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
     })?;
 
     let mut command = Command::new(&program);
+    // Git Bash with `-l` reads `/etc/profile`, and without this variable the
+    // profile goes to the home folder. The script must start in its `cwd`.
+    // It goes before the environment layers: a command can still override it.
+    #[cfg(windows)]
+    command.env("CHERE_INVOKING", "1");
     command
         .args(runner.args(&spec.script, spec.login))
         .current_dir(target.working_dir(spec.cwd))
@@ -486,6 +650,7 @@ pub fn run_watched(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    hide_console(&mut command);
 
     let started = Instant::now();
     let finished = wait(
@@ -1200,6 +1365,58 @@ mod tests {
         // A directory with a matching name is not a program.
         std::fs::create_dir_all(bin.join("ловушка")).unwrap();
         assert!(locate(&bin.join("ловушка").to_string_lossy()).is_none());
+    }
+
+    #[test]
+    fn a_windows_program_is_found_with_its_extension() {
+        // On Windows `sh` is `sh.exe`: the name without the extension is no
+        // file at all.
+        let extensions = parse_pathext(Some(".COM;.EXE; ;.BAT;CMD"));
+        assert_eq!(extensions, [".com", ".exe", ".bat"]);
+        assert_eq!(parse_pathext(None), [".com", ".exe", ".bat", ".cmd"]);
+
+        let tried: Vec<PathBuf> = with_extensions(Path::new("bin/sh"), &extensions).collect();
+        assert_eq!(
+            tried,
+            ["bin/sh", "bin/sh.com", "bin/sh.exe", "bin/sh.bat"].map(PathBuf::from)
+        );
+    }
+
+    #[test]
+    fn git_bash_is_found_next_to_git() {
+        // The installer puts only `Git\cmd` in `PATH`; the shells are in
+        // `Git\bin` and `Git\usr\bin`.
+        let root = PathBuf::from("Programs").join("Git");
+        assert_eq!(git_root_of(&root.join("cmd")), Some(root.clone()));
+        assert_eq!(git_root_of(&root.join("bin")), Some(root.clone()));
+        assert_eq!(
+            git_root_of(&root.join("mingw64").join("bin")),
+            Some(root.clone())
+        );
+        assert_eq!(git_root_of(Path::new("Windows")), None);
+
+        let bins = git_for_windows_bins(vec![root.clone(), root.clone()]);
+        assert_eq!(
+            bins,
+            [
+                root.join("bin"),
+                root.join("usr").join("bin"),
+                root.join("cmd")
+            ]
+        );
+    }
+
+    #[test]
+    fn the_wsl_launcher_is_not_bash() {
+        let system = PathBuf::from("Windows").join("System32");
+        assert!(is_wsl_launcher(&system.join("bash.exe")));
+        assert!(is_wsl_launcher(
+            &PathBuf::from("WindowsApps").join("bash.exe")
+        ));
+        assert!(!is_wsl_launcher(
+            &PathBuf::from("Git").join("bin").join("bash.exe")
+        ));
+        assert!(!is_wsl_launcher(&system.join("cmd.exe")));
     }
 
     #[test]
