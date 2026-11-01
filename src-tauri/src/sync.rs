@@ -77,12 +77,15 @@ fn config_of(workspace: &Workspace) -> Result<Option<RemoteConfig>> {
 }
 
 impl SyncSettings {
-    #[cfg(test)]
+    // Only the git tests read these, and that module is `cfg(all(test, unix))`:
+    // it drives a real remote through a shell. Outside unix the methods have no
+    // caller, and `-D warnings` makes dead code an error.
+    #[cfg(all(test, unix))]
     pub fn location(&self) -> &str {
         &self.location
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn has_secret(&self) -> bool {
         self.has_secret
     }

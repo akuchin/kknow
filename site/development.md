@@ -9,7 +9,7 @@ run the tests.
 - [Node.js](https://nodejs.org) 24 and [pnpm](https://pnpm.io);
 - the [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/)
   for your platform;
-- optional: Docker, for the sync tests against MinIO.
+- optional: Docker, for the sync tests against a local S3.
 
 ## Get the code
 
@@ -38,7 +38,10 @@ settings window is at `/settings.html`.
 ```bash
 pnpm build:app      # kknow.app in target/release/bundle/macos/
 pnpm install:app    # build and install to /Applications
+pnpm build:msi      # on Windows: the MSI in target/release/bundle/msi/
 ```
+
+The `app` bundle is a macOS one. On Windows, build the MSI instead.
 
 `open -a kknow` and **Open With** work only with the installed app. macOS
 needs the bundle to know that kknow opens Markdown.
@@ -52,7 +55,7 @@ pnpm ui:test        # UI unit tests
 pnpm ui:e2e         # smoke tests in Chromium on the stubs
 ```
 
-The sync tests against a real S3 have the `#[ignore]` mark. They need MinIO:
+The sync tests against a real S3 have the `#[ignore]` mark. They need the local S3 of `docker-compose.yml`:
 
 ```bash
 docker compose up -d

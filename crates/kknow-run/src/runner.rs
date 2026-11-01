@@ -19,6 +19,14 @@ pub trait Runner: Send + Sync {
     /// The default program. It is looked up in `PATH` like any other program.
     fn program(&self) -> &'static str;
 
+    /// Other names of the same interpreter, tried after [`Runner::program`].
+    ///
+    /// Only for a default: a `program` written in the manifest is what the
+    /// user asked for, and it is used exactly.
+    fn also(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// The arguments, including the script text.
     ///
     /// `login` asks to read the user profile. This is the only way to get the
@@ -36,6 +44,8 @@ pub trait Runner: Send + Sync {
 struct Interpreter {
     kind: &'static str,
     program: &'static str,
+    /// See [`Runner::also`].
+    also: &'static [&'static str],
     flag: &'static str,
     /// The flag that reads the profile; `None` if the program has no profile.
     login: Option<&'static str>,
@@ -50,6 +60,10 @@ impl Runner for Interpreter {
         self.program
     }
 
+    fn also(&self) -> &'static [&'static str] {
+        self.also
+    }
+
     fn args(&self, script: &str, login: bool) -> Vec<String> {
         let mut args: Vec<String> = Vec::new();
         if login && let Some(flag) = self.login {
@@ -61,6 +75,15 @@ impl Runner for Interpreter {
     }
 }
 
+/// On Windows the installer from python.org lays down `python.exe` only;
+/// there is no `python3.exe`. The name that does exist on `PATH` belongs to a
+/// Microsoft Store alias that fails when the Store app is absent. On unix
+/// `python` can still be Python 2, so there the name stays strict.
+#[cfg(windows)]
+const PYTHON_ALSO: &[&str] = &["python"];
+#[cfg(not(windows))]
+const PYTHON_ALSO: &[&str] = &[];
+
 /// The kinds that kknow can run.
 ///
 /// `shell` is `sh`, not the shell of the user who started the app. A script
@@ -70,18 +93,21 @@ static KNOWN: &[Interpreter] = &[
     Interpreter {
         kind: "shell",
         program: "sh",
+        also: &[],
         flag: "-c",
         login: Some("-l"),
     },
     Interpreter {
         kind: "bash",
         program: "bash",
+        also: &[],
         flag: "-c",
         login: Some("-l"),
     },
     Interpreter {
         kind: "fish",
         program: "fish",
+        also: &[],
         flag: "-c",
         // The flag exists but is rarely needed: fish reads `config.fish` and
         // its universal variables on every start, not only at login.
@@ -90,12 +116,14 @@ static KNOWN: &[Interpreter] = &[
     Interpreter {
         kind: "zsh",
         program: "zsh",
+        also: &[],
         flag: "-c",
         login: Some("-l"),
     },
     Interpreter {
         kind: "python",
         program: "python3",
+        also: PYTHON_ALSO,
         flag: "-c",
         // Python has no profile: it gets `PATH` from its parent process.
         login: None,

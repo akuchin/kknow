@@ -267,11 +267,9 @@ const MAX_POLL: Duration = Duration::from_millis(50);
 /// std marked it close-on-exec (there is no `pipe2` there). The kill does not
 /// reach it, and a wait for EOF lasts as long as it lives. Output that is
 /// already in the pipe still comes: the readers stop only on silence.
-#[cfg(unix)]
 const DRAIN: Duration = Duration::from_millis(500);
 
 /// A stranger that does not stop printing does not hold the run either.
-#[cfg(unix)]
 const DRAIN_LIMIT: Duration = Duration::from_secs(5);
 
 /// The variables that the script sees.
@@ -356,15 +354,34 @@ const WELL_KNOWN_BINS: &[&str] = &[
 /// On Windows a program file has an extension: `sh` is `sh.exe`. So each
 /// candidate is also tried with the extensions from `PATHEXT`.
 pub fn locate(program: &str) -> Option<PathBuf> {
+    first_real(candidates(program).into_iter())
+}
+
+/// The same search over several names, as one list.
+///
+/// The names are tried in order, but a real file under a later name still
+/// beats an empty stub under an earlier one: see [`first_real`]. Looking name
+/// by name would stop at the stub and never reach the real program.
+fn locate_any(names: &[&str]) -> Option<PathBuf> {
+    first_real(names.iter().flat_map(|name| candidates(name)))
+}
+
+/// Everything on disk that could be this program, in search order.
+fn candidates(program: &str) -> Vec<PathBuf> {
     let extensions = executable_extensions();
     if let Some(rest) = program.strip_prefix("~/") {
-        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+        let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+        else {
+            return Vec::new();
+        };
         return with_extensions(&PathBuf::from(home).join(rest), &extensions)
-            .find(|candidate| runnable(candidate));
+            .filter(|candidate| runnable(candidate))
+            .collect();
     }
     if program.contains('/') || program.contains(std::path::MAIN_SEPARATOR) {
         return with_extensions(Path::new(program), &extensions)
-            .find(|candidate| runnable(candidate));
+            .filter(|candidate| runnable(candidate))
+            .collect();
     }
 
     let from_path = std::env::var_os("PATH")
@@ -375,7 +392,29 @@ pub fn locate(program: &str) -> Option<PathBuf> {
         .into_iter()
         .chain(well_known_bins())
         .flat_map(|dir| with_extensions(&dir.join(program), &extensions).collect::<Vec<_>>())
-        .find(|candidate| runnable(candidate) && !is_wsl_launcher(candidate))
+        .filter(|candidate| runnable(candidate) && !is_wsl_launcher(candidate))
+        .collect()
+}
+
+/// The first candidate that has bytes in it; failing that, the first of all.
+///
+/// A Microsoft Store "app execution alias" is an empty file that Windows
+/// resolves when a process starts. When the app behind it is not installed,
+/// the start prints `Python ` and fails with code 9009 — the program looked
+/// found and was not. `python3` in `WindowsApps` is such a file, and the real
+/// `python.exe` of a python.org install sits further along `PATH`.
+///
+/// A real program always wins. An alias that does work is still better than
+/// no program at all, so it stays as the last resort.
+fn first_real(candidates: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
+    let mut stub = None;
+    for candidate in candidates {
+        if std::fs::metadata(&candidate).is_ok_and(|meta| meta.len() > 0) {
+            return Some(candidate);
+        }
+        stub.get_or_insert(candidate);
+    }
+    stub
 }
 
 /// The path as is, then the path with each extension added.
@@ -609,8 +648,16 @@ pub fn run_watched(
 
     let runner =
         runner::for_kind(&spec.kind).ok_or_else(|| Error::UnknownKind(spec.kind.clone()))?;
-    let wanted = spec.program.as_deref().unwrap_or(runner.program());
-    let program = locate(wanted).ok_or_else(|| Error::NoProgram {
+    // An explicit `program` from the manifest is used as written; a default
+    // may also be known under another name (`python3` / `python`).
+    let names: Vec<&str> = match spec.program.as_deref() {
+        Some(explicit) => vec![explicit],
+        None => std::iter::once(runner.program())
+            .chain(runner.also().iter().copied())
+            .collect(),
+    };
+    let wanted = names[0];
+    let program = locate_any(&names).ok_or_else(|| Error::NoProgram {
         program: wanted.to_string(),
         places: well_known_bins()
             .iter()
@@ -698,6 +745,7 @@ fn wait(
         program: program.to_string(),
         source,
     })?;
+    let group = Group::of(&child);
 
     let out = child.stdout.take().expect("stdout запрошен трубой");
     let err = child.stderr.take().expect("stderr запрошен трубой");
@@ -735,7 +783,7 @@ fn wait(
 
             stopped = watch.stop.load(Ordering::Relaxed);
             if stopped || Instant::now() >= deadline {
-                kill(&mut child);
+                group.kill(&mut child);
                 timed_out = !stopped;
                 break None;
             }
@@ -761,23 +809,93 @@ fn wait(
     })
 }
 
-/// Kills the process group, not one process.
+/// Everything the shell started, as one thing to kill.
 ///
 /// `sh` almost always runs the real work as a child process. If only the shell
 /// dies, the child lives on and keeps the pipe open, so the output wait lasts
-/// as long as the timeout tried to avoid. The process has its own group
-/// (`process_group(0)`), so the group ID is its `pid`.
-fn kill(child: &mut std::process::Child) {
+/// as long as the timeout tried to avoid.
+///
+/// Unix has the process group of `process_group(0)`, so the group ID is the
+/// `pid`. Windows has no groups; a job object is the same idea under another
+/// name, and a process started inside a job belongs to it too.
+///
+/// Neither kind is killed when a command ends by itself: a script may leave
+/// something running on purpose, and both platforms let it.
+struct Group {
+    #[cfg(windows)]
+    job: Option<Job>,
+}
+
+impl Group {
     #[cfg(unix)]
-    // SAFETY: we signal our own process group by its ID. If the group is
-    // already dead, `killpg` returns an error code; nothing else happens.
-    unsafe {
-        libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+    fn of(_: &std::process::Child) -> Self {
+        Group {}
     }
-    // Platforms without groups kill only the process. Its children outlive
-    // the timeout there, but `kill` at least closes the pipes.
-    let _ = child.kill();
-    let _ = child.wait();
+
+    /// The job cannot be handed to `Command`, so the child joins it right
+    /// after the start. A grandchild born in that gap stays outside, which is
+    /// why the readers also stop on silence: see [`DRAIN`].
+    #[cfg(windows)]
+    fn of(child: &std::process::Child) -> Self {
+        Group {
+            job: Job::holding(child),
+        }
+    }
+
+    fn kill(&self, child: &mut std::process::Child) {
+        #[cfg(unix)]
+        // SAFETY: we signal our own process group by its ID. If the group is
+        // already dead, `killpg` returns an error code; nothing else happens.
+        unsafe {
+            libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+        }
+        #[cfg(windows)]
+        if let Some(job) = &self.job {
+            job.terminate();
+        }
+        // The shell itself, in case it is outside the group: without a job
+        // (the call above may fail) this is still the one sure kill.
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+/// A Windows job object that owns the processes of one run.
+#[cfg(windows)]
+struct Job(std::os::windows::io::OwnedHandle);
+
+#[cfg(windows)]
+impl Job {
+    fn holding(child: &std::process::Child) -> Option<Self> {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
+
+        // SAFETY: an unnamed job with default security; the call only reports
+        // a null handle on failure.
+        let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if handle.is_null() {
+            return None;
+        }
+        // SAFETY: `CreateJobObjectW` returned an owned handle, and nothing
+        // else holds it.
+        let job = unsafe { OwnedHandle::from_raw_handle(handle) };
+        // SAFETY: both handles are live — the caller owns the child for the
+        // whole call. A process that already ended makes this fail, and the
+        // `Err` is the answer, not a crash.
+        let joined = unsafe { AssignProcessToJobObject(handle, child.as_raw_handle()) };
+        (joined != 0).then_some(Job(job))
+    }
+
+    fn terminate(&self) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        // SAFETY: we own the job handle. The exit code is the one a killed
+        // process gets; an already dead job returns an error we ignore.
+        unsafe {
+            TerminateJobObject(self.0.as_raw_handle(), 1);
+        }
+    }
 }
 
 /// The read end of an output pipe, for the check before each read.
@@ -785,6 +903,8 @@ fn kill(child: &mut std::process::Child) {
 struct Pipe {
     #[cfg(unix)]
     fd: std::os::fd::RawFd,
+    #[cfg(windows)]
+    handle: isize,
 }
 
 impl Pipe {
@@ -795,7 +915,14 @@ impl Pipe {
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    fn of(source: &impl std::os::windows::io::AsRawHandle) -> Self {
+        Pipe {
+            handle: source.as_raw_handle() as isize,
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     fn of<T>(_: &T) -> Self {
         Pipe {}
     }
@@ -837,8 +964,52 @@ impl Pipe {
         }
     }
 
-    /// Without `poll` the read waits for the end of the pipe, as before.
-    #[cfg(not(unix))]
+    /// The same wait through `PeekNamedPipe`: it reports what is in the pipe
+    /// without taking it. Windows has no `poll` for a pipe, so the silence is
+    /// measured by asking again after [`MAX_POLL`].
+    #[cfg(windows)]
+    fn has_more(self, ended: &OnceLock<Instant>) -> bool {
+        use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+
+        let mut silent_since = None;
+        loop {
+            if ended.get().is_some_and(|at| at.elapsed() >= DRAIN_LIMIT) {
+                return false;
+            }
+            let mut waiting: u32 = 0;
+            // SAFETY: a live pipe handle the scoped reader owns for the whole
+            // call, and one `u32` out parameter. Everything else is optional.
+            let peeked = unsafe {
+                PeekNamedPipe(
+                    self.handle as *mut std::ffi::c_void,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut waiting,
+                    std::ptr::null_mut(),
+                )
+            };
+            // A broken pipe means the end of the stream: let the read say so.
+            if peeked == 0 {
+                return true;
+            }
+            if waiting > 0 {
+                return true;
+            }
+            if ended.get().is_none() {
+                std::thread::sleep(MAX_POLL);
+                continue;
+            }
+            let since = *silent_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= DRAIN {
+                return false;
+            }
+            std::thread::sleep(MAX_POLL);
+        }
+    }
+
+    /// Without a way to ask, the read waits for the end of the pipe.
+    #[cfg(not(any(unix, windows)))]
     fn has_more(self, _: &OnceLock<Instant>) -> bool {
         true
     }
@@ -951,7 +1122,13 @@ mod tests {
         // sync), and it must stay a value.
         let dir = tempfile::tempdir().unwrap();
         let mut target = note(dir.path());
-        let nasty = dir.path().join("\"; touch взломано; #.md");
+        // A double quote cannot be in a Windows file name, so there the name
+        // breaks out with a single one. Both end a quoted string in `sh`.
+        let nasty = dir.path().join(if cfg!(windows) {
+            "'; touch взломано; #.md"
+        } else {
+            "\"; touch взломано; #.md"
+        });
         std::fs::write(&nasty, "# всё нормально\n").unwrap();
         target.path = nasty.clone();
 
@@ -998,10 +1175,16 @@ mod tests {
             assert!(!env.contains_key(absent), "{absent}");
         }
 
-        let outcome = run(&spec("pwd"), &target).unwrap();
-        assert_eq!(
-            std::fs::canonicalize(outcome.stdout.trim()).unwrap(),
-            std::fs::canonicalize(dir.path()).unwrap()
+        // The script leaves a file where it started, instead of printing the
+        // directory. `pwd` of Git Bash prints an MSYS path (`/c/Users/…`) that
+        // Windows cannot resolve, and on macOS `/var` is a symlink to
+        // `/private/var`. A file needs neither path format nor canonicalize.
+        let outcome = run(&spec("printf x > где-я"), &target).unwrap();
+
+        assert!(outcome.ok(), "{outcome:?}");
+        assert!(
+            dir.path().join("где-я").exists(),
+            "команда начала работу не в папке файла"
         );
     }
 
@@ -1093,7 +1276,14 @@ mod tests {
         let bare = run(&plain, &note(dir.path())).unwrap();
         let profile = run(&login, &note(dir.path())).unwrap();
 
-        assert_eq!(bare.stdout, "/usr/bin:/bin");
+        // `contains`, not equality: Git Bash puts its own folders in front of
+        // `PATH` even without a profile, so the value we set is a part of what
+        // the script sees, not all of it.
+        assert!(
+            bare.stdout.contains("/usr/bin:/bin"),
+            "заданный PATH дошёл до скрипта: {}",
+            bare.stdout
+        );
         assert!(
             profile.stdout.len() >= bare.stdout.len(),
             "профиль не сделал PATH короче: {}",
@@ -1129,20 +1319,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = note(dir.path());
 
-        let at_vault = run(&spec("pwd"), &target).unwrap();
-        let mut at_target = spec("pwd");
+        // Each run leaves a file where it started. A printed directory would
+        // have to be parsed: `pwd` of Git Bash gives an MSYS path, and macOS
+        // maps `/var` to `/private/var`. See the standalone-file test.
+        let at_vault = run(&spec("printf x > от-корня"), &target).unwrap();
+        let mut at_target = spec("printf x > от-заметки");
         at_target.cwd = Cwd::Target;
         let at_note = run(&at_target, &target).unwrap();
 
-        // Compare directories with canonicalize: macOS maps `/var` to
-        // `/private/var`, so a plain string compare would always fail.
-        assert_eq!(
-            std::fs::canonicalize(at_vault.stdout.trim()).unwrap(),
-            std::fs::canonicalize(dir.path()).unwrap()
+        assert!(at_vault.ok(), "{at_vault:?}");
+        assert!(at_note.ok(), "{at_note:?}");
+        assert!(
+            dir.path().join("от-корня").exists(),
+            "по умолчанию работа начинается в корне хранилища"
         );
-        assert_eq!(
-            std::fs::canonicalize(at_note.stdout.trim()).unwrap(),
-            std::fs::canonicalize(dir.path().join("Docs")).unwrap()
+        assert!(
+            dir.path().join("Docs").join("от-заметки").exists(),
+            "с Cwd::Target работа начинается в папке заметки"
         );
     }
 

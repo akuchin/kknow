@@ -10,10 +10,16 @@ import { fileURLToPath } from "node:url";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
+/** A path with `/` separators, so a guard reads the same on every OS. */
+function slashes(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
 /** The TypeScript files of `ui/src`, as paths relative to it. */
 function sources(): string[] {
   return readdirSync(SRC, { recursive: true, encoding: "utf8" })
     .filter((path) => path.endsWith(".ts"))
+    .map(slashes)
     .sort();
 }
 
@@ -43,7 +49,7 @@ function importsOf(path: string, text: string): string[] {
     if (!specifier.startsWith(".") || (clause && typeOnly(clause))) continue;
     let target = resolve(SRC, dirname(path), specifier);
     if (!target.endsWith(".ts")) target += ".ts";
-    if (existsSync(target)) result.push(relative(SRC, target));
+    if (existsSync(target)) result.push(slashes(relative(SRC, target)));
   }
   return result;
 }

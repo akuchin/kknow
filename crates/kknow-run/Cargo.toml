@@ -16,10 +16,23 @@ serde.workspace = true
 serde_json.workspace = true
 ts-rs = { workspace = true, optional = true }
 
-# Only for `killpg`. On timeout we must kill everything the shell started,
-# not only the shell. The standard library has no process groups.
+# Only for `killpg` and `poll`. On timeout we must kill everything the shell
+# started, not only the shell, and a reader must ask whether the pipe has data
+# before it blocks on a read. The standard library has neither.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The same two jobs on Windows, where the names differ: a job object stands in
+# for the process group, and `PeekNamedPipe` for `poll`.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",
+  "Win32_System_Pipes",
+  # `CreateJobObjectW` takes `SECURITY_ATTRIBUTES` from this module, so the
+  # function compiles in only with it.
+  "Win32_Security",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true

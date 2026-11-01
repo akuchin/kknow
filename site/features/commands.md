@@ -162,6 +162,12 @@ would run in Linux without the `KKNOW_*` variables.
 A program name without an extension also finds `.exe`, `.cmd` and `.bat` files
 (the list comes from `PATHEXT`).
 
+`python` commands look for `python3` first and then for `python`. The installer
+from python.org lays down `python.exe` only, and the `python3` that is on
+`PATH` is usually a Microsoft Store alias: an empty file that prints `Python `
+and fails when the Store app is absent. kknow prefers a program with bytes in
+it, so a real interpreter further along `PATH` wins over such an alias.
+
 ## Why commands are not in the vault
 
 `commands.json` belongs to the app, not to a vault. A vault can come from sync

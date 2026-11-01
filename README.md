@@ -219,6 +219,14 @@ The full `pnpm build` also makes a `.dmg`. Its bundler uses Finder to arrange
 the disk image window. Run this command from your own terminal, because your
 terminal has access to Finder.
 
+The `app` bundle is a macOS one. On Windows, build the installer instead:
+
+```powershell
+pnpm build:msi
+```
+
+The command puts the `.msi` file in `target/release/bundle/msi/`.
+
 ## Running the CLI
 
 ```bash
@@ -1364,7 +1372,7 @@ pnpm ui:build
 ```
 
 `cargo test` needs no external services. The sync tests against a real S3 have
-the `#[ignore]` mark. They need MinIO from `docker-compose.yml`:
+the `#[ignore]` mark. They need the local S3 of `docker-compose.yml`:
 
 ```bash
 docker compose up -d

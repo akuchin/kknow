@@ -344,7 +344,7 @@ mod tests {
     const SAMPLE: &str = r#"{"commands":[
         {"id":"echo","name":"Показать путь","kind":"shell",
          "script":"printf '%s|%s' \"$KKNOW_PATH\" \"$KKNOW_TARGET\"","targets":["note"]},
-        {"id":"here","name":"Где я","kind":"shell","script":"pwd","targets":["folder","vault"]},
+        {"id":"here","name":"Где я","kind":"shell","script":"printf x > от-корня","targets":["folder","vault"]},
         {"id":"плохая","name":"Сломанная","kind":"phyton","script":"…"}]}"#;
 
     #[test]
@@ -395,7 +395,9 @@ mod tests {
 
         assert!(outcome.ok(), "{outcome:?}");
         let (path, kind) = outcome.stdout.split_once('|').expect("две части");
-        assert!(path.ends_with("Docs/Свод.md"), "{path}");
+        // `Path::ends_with` compares whole components, so it accepts the
+        // separator of either platform; `str::ends_with` would want `\` here.
+        assert!(Path::new(path).ends_with("Docs/Свод.md"), "{path}");
         assert_eq!(kind, "note");
     }
 
@@ -416,9 +418,14 @@ mod tests {
 
         // By default the command starts in the vault root. It gets the target
         // itself from `$KKNOW_PATH`.
-        assert_eq!(
-            fs::canonicalize(outcome.stdout.trim()).unwrap(),
-            fs::canonicalize(dir.path()).unwrap()
+        //
+        // The script leaves a file where it started, instead of printing the
+        // directory: `pwd` of Git Bash prints an MSYS path that Windows cannot
+        // resolve, and on macOS `/var` is a symlink to `/private/var`.
+        assert!(outcome.ok(), "{outcome:?}");
+        assert!(
+            dir.path().join("от-корня").exists(),
+            "работа началась в корне хранилища"
         );
     }
 
