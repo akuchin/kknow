@@ -88,10 +88,9 @@ scoop bucket add kknow https://github.com/akuchin/scoop-kknow
 scoop install kknow/kknow kknow/kknow-cli
 ```
 
-Update them with `scoop update kknow kknow-cli`. The app updates itself with
-the MSI installer, and the installer puts a second copy into `Program Files`.
-Thus, with Scoop, turn off **Settings → General → Update automatically**, and
-update only through Scoop.
+Update them with `scoop update kknow kknow-cli`. A Scoop copy does not update
+itself: the updater runs the MSI installer, and that installs a second copy
+into `Program Files`. The app sees that Scoop owns it and stops the checks.
 
 ### Prebuilt binaries
 

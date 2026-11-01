@@ -90,6 +90,7 @@
   "settings.general.update": "Обновления",
   "settings.general.update.check": "Проверить сейчас",
   "settings.general.update.unavailable": "Сборка для разработчиков: обновления не проверяются",
+  "settings.general.update.managed": "Установлено через {{manager}}: обновляйте через {{manager}}, иначе появится вторая копия",
   "settings.general.update.latest": "Установлена последняя версия",
   "settings.general.update.checking": "Проверяю…",
   "settings.general.update.downloading": "Скачиваю версию {{version}}…",

@@ -15,6 +15,7 @@
 //! event. Thus the mock replaces three commands, and the windows need no
 //! plugin permissions.
 
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -44,6 +45,10 @@ const PERIOD: Duration = Duration::from_secs(6 * 60 * 60);
 pub enum UpdateStatus {
     /// A developer build: it never checks.
     Unavailable,
+    /// A package manager owns this copy, so it updates through that manager.
+    Managed {
+        manager: String,
+    },
     /// No check yet, or the last check found nothing new.
     Idle,
     Checking,
@@ -69,6 +74,36 @@ pub fn is_release(version: &str, debug: bool) -> bool {
     !debug && version != "0.0.0"
 }
 
+/// The package manager that owns the copy in `dir`, if one does.
+///
+/// Scoop unpacks the app into `scoop\apps\kknow\<version>` and leaves
+/// `scoop-manifest.json` beside the binary, while `current` is a junction to
+/// that folder. The MSI install in `Program Files` has no such file, so the
+/// file next to the binary tells the two apart. The path itself is no help:
+/// the `SCOOP` variable moves the whole root.
+fn manager_of(dir: &Path) -> Option<&'static str> {
+    dir.join("scoop-manifest.json").is_file().then_some("Scoop")
+}
+
+/// The status the app starts with.
+///
+/// A copy that a package manager owns must not update itself. The updater
+/// would run the MSI, and it installs into `Program Files` beside the Scoop
+/// copy: the user then has two kknow entries in the Start menu, and the one
+/// the manager knows about stays on the old version. The manager has to be
+/// the only way in.
+pub fn initial_status(version: &str, debug: bool, exe: Option<&Path>) -> UpdateStatus {
+    if !is_release(version, debug) {
+        return UpdateStatus::Unavailable;
+    }
+    match exe.and_then(Path::parent).and_then(manager_of) {
+        Some(manager) => UpdateStatus::Managed {
+            manager: manager.to_owned(),
+        },
+        None => UpdateStatus::Idle,
+    }
+}
+
 /// Whether the scheduler must check now. A clock that went back (`elapsed`
 /// fails) also means "check": a wrong clock must not stop updates.
 fn due(last: Option<SystemTime>) -> bool {
@@ -88,14 +123,11 @@ struct Inner {
 }
 
 impl Updates {
-    pub fn new(release: bool) -> Self {
-        let status = if release {
-            UpdateStatus::Idle
-        } else {
-            UpdateStatus::Unavailable
-        };
+    /// `status` comes from [`initial_status`]. Anything but `Idle` there
+    /// means this copy never checks.
+    pub fn new(status: UpdateStatus) -> Self {
         Updates {
-            release,
+            release: status == UpdateStatus::Idle,
             inner: Mutex::new(Inner {
                 status,
                 ready: None,
@@ -288,9 +320,52 @@ mod tests {
         assert!(is_release("0.1.7", false), "сборка из релиза");
     }
 
+    /// Scoop leaves its manifest beside the binary; the MSI install does not.
+    #[test]
+    fn a_copy_of_a_package_manager_does_not_update_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("kknow-desktop.exe");
+
+        assert_eq!(
+            initial_status("0.7.2", false, Some(&exe)),
+            UpdateStatus::Idle,
+            "установка из MSI обновляет себя сама"
+        );
+
+        std::fs::write(dir.path().join("scoop-manifest.json"), "{}").unwrap();
+        assert_eq!(
+            initial_status("0.7.2", false, Some(&exe)),
+            UpdateStatus::Managed {
+                manager: "Scoop".into()
+            }
+        );
+
+        assert_eq!(
+            initial_status("0.0.0", false, Some(&exe)),
+            UpdateStatus::Unavailable,
+            "сборка разработчика важнее: она и так не проверяет"
+        );
+        assert_eq!(initial_status("0.7.2", false, None), UpdateStatus::Idle);
+    }
+
+    #[test]
+    fn a_managed_copy_says_so_and_never_starts() {
+        let updates = Updates::new(UpdateStatus::Managed {
+            manager: "Scoop".into(),
+        });
+
+        assert!(!updates.begin());
+        assert_eq!(
+            updates.status(),
+            UpdateStatus::Managed {
+                manager: "Scoop".into()
+            }
+        );
+    }
+
     #[test]
     fn a_developer_build_says_so_and_never_starts() {
-        let updates = Updates::new(false);
+        let updates = Updates::new(UpdateStatus::Unavailable);
 
         assert_eq!(updates.status(), UpdateStatus::Unavailable);
         assert!(!updates.begin());
@@ -299,7 +374,7 @@ mod tests {
 
     #[test]
     fn a_second_check_waits_for_the_first() {
-        let updates = Updates::new(true);
+        let updates = Updates::new(UpdateStatus::Idle);
 
         assert!(updates.begin());
         assert_eq!(updates.status(), UpdateStatus::Checking);
@@ -313,7 +388,7 @@ mod tests {
 
     #[test]
     fn a_downloaded_version_is_not_downloaded_again() {
-        let updates = Updates::new(true);
+        let updates = Updates::new(UpdateStatus::Idle);
         updates.set(UpdateStatus::Ready {
             version: "0.2.0".into(),
         });
@@ -329,7 +404,7 @@ mod tests {
 
     #[test]
     fn a_failure_or_nothing_new_allows_the_next_check() {
-        let updates = Updates::new(true);
+        let updates = Updates::new(UpdateStatus::Idle);
 
         updates.set(UpdateStatus::Failed {
             message: "нет сети".into(),
@@ -342,7 +417,7 @@ mod tests {
 
     #[test]
     fn nothing_to_install_without_a_download() {
-        assert!(Updates::new(true).take().is_none());
+        assert!(Updates::new(UpdateStatus::Idle).take().is_none());
     }
 
     #[test]
