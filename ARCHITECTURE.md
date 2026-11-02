@@ -193,8 +193,13 @@ External edit:
   with the S3 fields at the root of the file. A dedicated test checks this. This
   struct has no field for the secret key, by design. `kknow_sync::connect` makes
   the provider from the configuration.
-- `FolderProvider` uses the same keys as the bucket (`manifest.json`,
-  `notes/*.md`). It writes through a temp file and `rename`. It skips its own
+- The storage is a mirror of the vault: a note is at `<id>.md`, the manifest
+  at `.kknow/manifest.json`. Other programs also write there (a person, an
+  agent). So before the plan, `reconcile` compares the remote manifest with
+  the object list: an unlisted `.md` object gets a hash from its content and
+  downloads as a remote note; an entry with no object is a remote delete. A
+  change in place by another program is not seen: the list has no content.
+- `FolderProvider` uses the same keys as the bucket. It writes through a temp file and `rename`. It skips its own
   `.kknow-tmp` files.
 
   If you delete a file that does not exist, the operation

@@ -83,7 +83,7 @@ fn a_vault_travels_through_s3() {
     // The bucket has the notes and the manifest, and nothing else.
     let mut keys = sender.remote_keys().unwrap();
     keys.sort();
-    assert_eq!(keys, ["notes/Index.md", "notes/Projects/kknow.md"]);
+    assert_eq!(keys, ["Index.md", "Projects/kknow.md"]);
     assert!(
         sender
             .provider()
@@ -120,7 +120,7 @@ fn edits_and_deletes_reach_the_other_side() {
     assert_eq!(report.removed_local.len(), 1);
     assert_eq!(read(&there, "Заметка"), "вторая версия");
     assert!(!there.contains(&NoteId::parse("Черновик").unwrap()));
-    assert_eq!(first.remote_keys().unwrap(), ["notes/Заметка.md"]);
+    assert_eq!(first.remote_keys().unwrap(), ["Заметка.md"]);
 }
 
 #[test]

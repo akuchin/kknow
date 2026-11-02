@@ -63,9 +63,9 @@ fn two_devices_meet_in_a_shared_folder() {
     assert_eq!(report.downloaded.len(), 1);
     assert_eq!(second.read("Проекты/kknow"), "# kknow\n\nпроект\n");
 
-    // The folder keeps the same keys as a bucket.
-    assert!(cloud.path().join("manifest.json").is_file());
-    assert!(cloud.path().join("notes/Проекты/kknow.md").is_file());
+    // The folder is a mirror of the vault, as a bucket is.
+    assert!(cloud.path().join(".kknow/manifest.json").is_file());
+    assert!(cloud.path().join("Проекты/kknow.md").is_file());
 
     // The second run does nothing: sync is idempotent.
     assert!(second.sync().is_empty());
@@ -111,5 +111,66 @@ fn deleting_on_one_device_removes_it_from_the_folder() {
     let report = second.sync();
     assert_eq!(report.removed_local.len(), 1);
     assert!(!second.has("Черновик"));
-    assert!(!cloud.path().join("notes/Черновик.md").exists());
+    assert!(!cloud.path().join("Черновик.md").exists());
+}
+
+/// The first sync of a vault with a storage that another program filled: a
+/// person dropped files there, an agent saved its research. Both sides end up
+/// with all notes.
+#[test]
+fn the_first_sync_joins_a_vault_and_a_storage_that_other_programs_filled() {
+    let cloud = tempfile::tempdir().unwrap();
+    fs::create_dir_all(cloud.path().join("research/.cache")).unwrap();
+    fs::write(cloud.path().join("research/htmx.md"), "# htmx\n").unwrap();
+    // Not notes: another extension and a hidden folder.
+    fs::write(cloud.path().join("research/data.json"), "{}").unwrap();
+    fs::write(cloud.path().join("research/.cache/x.md"), "кэш").unwrap();
+
+    let mut device = Device::new(cloud.path(), ConflictPolicy::KeepBoth);
+    device.edit("Идеи", "# Идеи\n");
+
+    let report = device.sync();
+    assert_eq!(report.downloaded, [NoteId::parse("research/htmx").unwrap()]);
+    assert_eq!(report.uploaded, [NoteId::parse("Идеи").unwrap()]);
+    assert_eq!(device.read("research/htmx"), "# htmx\n");
+    assert!(!device.has("research/.cache/x"));
+    assert_eq!(
+        fs::read_to_string(cloud.path().join("Идеи.md")).unwrap(),
+        "# Идеи\n"
+    );
+
+    assert!(device.sync().is_empty(), "второй синк ничего не делает");
+}
+
+/// A file that the person deleted in the storage itself goes to the vault
+/// trash, as a delete from another device does.
+#[test]
+fn a_file_deleted_in_the_storage_goes_to_the_trash() {
+    let cloud = tempfile::tempdir().unwrap();
+    fs::write(cloud.path().join("Черновик.md"), "черновик").unwrap();
+
+    let mut device = Device::new(cloud.path(), ConflictPolicy::KeepBoth);
+    device.sync();
+    assert!(device.has("Черновик"));
+
+    fs::remove_file(cloud.path().join("Черновик.md")).unwrap();
+    let report = device.sync();
+    assert_eq!(report.removed_local.len(), 1);
+    assert!(!device.has("Черновик"));
+}
+
+/// The same path on both sides with different text and no common history:
+/// nothing is lost, the storage version becomes a conflict copy.
+#[test]
+fn the_same_path_with_different_text_keeps_both() {
+    let cloud = tempfile::tempdir().unwrap();
+    fs::write(cloud.path().join("План.md"), "из облака").unwrap();
+
+    let mut device = Device::new(cloud.path(), ConflictPolicy::KeepBoth);
+    device.edit("План", "локальный");
+
+    let report = device.sync();
+    assert_eq!(report.conflicts.len(), 1);
+    assert_eq!(device.read("План"), "локальный");
+    assert_eq!(device.read(report.conflicts[0].copy.as_str()), "из облака");
 }

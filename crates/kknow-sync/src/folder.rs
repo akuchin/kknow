@@ -4,8 +4,8 @@
 //! need no special code. In the UI such a "provider" is only a preset path
 //! and name. The actual work happens here.
 //!
-//! The folder is not a vault: it holds `manifest.json` and `notes/*.md`, the
-//! same keys as a bucket. Thus sync stays the same for any disk below.
+//! The folder holds the same keys as a bucket: the notes at their vault paths
+//! and `.kknow/manifest.json`. Thus sync stays the same for any disk below.
 
 use std::fs;
 use std::path::{Path, PathBuf};

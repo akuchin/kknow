@@ -1,6 +1,6 @@
 //! The sync itself: compute the plan and run it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use kknow_core::{NoteId, Vault};
 
@@ -9,14 +9,25 @@ use crate::plan::{Action, ConflictPolicy, Plan, diff};
 use crate::provider::SyncProvider;
 use crate::{Error, Result};
 
-/// Manifest key in the storage.
-pub const MANIFEST_KEY: &str = "manifest.json";
-/// Prefix for the note objects.
-pub const NOTES_PREFIX: &str = "notes/";
+/// Manifest key in the storage. It is hidden in the same way as
+/// `.kknow/sync.json` in the vault, so the storage looks like the vault.
+pub const MANIFEST_KEY: &str = ".kknow/manifest.json";
 
-/// Key of the object with the note contents.
+/// Key of the object with the note contents: the same path as in the vault.
 pub fn note_key(id: &NoteId) -> String {
-    format!("{NOTES_PREFIX}{id}.md")
+    format!("{id}.md")
+}
+
+/// The note that a storage object holds, if it is a note.
+///
+/// The reverse of [`note_key`]. Hidden paths are not notes, as in the vault:
+/// they hold the manifest and the files of other programs.
+pub fn note_of_key(key: &str) -> Option<NoteId> {
+    let path = key.strip_suffix(".md")?;
+    if path.split('/').any(|part| part.starts_with('.')) {
+        return None;
+    }
+    NoteId::parse(path)
 }
 
 /// How many sync objects are already transferred.
@@ -118,8 +129,9 @@ impl Report {
 
 /// Sync of a vault with one remote storage.
 ///
-/// The storage holds the notes (`notes/<id>.md`) and the manifest
-/// (`manifest.json`), that is, the list of what must be there. Notes are
+/// The storage is a mirror of the vault: each note is at its own path
+/// (`<id>.md`). The manifest (`.kknow/manifest.json`) keeps the hashes of
+/// the notes that kknow wrote. Notes are
 /// written first and the manifest last. An extra object in the cloud does no
 /// harm until the manifest changes. But a manifest that lists a note not yet
 /// uploaded would cause an error on another device.
@@ -147,7 +159,8 @@ impl<P: SyncProvider> SyncEngine<P> {
 
     /// Computes what to do and changes nothing.
     pub fn plan(&self, vault: &Vault) -> Result<Plan> {
-        let (remote, revision) = self.fetch_manifest()?;
+        let (mut remote, revision) = self.fetch_manifest()?;
+        self.reconcile(&mut remote)?;
         let base = Manifest::load(&state_path(vault))?;
         let local = Manifest::of_vault(vault)?;
 
@@ -313,7 +326,46 @@ impl<P: SyncProvider> SyncEngine<P> {
     /// Keys of all notes in the storage. This shows what is really there, not
     /// what the manifest says.
     pub fn remote_keys(&self) -> Result<Vec<String>> {
-        Ok(self.provider.list(NOTES_PREFIX)?)
+        let mut keys = self.provider.list("")?;
+        keys.retain(|key| note_of_key(key).is_some());
+        Ok(keys)
+    }
+
+    /// Makes the remote manifest match the objects in the storage.
+    ///
+    /// Other programs also write to the storage: a person drops a file in the
+    /// bucket, an agent saves its research there. A note that the manifest
+    /// does not list gets its hash from its contents, and the plan downloads
+    /// it as any other remote note. A listed note with no object was deleted
+    /// in the storage, and the plan removes it locally.
+    ///
+    /// A note that another program changed in place keeps its old hash: the
+    /// list gives keys, not contents, and a download of each note on each
+    /// sync is too expensive.
+    fn reconcile(&self, remote: &mut Manifest) -> Result<()> {
+        let present: BTreeSet<NoteId> = self
+            .provider
+            .list("")?
+            .iter()
+            .filter_map(|key| note_of_key(key))
+            .collect();
+
+        let gone: Vec<NoteId> = remote
+            .ids()
+            .filter(|id| !present.contains(*id))
+            .cloned()
+            .collect();
+        for id in gone {
+            remote.remove(&id);
+        }
+
+        for id in present {
+            if !remote.contains(&id) {
+                let content = self.download(&id)?;
+                remote.insert(id, Entry::of(&content));
+            }
+        }
+        Ok(())
     }
 
     /// The remote manifest and its revision, that is, the hash of the bytes read.

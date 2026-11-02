@@ -830,8 +830,10 @@ In the terminal, `kknow watch` shows the same events.
 
 ## Sync
 
-The cloud keeps the notes (`notes/<id>.md`) and a manifest (`manifest.json`).
-The manifest lists the notes that must be there, with their content hashes.
+The cloud is a mirror of the vault: each note is at its own path (`<id>.md`),
+and a manifest is in `.kknow/manifest.json`. The manifest lists the notes with
+their content hashes. A `.md` file that another program put in the cloud is a
+note too: the next sync downloads it.
 Sync compares three such lists:
 
 - the notes on disk;

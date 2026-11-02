@@ -126,8 +126,11 @@ path, with a Russian stemmer. Each open vault has its own index in memory.
 
 ## Sync
 
-The storage has the notes (`notes/<id>.md`) and a manifest (`manifest.json`).
-A manifest is a list of notes with their content hashes. It has no
+The storage is a mirror of the vault: each note is at its own path (`<id>.md`),
+and the manifest is in `.kknow/manifest.json`. A manifest is a list of notes
+with their content hashes. Before the plan, kknow adds to the remote manifest
+the `.md` objects that it does not list (files of other programs) and removes
+the entries with no object. It has no
 modification times: computer clocks drift, and S3 sets its own upload time.
 
 kknow compares three manifests:
@@ -135,7 +138,7 @@ kknow compares three manifests:
 ```mermaid
 flowchart LR
   L["Local<br/>notes on disk"] --> P{Plan}
-  R["Remote<br/>manifest.json"] --> P
+  R["Remote<br/>.kknow/manifest.json<br/>+ object list"] --> P
   B["Base<br/>.kknow/sync.json<br/>last sync"] --> P
   P --> U[Upload]
   P --> Dn[Download]

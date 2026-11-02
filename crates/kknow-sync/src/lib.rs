@@ -42,7 +42,7 @@ use kknow_core::NoteId;
 
 pub use config::{GitAuth, GitSettings, Provider, RemoteConfig, S3Settings};
 pub use engine::{
-    Conflict, Fetched, MANIFEST_KEY, NOTES_PREFIX, Progress, Report, Staged, SyncEngine, note_key,
+    Conflict, Fetched, MANIFEST_KEY, Progress, Report, Staged, SyncEngine, note_key, note_of_key,
 };
 pub use folder::FolderProvider;
 pub use git::{ChangeKind, Git, GitChange, GitConflict, GitReport, GitStatus, Merged};

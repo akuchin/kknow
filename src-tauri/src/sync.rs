@@ -625,7 +625,7 @@ mod tests {
         // Sync through the folder really runs, without network or keys.
         let report = sync_now(app.handle().clone(), app.state(), None).unwrap();
         assert_eq!(report.uploaded, 1);
-        assert!(cloud.path().join("notes/Index.md").is_file());
+        assert!(cloud.path().join("Index.md").is_file());
     }
 
     /// This is why sync has parts: during the network step the vault is free,
@@ -664,7 +664,7 @@ mod tests {
         });
 
         assert!(saved.is_ok(), "сохранение не должно ждать конца обмена");
-        assert!(cloud.path().join("notes/Index.md").is_file());
+        assert!(cloud.path().join("Index.md").is_file());
     }
 
     /// The status is visible without a sync: whether sync is configured and

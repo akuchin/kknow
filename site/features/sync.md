@@ -45,6 +45,33 @@ the command line in `ps`, and the shell keeps it in the history. If you do not
 set `KKNOW_S3_*`, kknow uses the usual `AWS_*` variables.
 :::
 
+## The storage is a mirror of the vault
+
+The storage keeps each note at the same path as the vault:
+`research/htmx.md` in the vault is `research/htmx.md` in the bucket or folder.
+kknow keeps its own state in the hidden `.kknow/manifest.json`.
+
+Thus you can connect a vault that already has notes to a storage that already
+has files. The first sync joins both sides:
+
+- local notes go to the storage;
+- `.md` files from the storage come to the vault, also files that another
+  program or a person put there;
+- if the same path has different text on both sides, kknow keeps both
+  versions, see [Conflicts](#conflicts).
+
+kknow skips other extensions and hidden folders in the storage.
+
+A file that you delete in the storage itself goes to the vault trash on the
+next sync. If another program changes a file in place, kknow does not see the
+change: it compares the hashes that it wrote, not the content of each file.
+
+::: warning Storages from older versions
+Before this version, kknow kept notes under `notes/` and the manifest in
+`manifest.json`. Such a storage now shows a `notes` folder with your notes.
+Move the files to the root of the storage, or sync into a new prefix.
+:::
+
 ## Conflicts
 
 If both devices changed the same note, kknow keeps both versions by default:
