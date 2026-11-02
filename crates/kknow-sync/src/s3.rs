@@ -108,9 +108,27 @@ impl S3Provider {
     }
 }
 
+/// Runs a blocking opendal call where `block_on` is allowed.
+///
+/// opendal's `block_on` panics on a thread that drives async tasks. The window
+/// is such a caller: Tauri runs `#[tauri::command(async)]` inside a tokio
+/// task. Then the call goes to a separate thread with no runtime, and the
+/// caller waits for it. The terminal and the scheduler threads call directly.
+fn blocking<T: Send>(call: impl FnOnce() -> T + Send) -> T {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return call();
+    }
+    std::thread::scope(|scope| {
+        scope
+            .spawn(call)
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
 impl SyncProvider for S3Provider {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        match self.operator.read(key) {
+        match blocking(|| self.operator.read(key)) {
             Ok(buffer) => Ok(Some(buffer.to_vec())),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
             Err(source) => Err(Error::new(Operation::Get, key, source)),
@@ -118,15 +136,13 @@ impl SyncProvider for S3Provider {
     }
 
     fn put(&self, key: &str, bytes: &[u8]) -> Result<()> {
-        self.operator
-            .write(key, bytes.to_vec())
+        blocking(|| self.operator.write(key, bytes.to_vec()))
             .map(|_| ())
             .map_err(|source| Error::new(Operation::Put, key, source))
     }
 
     fn delete(&self, key: &str) -> Result<()> {
-        self.operator
-            .delete(key)
+        blocking(|| self.operator.delete(key))
             .map_err(|source| Error::new(Operation::Delete, key, source))
     }
 
@@ -136,7 +152,7 @@ impl SyncProvider for S3Provider {
             ..ListOptions::default()
         };
 
-        match self.operator.list_options(prefix, options) {
+        match blocking(|| self.operator.list_options(prefix, options)) {
             Ok(entries) => Ok(entries
                 .into_iter()
                 .map(|entry| entry.path().to_string())
@@ -152,5 +168,51 @@ impl SyncProvider for S3Provider {
 impl std::fmt::Debug for S3Provider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("S3Provider").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A closed port: each request fails at once, no S3 is needed.
+    fn unreachable() -> S3Provider {
+        S3Provider::connect(&S3Config {
+            endpoint: Some("http://127.0.0.1:9".into()),
+            access_key_id: Some("ключ".into()),
+            secret_access_key: Some("секрет".into()),
+            ..S3Config::new("заметки")
+        })
+        .unwrap()
+    }
+
+    /// The window runs `#[tauri::command(async)]` commands inside a tokio
+    /// task. There opendal's `block_on` panicked, the task died, and the UI
+    /// waited for the answer forever.
+    #[test]
+    fn a_call_from_async_code_returns_an_error_not_a_panic() {
+        let caller = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let outcome = caller.block_on(async {
+            tokio::spawn(async {
+                let provider = unreachable();
+                (
+                    provider.get("manifest.json").is_err(),
+                    provider.put("notes/a.md", b"x").is_err(),
+                    provider.delete("notes/a.md").is_err(),
+                    provider.list("notes/").is_err(),
+                )
+            })
+            .await
+        });
+
+        assert_eq!(
+            outcome.expect("провайдер упал в async-коде"),
+            (true, true, true, true)
+        );
     }
 }

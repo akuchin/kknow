@@ -164,7 +164,10 @@ External edit:
 
 - `SyncProvider` is a trait with four operations (`get`, `put`, `delete`,
   `list`). It is **synchronous**: async code never got into the core. Only the
-  S3 implementation needs `tokio`, and the `s3` feature hides it.
+  S3 implementation needs `tokio`, and the `s3` feature hides it. The
+  blocking opendal facade panics on a thread that drives async tasks, and the
+  window runs `#[tauri::command(async)]` in such a task. So a call from async
+  code goes to a separate thread (`s3::blocking`).
 - Implementations:
   - `MemoryProvider` — for algorithm tests.
   - `S3Provider` through `opendal` — S3, MinIO, R2. It has an endpoint, a
