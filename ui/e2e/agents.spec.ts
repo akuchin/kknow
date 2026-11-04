@@ -55,3 +55,23 @@ test("the first answer gives a comment its thread ID", async ({ page }) => {
   await expect(editorText(page)).toContainText("@agent#t2");
   await expect(second.locator(".thread-messages")).toContainText("можно короче");
 });
+
+test("a reply to one thread keeps the text typed under another", async ({ page }) => {
+  await page.locator("#toggle-notes").click();
+  const first = page.locator("#notes-list > li").first();
+  const second = page.locator("#notes-list > li").nth(1);
+  await first.locator("textarea").fill("answer to the question");
+  await second.getByRole("button", { name: t("panel.notes.reply") }).click();
+  await second.locator("textarea").fill("a draft for later");
+
+  await first.getByRole("button", { name: t("panel.notes.send") }).click();
+
+  await expect(statusMessage(page)).toHaveText(t("status.replySent"));
+  await expect(first.locator(".thread-messages")).toContainText("answer to the question");
+  // The list was drawn again, and the second field is still open with its text.
+  await expect(second.locator("textarea")).toBeVisible();
+  await expect(second.locator("textarea")).toHaveValue("a draft for later");
+  // The sent field is empty and closed again.
+  await expect(first.locator("textarea")).toBeHidden();
+  await expect(first.locator("textarea")).toHaveValue("");
+});

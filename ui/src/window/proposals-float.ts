@@ -7,6 +7,7 @@
 // rejected ones as an answer for the agent (`proposal_status`).
 
 import { api, type NoteView, type ProposalEdit, type ProposalView } from "../api";
+import { bindDraft, bindDraftCheck, clearDraftsUnder, keepFocus } from "../drafts";
 import { t } from "../i18n";
 import { splitChange } from "../word-diff";
 import { el } from "./dom";
@@ -46,7 +47,25 @@ export function showProposalsFloat(show: boolean): void {
   if (show) renderProposals();
 }
 
+/**
+ * Draws the list again. The feedback text and the boxes of each proposal are
+ * drafts: a review of one proposal or a new view of the note does not reset
+ * what the person typed or unchecked in another one.
+ */
 function renderProposals(): void {
+  const refocus = keepFocus(el.proposalsList);
+  try {
+    fillProposals();
+  } finally {
+    refocus();
+  }
+}
+
+function draftPrefix(proposal: ProposalView): string {
+  return `proposal:${proposal.id}:`;
+}
+
+function fillProposals(): void {
   el.proposalsList.replaceChildren();
   const list = waiting(state.note);
   if (list.length === 0) {
@@ -107,8 +126,9 @@ function proposalItem(proposal: ProposalView): HTMLLIElement {
     const label = document.createElement("label");
     const box = document.createElement("input");
     box.type = "checkbox";
-    box.checked = !stale;
     box.disabled = stale;
+    if (stale) box.checked = false;
+    else bindDraftCheck(box, `${draftPrefix(proposal)}edit:${index}`, true);
     label.append(box, t("panel.proposals.accept"));
     if (stale) {
       row.classList.add("is-stale");
@@ -123,6 +143,7 @@ function proposalItem(proposal: ProposalView): HTMLLIElement {
   feedback.className = "proposal-feedback";
   feedback.rows = 2;
   feedback.placeholder = t("panel.proposals.feedback");
+  bindDraft(feedback, `${draftPrefix(proposal)}feedback`);
 
   const actions = document.createElement("div");
   actions.className = "proposal-actions";
@@ -167,6 +188,7 @@ async function review(
   await calls.flush();
   try {
     const view = await api.reviewProposal(proposal.id, decisions);
+    clearDraftsUnder(draftPrefix(proposal));
     if (state.note?.id !== id) return;
     // The text changed on disk: the editor takes the new text.
     calls.apply(view, { reload: true });
@@ -183,6 +205,7 @@ async function drop(proposal: ProposalView): Promise<void> {
   if (!id) return;
   try {
     await api.dismissProposal(proposal.id);
+    clearDraftsUnder(draftPrefix(proposal));
     if (state.note?.id !== id) return;
     calls.apply(await api.loadNote(id), { keepEditor: true });
   } catch (error) {

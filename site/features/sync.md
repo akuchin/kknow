@@ -15,7 +15,11 @@ Each vault has its own sync configuration. A vault without sync works as usual.
 2. Go to **Vaults** and select the vault.
 3. Select the provider: S3-compatible storage or a folder.
 4. Fill in the fields. For S3, the window keeps the secret key in the system
-   keychain (Keychain, Credential Manager or Secret Service).
+   keychain (Keychain, Credential Manager or Secret Service). Leave the
+   secret field empty to keep the stored key. The key stays when you change
+   the endpoint, the bucket or the prefix: you do not need to type it again.
+   Typed fields stay until you click **Save**, also when you change other
+   settings of the vault first.
 5. Optional: turn on automatic sync and set the interval in minutes.
 6. Select the conflict policy.
 

@@ -153,6 +153,36 @@ test("the vault page renames, recolors and sets up sync", async ({ page }) => {
   await expect(provider).toHaveValue("off");
 });
 
+test("typed S3 fields survive other changes on the vault page", async ({ page }) => {
+  await page.goto("/settings.html#vaults");
+  const provider = page
+    .locator(".settings-row", { hasText: t("settings.vaults.provider") })
+    .locator("select");
+  await provider.selectOption("s3");
+  const field = (key: string) =>
+    page.locator(".settings-s3 label", { hasText: t(key) }).first().locator("input");
+  await field("dialog.sync.endpoint").fill("https://s3.example.com");
+  await field("dialog.sync.secret").fill("typed-secret");
+
+  // A color change draws the page again before "Save".
+  await page.locator('.settings-color[data-color="green"]').click();
+  await expect(page.locator('.settings-color[data-color="green"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(field("dialog.sync.endpoint")).toHaveValue("https://s3.example.com");
+  await expect(field("dialog.sync.secret")).toHaveValue("typed-secret");
+
+  await page.locator(".settings-s3 button", { hasText: t("dialog.sync.save") }).click();
+  // Saved: the secret field is empty again and says that a key is stored.
+  await expect(field("dialog.sync.secret")).toHaveValue("");
+  await expect(field("dialog.sync.secret")).toHaveAttribute("placeholder", t("dialog.sync.secret.saved"));
+  await expect(field("dialog.sync.endpoint")).toHaveValue("https://s3.example.com");
+
+  // A new endpoint without the key again keeps the stored key.
+  await field("dialog.sync.endpoint").fill("https://other.example.com");
+  await page.locator(".settings-s3 button", { hasText: t("dialog.sync.save") }).click();
+  await expect(field("dialog.sync.endpoint")).toHaveValue("https://other.example.com");
+  await expect(field("dialog.sync.secret")).toHaveAttribute("placeholder", t("dialog.sync.secret.saved"));
+});
+
 test("git asks for the program first and then connects the vault", async ({ page }) => {
   await page.goto("/settings.html#vaults");
   const provider = page

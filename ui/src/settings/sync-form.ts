@@ -10,6 +10,7 @@ import {
   type SyncSettings,
   type VaultView,
 } from "../api";
+import { bindDraft, clearDraftsUnder, draftValue, setDraft } from "../drafts";
 import { describeError, t, type Key } from "../i18n";
 
 /**
@@ -36,6 +37,15 @@ export function draftsGit(vault: VaultView): boolean {
 }
 
 /**
+ * The prefix of the field drafts of one sync form. The vault page draws
+ * itself again after each change (a color, a label, the conflict policy), so
+ * typed but unsaved fields live in drafts until "Save" or "Connect".
+ */
+function formKey(vault: VaultView, kind: "s3" | "git"): string {
+  return `sync:${vault.id}:${kind}:`;
+}
+
+/**
  * Changes the provider from the list: "do not sync" turns sync off, folder asks
  * for a folder, S3 switches the provider and shows the key form below.
  */
@@ -45,6 +55,12 @@ export async function switchProvider(
   kind: string,
 ): Promise<void> {
   gitDrafts.delete(vault.id);
+  // Another provider is a new form: what was typed for the old one is not
+  // its setting.
+  if (kind !== remote?.provider.kind) {
+    clearDraftsUnder(formKey(vault, "s3"));
+    clearDraftsUnder(formKey(vault, "git"));
+  }
   if (kind === "git") {
     if (remote?.provider.kind !== "git") gitDrafts.add(vault.id);
     await redraw();
@@ -85,8 +101,10 @@ export async function switchProvider(
  * S3 fields: bucket, endpoint, region, prefix, access key and secret.
  *
  * A button saves them, not each keystroke: half a typed endpoint is not a
- * setting yet. The secret goes to the OS keychain and never comes back, so an
- * empty field means "keep the old one".
+ * setting yet. Until then each field is a draft, so a redraw of the page does
+ * not erase it. The secret goes to the OS keychain and never comes back, so an
+ * empty field means "keep the old one". The core keeps the key when the
+ * address changes too: a new endpoint does not need the secret again.
  */
 export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
   const s3 = remote.provider.kind === "s3" ? remote.provider : null;
@@ -100,7 +118,7 @@ export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
     caption.textContent = t(label);
 
     const input = document.createElement("input");
-    input.value = value ?? "";
+    bindDraft(input, formKey(vault, "s3") + name, value ?? "");
     input.placeholder = placeholder;
     input.autocomplete = "off";
     if (name === "secret") input.type = "password";
@@ -142,6 +160,8 @@ export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
         },
       },
       text("secret"),
+      // A failed save keeps the drafts: the person fixes a field, not all.
+      () => clearDraftsUnder(formKey(vault, "s3")),
     );
   };
 
@@ -179,7 +199,9 @@ export function gitForm(vault: VaultView, remote: SyncSettings | null): HTMLElem
     return field;
   };
 
+  const drafts = formKey(vault, "git");
   const url = input(git?.url ?? "", t("dialog.git.url.placeholder"));
+  if (git === null) bindDraft(url, `${drafts}url`);
   url.readOnly = git !== null;
   line("dialog.git.url", url);
 
@@ -190,23 +212,29 @@ export function gitForm(vault: VaultView, remote: SyncSettings | null): HTMLElem
     option.textContent = t(`dialog.git.auth.${value}` as Key);
     auth.append(option);
   }
-  auth.value = git?.auth ?? "system";
+  const savedAuth = git?.auth ?? "system";
+  auth.value = draftValue(`${drafts}auth`, savedAuth);
   line("dialog.git.auth", auth);
 
   const env = input(git?.env ?? "", "GITHUB_TOKEN");
+  bindDraft(env, `${drafts}env`, git?.env ?? "");
   const envLine = line("dialog.git.env", env);
   const token = input(
     "",
     t(remote?.hasSecret ? "dialog.sync.secret.saved" : "dialog.git.token.placeholder"),
   );
   token.type = "password";
+  bindDraft(token, `${drafts}token`);
   const tokenLine = line("dialog.git.token", token);
 
   const show = () => {
     envLine.hidden = auth.value !== "env";
     tokenLine.hidden = auth.value !== "token";
   };
-  auth.onchange = show;
+  auth.onchange = () => {
+    setDraft(`${drafts}auth`, auth.value, savedAuth);
+    show();
+  };
   show();
 
   const hint = document.createElement("span");
@@ -236,6 +264,7 @@ export function gitForm(vault: VaultView, remote: SyncSettings | null): HTMLElem
         token.value.trim() || null,
       );
       gitDrafts.delete(vault.id);
+      clearDraftsUnder(drafts);
       await redraw();
     } catch (error) {
       problem.textContent = describeError(error);
@@ -262,17 +291,22 @@ export async function saveSync(
   remote: SyncSettings | null,
   change: Partial<{ provider: Provider; policy: ConflictPolicy; autoSyncMinutes: number }>,
   secret: string | null = null,
-): Promise<void> {
+  onSaved?: () => void,
+): Promise<boolean> {
   const base = {
     provider: remote?.provider ?? { kind: "folder" as const, path: "" },
     policy: remote?.policy ?? ("keepBoth" as ConflictPolicy),
     autoSyncMinutes: remote?.autoSyncMinutes ?? 0,
   };
 
+  let saved = false;
   try {
     await api.saveSyncSettings({ ...base, ...change }, secret, vault.id);
+    saved = true;
+    onSaved?.();
   } catch (error) {
     console.error(error);
   }
   await redraw();
+  return saved;
 }

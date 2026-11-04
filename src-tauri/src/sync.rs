@@ -131,7 +131,9 @@ pub fn sync_settings(
 /// Saves the settings. The secret goes to the keyring, the rest to the vault.
 ///
 /// `secret` = `None` means "keep the stored key". The form sends an empty field
-/// each time the user does not type the key again.
+/// each time the user does not type the key again. The keyring finds the key
+/// by the storage address, so a new endpoint, bucket or prefix would lose it:
+/// [`carry_secret`] moves it to the new address.
 #[tauri::command(async)]
 pub fn save_sync_settings(
     state: State<'_, AppState>,
@@ -145,16 +147,42 @@ pub fn save_sync_settings(
         auto_sync_minutes: settings.auto_sync_minutes,
     };
 
+    let slot = state.slot(vault.as_deref())?;
+    let old = slot.read(config_of)?;
+
     // Settings first: if the bucket settings are not saved, there is no address
     // to store the key under.
-    state
-        .slot(vault.as_deref())?
-        .read(|workspace| Ok(config.save(&RemoteConfig::path(workspace.root()))?))?;
+    slot.read(|workspace| Ok(config.save(&RemoteConfig::path(workspace.root()))?))?;
 
-    if let Some(secret) = tidy(secret).filter(|_| config.needs_secret()) {
-        secrets::store(&config.location(), &secret)?;
+    match tidy(secret).filter(|_| config.needs_secret()) {
+        Some(secret) => secrets::store(&config.location(), &secret)?,
+        None => carry_secret(old.as_ref(), &config)?,
     }
     settings_of(config)
+}
+
+/// Keeps the stored key when the address of the same storage changes.
+///
+/// The keyring stores the key under the address. A person who fixes a typo
+/// in the endpoint or changes the prefix did not ask to forget the key, so it
+/// is copied to the new address. The old entry stays: another vault can use
+/// the same bucket and the same key. A key that is already at the new address
+/// wins: it was typed for that address. A new kind of storage (S3 after git)
+/// is a new login, so nothing is carried there.
+fn carry_secret(old: Option<&RemoteConfig>, new: &RemoteConfig) -> Result<()> {
+    let Some(old) = old else { return Ok(()) };
+    let same_kind = std::mem::discriminant(&old.provider) == std::mem::discriminant(&new.provider);
+    if !same_kind || !old.needs_secret() || !new.needs_secret() {
+        return Ok(());
+    }
+    let (from, to) = (old.location(), new.location());
+    if from == to || secrets::load(&to)?.is_some() {
+        return Ok(());
+    }
+    if let Some(secret) = secrets::load(&from)? {
+        secrets::store(&to, &secret)?;
+    }
+    Ok(())
 }
 
 /// Applies [`tidy`] to each provider field.
@@ -585,6 +613,48 @@ mod tests {
 
         let written = fs::read_to_string(dir.path().join(".kknow/remote.json")).unwrap();
         assert!(!written.contains("тайна"), "{written}");
+    }
+
+    #[test]
+    fn a_new_endpoint_keeps_the_stored_secret() {
+        let dir = vault();
+        let app = app(dir.path());
+        save_sync_settings(app.state(), form("new-endpoint"), Some("secret".into()), None)
+            .unwrap();
+
+        let mut moved = form("new-endpoint");
+        if let Provider::S3(s3) = &mut moved.provider {
+            s3.endpoint = Some("https://s3.example.com".into());
+            s3.prefix = Some("notes".into());
+        }
+        let saved = save_sync_settings(app.state(), moved, None, None).unwrap();
+
+        assert_eq!(saved.location, "https://s3.example.com/new-endpoint/notes");
+        assert!(saved.has_secret, "the key follows the new address");
+        assert_eq!(
+            secrets::load(&saved.location).unwrap().as_deref(),
+            Some("secret")
+        );
+        // Another vault in the old bucket still finds its key.
+        assert_eq!(
+            secrets::load("http://localhost:9000/new-endpoint/").unwrap().as_deref(),
+            Some("secret")
+        );
+    }
+
+    #[test]
+    fn a_key_typed_with_the_new_endpoint_wins() {
+        let dir = vault();
+        let app = app(dir.path());
+        save_sync_settings(app.state(), form("typed-wins"), Some("old".into()), None).unwrap();
+
+        let mut moved = form("typed-wins");
+        if let Provider::S3(s3) = &mut moved.provider {
+            s3.endpoint = Some("https://typed-wins.example.com".into());
+        }
+        let saved = save_sync_settings(app.state(), moved, Some("new".into()), None).unwrap();
+
+        assert_eq!(secrets::load(&saved.location).unwrap().as_deref(), Some("new"));
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 import type { AgentNote } from "../agent-notes";
 import { api, type NoteView, type Thread } from "../api";
+import { bindDraft, clearDraft, hasDraft, keepFocus } from "../drafts";
 import { t, type Key } from "../i18n";
 import { PreviewNotes } from "../preview-notes";
 import { cellOf } from "../table-widget";
@@ -94,7 +95,32 @@ export function showNotes(notes: AgentNote[]): void {
   if (!el.notesFloat.hidden) renderNotes();
 }
 
+/**
+ * The draft key of the reply field under a note. A note without an ID goes
+ * by its text: the core gives it an ID only with the first reply.
+ */
+function replyKey(note: AgentNote): string {
+  return `reply:${state.note?.id ?? ""}:${note.id ?? `new:${note.text}`}`;
+}
+
+/** Reply fields the person opened: a render keeps them open. */
+const openReplies = new Set<string>();
+
+/**
+ * Draws the list again. Each reply field keeps its text in a draft, so a
+ * reply to one thread, a sync or an edit does not erase what the person typed
+ * under another thread.
+ */
 function renderNotes(): void {
+  const refocus = keepFocus(el.notesList);
+  try {
+    fillNotes();
+  } finally {
+    refocus();
+  }
+}
+
+function fillNotes(): void {
   el.notesList.replaceChildren();
 
   if (agentNotes.length === 0) {
@@ -173,25 +199,28 @@ function replyForm(note: AgentNote, thread: Thread | undefined): HTMLElement {
   const open = document.createElement("button");
   open.className = "ghost bare thread-reply-open";
   open.textContent = t("panel.notes.reply");
+  const key = replyKey(note);
   const field = document.createElement("textarea");
   field.rows = 2;
   field.placeholder = t("panel.notes.reply.placeholder");
+  bindDraft(field, key);
   const send = document.createElement("button");
   send.className = "primary";
   send.textContent = t("panel.notes.send");
   const form = document.createElement("div");
   form.className = "thread-reply-form";
   form.append(field, send);
-  form.hidden = thread?.status !== "question";
+  form.hidden = thread?.status !== "question" && !hasDraft(key) && !openReplies.has(key);
   open.hidden = !form.hidden;
   open.onclick = () => {
+    openReplies.add(key);
     form.hidden = false;
     open.hidden = true;
     field.focus();
   };
   const submit = () => {
     const text = field.value.trim();
-    if (text !== "") void reply(note, thread, text);
+    if (text !== "") void reply(note, thread, text, key);
   };
   send.onclick = submit;
   field.addEventListener("keydown", (event) => {
@@ -209,7 +238,12 @@ function replyForm(note: AgentNote, thread: Thread | undefined): HTMLElement {
  * core gives it an ID, so the editor text changes, and the pending edits go
  * to disk first.
  */
-async function reply(note: AgentNote, thread: Thread | undefined, text: string): Promise<void> {
+async function reply(
+  note: AgentNote,
+  thread: Thread | undefined,
+  text: string,
+  key: string,
+): Promise<void> {
   const current = state.note;
   if (!current || current.file) return;
   const id = current.id;
@@ -222,6 +256,9 @@ async function reply(note: AgentNote, thread: Thread | undefined, text: string):
           text: note.text,
         };
     const view = await api.replyThread(id, target, text);
+    // Only this field is sent: the drafts of the other threads stay.
+    clearDraft(key);
+    openReplies.delete(key);
     if (state.note?.id !== id) return;
     // Without a thread the ID went into the text: the editor takes it.
     calls.apply(view, thread ? { keepEditor: true } : { reload: true });
