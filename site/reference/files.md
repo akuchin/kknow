@@ -13,12 +13,15 @@ kknow keeps data in two places: in each vault and in the app config directory.
     remote.json         the storage address, the conflict policy, the interval;
                         for git: the address and the sign-in
     bookmarks.json      bookmarks
+    threads/*.json      threads of the comments for the agent
+    proposals/*.json    edits that agents proposed
     themes/*.json       themes of this vault
     trash/<entry>/…     deleted notes and folders
 ```
 
 kknow skips all hidden folders, for example `.git` and `.obsidian`. S3 and
-folder sync do not copy `.kknow/`.
+folder sync copy only `bookmarks.json`, `threads/` and `proposals/` from
+`.kknow/`. See [What sync copies](/features/sync#what-sync-copies-from-kknow).
 
 With git sync, kknow adds `.kknow/remote.json`, `.kknow/sync.json` and the
 trash (`.kknow/trash/`) to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.

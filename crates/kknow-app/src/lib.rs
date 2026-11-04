@@ -8,9 +8,13 @@ pub mod commands;
 pub mod files;
 pub mod keymap;
 pub mod mcp;
+pub mod merge;
+pub mod meta;
+pub mod proposals;
 pub mod settings;
 pub mod text;
 pub mod theme;
+pub mod threads;
 pub mod vaults;
 pub mod watch;
 
@@ -75,6 +79,24 @@ pub enum Error {
 
     #[error("в {0} на строке {1} нет комментария «{2}»: заметка изменилась")]
     NotAnAgentComment(NoteId, usize, String),
+
+    #[error("правка {0} не найдена")]
+    UnknownProposal(String),
+
+    #[error("{0}")]
+    BadProposal(String),
+
+    #[error("в правке {0} изменение {1} больше не находит свой текст: заметка изменилась")]
+    StaleEdit(String, usize),
+
+    #[error("комментарий {0} не найден")]
+    UnknownComment(String),
+
+    #[error("комментарий {0} занят: {1}")]
+    CommentBusy(String, &'static str),
+
+    #[error("пустое сообщение")]
+    EmptyMessage,
 
     #[error("хранилище не найдено: {0}")]
     UnknownVault(String),
@@ -403,6 +425,15 @@ impl Workspace {
             )
             .collect();
         self.apply(&events)?;
+        // Threads and proposals are read from disk on each call; only the
+        // bookmarks live in memory and must be read again.
+        if report
+            .files_local
+            .iter()
+            .any(|key| key == bookmarks::BOOKMARKS_PATH)
+        {
+            self.load_bookmarks()?;
+        }
         Ok(())
     }
 
@@ -707,6 +738,8 @@ impl Workspace {
         self.moved(from, to)?;
         let moves = [(from.clone(), to.clone())];
         self.edit_bookmarks(|bookmarks| bookmarks.rename(&moves))?;
+        self.move_proposals(&moves)?;
+        self.move_threads(&moves)?;
         let relinked = self.relink(&moves)?;
         self.search.commit()?;
         self.rebuild_graph();
@@ -733,6 +766,8 @@ impl Workspace {
             self.moved(old, new)?;
         }
         self.edit_bookmarks(|bookmarks| bookmarks.rename(&moved))?;
+        self.move_proposals(&moved)?;
+        self.move_threads(&moved)?;
         if moved.is_empty() {
             return Ok(Relinked::default());
         }

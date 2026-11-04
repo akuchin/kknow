@@ -147,6 +147,8 @@ pub struct Task {
 /// the file and remove the comment when the task is done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentComment {
+    /// The thread ID (`@agent#id`), if the comment has one.
+    pub id: Option<String>,
     /// The words the comment is about. Empty for a comment on a paragraph.
     pub anchor: String,
     /// The task text.
@@ -281,6 +283,7 @@ pub fn parse(source: &str) -> ParsedNote {
                 if let Some(note) = agent_note::parse(&html) {
                     let start = range.start + (html.len() - html.trim_start().len());
                     agent_comments.push(AgentComment {
+                        id: note.id.map(String::from),
                         anchor: note.anchor.to_string(),
                         text: note.text.to_string(),
                         line: lines.line_at(start),
@@ -399,6 +402,99 @@ pub fn remove_agent_comment(source: &str, line: usize, text: &str) -> Option<Str
     } else {
         out.replace_range(comment.span.clone(), "");
     }
+    Some(out)
+}
+
+/// Removes the agent comment with thread ID `id`, wherever it is now.
+///
+/// An ID moves with the comment, so this needs no line. `None` means no
+/// comment has this ID.
+pub fn remove_agent_comment_by_id(source: &str, id: &str) -> Option<String> {
+    let comment = parse(source)
+        .agent_comments
+        .into_iter()
+        .find(|comment| comment.id.as_deref() == Some(id))?;
+    remove_agent_comment(source, comment.line, &comment.text)
+}
+
+/// The marker of an answer that an agent wrote in the text: a question,
+/// variants to choose from, or the reason it did not do a task.
+pub const AGENT_ANSWER: &str = "@agent-note";
+
+/// An answer of an agent to one `@agent` comment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentAnswer {
+    /// The comment the answer belongs to.
+    pub comment: AgentComment,
+    /// The text of the answer.
+    pub text: String,
+    /// What to cut from the source: the answer and the space before it.
+    pub span: Range<usize>,
+}
+
+/// Answers that an agent without MCP wrote just after `@agent` comments:
+/// `<!-- @agent-note: … -->` after the comment, with only spaces or one line
+/// break between. An empty line ends the paragraph, so a note after it is
+/// not an answer to the comment above.
+///
+/// Several notes after one comment are one answer: their texts join with an
+/// empty line.
+pub fn agent_answers(source: &str) -> Vec<AgentAnswer> {
+    let mut answers = Vec::new();
+    for comment in parse(source).agent_comments {
+        let start = comment.span.end;
+        let mut end = start;
+        let mut texts = Vec::new();
+        while let Some((text, next)) = answer_after(source, end) {
+            texts.push(text);
+            end = next;
+        }
+        if texts.is_empty() {
+            continue;
+        }
+        answers.push(AgentAnswer {
+            comment,
+            text: texts.join("\n\n"),
+            span: start..end,
+        });
+    }
+    answers
+}
+
+/// The `@agent-note` comment right after `at`, and the offset after it.
+fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
+    let rest = &source[at..];
+    let gap = rest.len() - rest.trim_start().len();
+    if rest[..gap].matches('\n').count() > 1 {
+        return None;
+    }
+    let comment = rest[gap..].strip_prefix("<!--")?;
+    let close = comment.find("-->")?;
+    let body = comment[..close].trim().strip_prefix(AGENT_ANSWER)?;
+    if body.chars().next().is_some_and(|ch| !ch.is_whitespace() && ch != ':') {
+        return None;
+    }
+    let text = body.trim_start().strip_prefix(':').unwrap_or(body).trim();
+    let mut end = at + gap + 4 + close + 3;
+    // A note alone on its line takes its line break with it.
+    let tail = &source[end..];
+    let spaces = tail.len() - tail.trim_start_matches([' ', '\t']).len();
+    if rest[..gap].contains('\n') && (tail[spaces..].starts_with('\n') || tail[spaces..].is_empty()) {
+        end += spaces;
+    }
+    Some((text.to_string(), end))
+}
+
+/// Gives the agent comment with the task `text` on line `line` the thread ID
+/// `id`. `None` means the line has no such comment.
+pub fn set_agent_comment_id(source: &str, line: usize, text: &str, id: &str) -> Option<String> {
+    let comment = parse(source)
+        .agent_comments
+        .into_iter()
+        .find(|comment| comment.line == line && comment.text == text.trim())?;
+    let marked = agent_note::with_id(&source[comment.span.clone()], id)?;
+    let mut out = source.to_string();
+    out.replace_range(comment.span, &marked);
     Some(out)
 }
 
@@ -869,5 +965,36 @@ mod tests {
             None,
             "не тот текст"
         );
+    }
+
+    #[test]
+    fn an_agent_answer_after_a_comment_is_found_and_cut() {
+        let source = "demo zero<!-- @agent «zero»: start for one -->\n<!-- @agent-note: VARIANTS: 1) a 2) b -->\ndemo one\n";
+        let answers = agent_answers(source);
+
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answers[0].comment.text, "start for one");
+        assert_eq!(answers[0].text, "VARIANTS: 1) a 2) b");
+        let mut cut = source.to_string();
+        cut.replace_range(answers[0].span.clone(), "");
+        assert_eq!(cut, "demo zero<!-- @agent «zero»: start for one -->\ndemo one\n");
+    }
+
+    #[test]
+    fn answers_on_the_same_line_join() {
+        let source = "x<!-- @agent: do it --> <!-- @agent-note: why? --><!-- @agent-note: or this -->\nnext\n";
+        let answers = agent_answers(source);
+
+        assert_eq!(answers[0].text, "why?\n\nor this");
+        let mut cut = source.to_string();
+        cut.replace_range(answers[0].span.clone(), "");
+        assert_eq!(cut, "x<!-- @agent: do it -->\nnext\n");
+    }
+
+    #[test]
+    fn a_note_after_an_empty_line_or_alone_is_not_an_answer() {
+        assert!(agent_answers("x<!-- @agent: do it -->\n\n<!-- @agent-note: other -->\n").is_empty());
+        assert!(agent_answers("text\n<!-- @agent-note: cannot do it -->\n").is_empty());
+        assert!(agent_answers("x<!-- @agent: do it -->\n<!-- @agent-notes: no -->\n").is_empty());
     }
 }

@@ -20,6 +20,11 @@
 //! before** the comment if they match. If they differ (someone edited the
 //! text), the note stays, but without a highlight.
 //!
+//! A note can carry an ID: `<!-- @agent#k3f «words»: text -->`. The ID names
+//! the comment thread in `.kknow/threads/k3f.json`, where the agent and the
+//! person talk about the task. A note gets its ID with the first reply, so an
+//! old note without one is still a note.
+//!
 //! The frontend has the same parser (`ui/src/agent-notes.ts`): the editor
 //! draws notes itself, without a call to the core. If you change the format,
 //! change both places.
@@ -29,6 +34,8 @@ pub const MARKER: &str = "@agent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentNote<'a> {
+    /// The thread ID after `#`, if the note has one.
+    pub id: Option<&'a str>,
     /// Words the note refers to. Empty if the note is not attached to words.
     pub anchor: &'a str,
     /// The task text.
@@ -45,15 +52,7 @@ pub fn parse(html: &str) -> Option<AgentNote<'_>> {
         .strip_prefix("<!--")?
         .strip_suffix("-->")?
         .trim();
-    let rest = body.strip_prefix(MARKER)?;
-    // `@agentX` is not our marker.
-    if rest
-        .chars()
-        .next()
-        .is_some_and(|ch| !ch.is_whitespace() && ch != ':')
-    {
-        return None;
-    }
+    let (id, rest) = split_marker(body)?;
     let rest = rest.trim_start();
 
     let (anchor, text) = match rest
@@ -65,19 +64,50 @@ pub fn parse(html: &str) -> Option<AgentNote<'_>> {
     };
     let text = text.trim_start();
     let text = text.strip_prefix(':').unwrap_or(text).trim();
-    Some(AgentNote { anchor, text })
+    Some(AgentNote { id, anchor, text })
 }
 
 /// True for an agent note. Field parsing skips it, because it is not metadata.
 pub fn is_note(comment_body: &str) -> bool {
-    comment_body
-        .trim_start()
-        .strip_prefix(MARKER)
-        .is_some_and(|rest| {
-            rest.chars()
-                .next()
-                .is_none_or(|ch| ch.is_whitespace() || ch == ':')
-        })
+    split_marker(comment_body.trim_start()).is_some()
+}
+
+/// Splits `@agent#id rest` into the ID and the rest. `@agentX` and `@agent#`
+/// without a valid ID are not our marker.
+fn split_marker(body: &str) -> Option<(Option<&str>, &str)> {
+    let rest = body.strip_prefix(MARKER)?;
+    let (id, rest) = match rest.strip_prefix('#') {
+        Some(after) => {
+            let end = after
+                .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
+                .unwrap_or(after.len());
+            if end == 0 || end > 32 {
+                return None;
+            }
+            (Some(&after[..end]), &after[end..])
+        }
+        None => (None, rest),
+    };
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|ch| !ch.is_whitespace() && ch != ':')
+    {
+        return None;
+    }
+    Some((id, rest))
+}
+
+/// The comment again, with the thread ID `id`. The editor and the core write
+/// comments in the same form.
+pub fn with_id(html: &str, id: &str) -> Option<String> {
+    let note = parse(html)?;
+    let anchor = if note.anchor.is_empty() {
+        String::new()
+    } else {
+        format!(" «{}»", note.anchor)
+    };
+    Some(format!("<!-- {MARKER}#{id}{anchor}: {} -->", note.text))
 }
 
 #[cfg(test)]
@@ -115,6 +145,30 @@ mod tests {
 
         assert_eq!(note.anchor, "");
         assert_eq!(note.text, "сократить вдвое");
+    }
+
+    #[test]
+    fn note_with_a_thread_id_is_parsed() {
+        let note = parse("<!-- @agent#k3f «14 недель»: проверь цифру -->").unwrap();
+
+        assert_eq!(note.id, Some("k3f"));
+        assert_eq!(note.anchor, "14 недель");
+        assert_eq!(note.text, "проверь цифру");
+        assert_eq!(parse("<!-- @agent: x -->").unwrap().id, None);
+        assert_eq!(parse("<!-- @agent#: x -->"), None);
+        assert!(is_note("@agent#a1: y"));
+    }
+
+    #[test]
+    fn with_id_keeps_the_words_and_the_task() {
+        assert_eq!(
+            with_id("<!-- @agent «слово»: проверить -->", "k3f").as_deref(),
+            Some("<!-- @agent#k3f «слово»: проверить -->")
+        );
+        assert_eq!(
+            with_id("<!-- @agent#old: абзац -->", "new").as_deref(),
+            Some("<!-- @agent#new: абзац -->")
+        );
     }
 
     #[test]

@@ -48,9 +48,9 @@ The plan for the redesign is closed. Its archive copy is
   the tree. Add a line such as "matches N notes now". The core can calculate
   this already: `CommandSet::for_target` does the same calculation.
 
-- **Bookmarks do not sync, and you cannot go from one bookmark to the next.**
-  Sync does not include `.kknow`, so bookmarks stay on one machine. The editor
-  has no command for the next and the previous bookmark in a note. The line
+- **You cannot go from one bookmark to the next.** The editor has no command
+  for the next and the previous bookmark in a note. (Bookmarks sync now, with
+  agent threads and proposals.) The line
   markers in the preview (`data-line`) have one more use. They can scroll
   the preview together with the editor in "Side by side".
 
@@ -67,6 +67,17 @@ The plan for the redesign is closed. Its archive copy is
 - **Git: a better diff in the changes view.** The view shows the plain text
   of `git diff` now. A real diff view (side by side or inline, with word
   changes) must replace it.
+
+- **Agent threads and proposals: what is still open.**
+  - The editor does not color the highlight of a comment by the state of its
+    thread. Only the 💬 list shows the state.
+  - There is no inbox for all vaults: the questions of agents and the
+    proposals show only for the open note. `kknow proposals` lists one vault.
+  - The window does not see a thread or a proposal that another process
+    writes (for example `kknow mcp` in a terminal) until the note changes:
+    the watcher skips `.kknow`. The HTTP server of the window has no such
+    problem.
+  - A proposal shows edits one by one, not inside the editor text.
 
 ## Larger tasks
 

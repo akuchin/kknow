@@ -58,6 +58,8 @@ export interface AgentNote {
   /** The `<!-- … -->` comment itself. */
   from: number;
   to: number;
+  /** Thread ID from `@agent#id`; `null` until the first reply. */
+  id: string | null;
   /** Words from `«…»`; empty means the note has no anchor. */
   anchor: string;
   text: string;
@@ -66,13 +68,24 @@ export interface AgentNote {
 }
 
 /** Parses a comment; returns `null` if it is not an agent note. */
-export function parseNote(comment: string): { anchor: string; text: string } | null {
+export function parseNote(
+  comment: string,
+): { id: string | null; anchor: string; text: string } | null {
   const body = comment.trim();
   if (!body.startsWith("<!--") || !body.endsWith("-->")) return null;
 
   let rest = body.slice(4, -3).trim();
   if (!rest.startsWith(MARKER)) return null;
   rest = rest.slice(MARKER.length);
+  // `@agent#k3f`: the thread of the note (`kknow-index/src/agent_note.rs`).
+  let id: string | null = null;
+  const tag = /^#([A-Za-z0-9_-]{1,32})/.exec(rest);
+  if (tag) {
+    id = tag[1];
+    rest = rest.slice(tag[0].length);
+  } else if (rest.startsWith("#")) {
+    return null;
+  }
   // `@agentX` is not our marker.
   if (rest !== "" && !/^[\s:]/.test(rest)) return null;
   rest = rest.trimStart();
@@ -85,7 +98,7 @@ export function parseNote(comment: string): { anchor: string; text: string } | n
   }
   rest = rest.trimStart();
   if (rest.startsWith(":")) rest = rest.slice(1);
-  return { anchor, text: rest.trim() };
+  return { id, anchor, text: rest.trim() };
 }
 
 /**
@@ -96,11 +109,12 @@ export function parseNote(comment: string): { anchor: string; text: string } | n
  * empty line would split the paragraph. A `-->` would close the comment too
  * early, and the rest of the instruction would leak into the text.
  */
-export function formatNote(anchor: string, text: string): string {
+export function formatNote(anchor: string, text: string, id: string | null = null): string {
   const clean = text.replace(/\s+/g, " ").replaceAll("-->", "->").trim();
+  const marker = id === null ? MARKER : `${MARKER}#${id}`;
   return anchor === ""
-    ? `<!-- ${MARKER}: ${clean} -->`
-    : `<!-- ${MARKER} «${anchor}»: ${clean} -->`;
+    ? `<!-- ${marker}: ${clean} -->`
+    : `<!-- ${marker} «${anchor}»: ${clean} -->`;
 }
 
 /** Whether the selected words can be an anchor: one line and no `»`. */
@@ -488,7 +502,8 @@ function addNote(view: EditorView, target: Extract<NoteTarget, { kind: "add" }>,
 
 function editNote(view: EditorView, note: AgentNote, text: string): void {
   view.dispatch({
-    changes: { from: note.from, to: note.to, insert: formatNote(note.anchor, text) },
+    // The ID stays: the thread of the note must not lose its comment.
+    changes: { from: note.from, to: note.to, insert: formatNote(note.anchor, text, note.id) },
     effects: setForm.of(null),
     userEvent: "input",
   });

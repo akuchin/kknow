@@ -12,9 +12,13 @@ Rules for work in this repository:
   `cargo test --workspace`.
 - The core (`crates/*`) must not depend on Tauri. The project has two
   frontends: the window and the CLI (command-line interface).
-- Docs, code comments and identifiers are in English. The default UI (user
-  interface) language is Russian. The UI also has an English locale in
-  `ui/src/i18n.ts`. UI strings, CLI output and test data stay in Russian.
+- Docs, code comments, identifiers, test data and MCP tool descriptions are
+  in English.
+- The UI (user interface) must support Russian and English. Each UI string
+  goes to both `locales/ru.json` and `locales/en.json`; `ui/src/i18n.ts`
+  loads them. Do not write UI text directly in the code.
+- Old code still has Russian test data, CLI output and core messages. That is
+  history, not a rule: do not copy it into new code.
 - After each change, run `cargo test --workspace` and
   `cargo clippy --workspace --all-targets -- -D warnings`. Both must show no
   errors and no warnings.

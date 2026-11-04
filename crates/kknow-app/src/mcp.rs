@@ -29,7 +29,9 @@ use kknow_core::NoteId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::proposals::Status as ProposalStatus;
 use crate::text::{describe, plain_snippet, task_row};
+use crate::threads::{CommentRef, ME, Status as ThreadStatus, Thread};
 use crate::{Error, Result as AppResult, Workspace};
 
 /// Protocol versions the server knows, the newest last. The server answers
@@ -111,22 +113,44 @@ fn initialize(params: &Value) -> Value {
         "protocolVersion": version,
         "capabilities": { "tools": {} },
         "serverInfo": { "name": "kknow", "version": env!("CARGO_PKG_VERSION") },
-        "instructions": "kknow vaults: plain Markdown notes with [[wiki links]], #tags \
-            and `- [ ]` tasks. list_vaults shows which vaults you have. A person \
-            leaves tasks for you in the text as `words<!-- @agent «words»: task -->`. \
-            Call agent_comments to find them, do the task, then call resolve_comment \
-            to remove the comment.",
+        "instructions": INSTRUCTIONS,
     })
 }
+
+/// What the agent reads first. The last paragraph is the rule for doubt:
+/// a person would rather answer a question or pick from two versions than
+/// find a guess in the note later.
+pub const INSTRUCTIONS: &str = "kknow vaults: plain Markdown notes with [[wiki links]], #tags \
+and `- [ ]` tasks. list_vaults shows which vaults you have.\n\n\
+A person leaves tasks for you in the text as `words<!-- @agent «words»: task -->` \
+(with a thread ID: `@agent#k3f`). Call agent_comments to find them. Take a task \
+with claim_comment, do it, then call resolve_comment with a short summary.\n\n\
+To change a note without file access, or when the person should check the change, \
+call propose_edit: the note stays as it is until the person accepts each edit. \
+Pass `comment` when the edit answers a comment. Check the result later with \
+proposal_status: a rejected edit has the reason in `feedback`.\n\n\
+When you are not sure, do not guess. If the task is unclear or the sources \
+disagree, ask with reply_comment and question=true, and stop work on that task. \
+If there are several good versions, propose them as separate proposals or list \
+them in the reply, and let the person choose.";
 
 /// Tool descriptions for `tools/list`. They are for the agent, so they are in
 /// English, like the rest of the protocol. The results are CLI output and stay
 /// in Russian.
 fn tools() -> Value {
-    let note = json!({ "type": "string", "description": "Note path without .md, or only its name" });
+    let note =
+        json!({ "type": "string", "description": "Note path without .md, or only its name" });
     let vault = json!({
         "type": "string",
         "description": "Vault name from list_vaults. Without it, all vaults",
+    });
+    let agent = json!({ "type": "string", "description": "Your name, for example claude" });
+    let comment_ref = json!({
+        "id": { "type": "string", "description": "Comment id from agent_comments" },
+        "note": note,
+        "line": { "type": "integer", "description": "Line from agent_comments, if there is no id" },
+        "text": { "type": "string", "description": "Task text from agent_comments, if there is no id" },
+        "agent": agent,
     });
     let mut tools = json!([
         {
@@ -199,22 +223,118 @@ fn tools() -> Value {
         {
             "name": "agent_comments",
             "description": "Tasks that a person left for you in the text, as \
-                `note:line  «words»: task`. «words» is the text the task is about; \
-                without it, the task is about the whole paragraph.",
-            "inputSchema": { "type": "object", "properties": { "note": note } },
-        },
-        {
-            "name": "resolve_comment",
-            "description": "Remove an @agent comment after you did its task. \
-                The words it was about stay in the text.",
+                `note:line [id] (status) «words»: task`, status only when not open, with the thread messages below. \
+                «words» is the text the task is about; without it, the task is about \
+                the whole paragraph. Do the tasks with status open or answered; \
+                `question` waits for the person, `review` waits for a proposal review.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "note": note,
-                    "line": { "type": "integer", "description": "Line from agent_comments" },
-                    "text": { "type": "string", "description": "Task text from agent_comments" },
+                    "all": { "type": "boolean", "description": "Also tasks that wait for the person" },
                 },
-                "required": ["note", "line", "text"],
+            },
+        },
+        {
+            "name": "claim_comment",
+            "description": "Take a task before you start, so another agent does not do it too. \
+                Use the id from agent_comments, or note+line+text for a comment without one.",
+            "inputSchema": { "type": "object", "properties": comment_ref.clone() },
+        },
+        {
+            "name": "reply_comment",
+            "description": "Write in the thread of a comment. With question=true the task \
+                waits for the person: ask when the task is unclear, when sources disagree, \
+                or to let the person choose between versions. Do not guess.",
+            "inputSchema": {
+                "type": "object",
+                "properties": merged(&comment_ref, json!({
+                    "message": { "type": "string" },
+                    "question": { "type": "boolean", "description": "Wait for the answer of the person" },
+                })),
+                "required": ["message"],
+            },
+        },
+        {
+            "name": "resolve_comment",
+            "description": "Remove an @agent comment after you did its task. \
+                The words it was about stay in the text, the thread keeps the summary.",
+            "inputSchema": {
+                "type": "object",
+                "properties": merged(&comment_ref, json!({
+                    "summary": { "type": "string", "description": "What you did, in one line" },
+                })),
+            },
+        },
+        {
+            "name": "propose_edit",
+            "description": "Suggest edits to a note. The note does not change until the person \
+                accepts them in kknow. Each `old` must occur exactly once in the note \
+                (text inside @agent comments does not count): take more words around it \
+                if needed. Edits must not overlap. Returns the proposal id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "note": note,
+                    "edits": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "old": { "type": "string" },
+                                "new": { "type": "string" },
+                            },
+                            "required": ["old", "new"],
+                        },
+                    },
+                    "reason": { "type": "string", "description": "Why, in one line, for the person" },
+                    "comment": { "type": "string", "description": "Comment id that this proposal answers" },
+                    "agent": agent.clone(),
+                },
+                "required": ["note", "edits", "reason"],
+            },
+        },
+        {
+            "name": "propose_note",
+            "description": "Suggest a new note. It appears only after the person accepts it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "note": { "type": "string", "description": "Path of the new note without .md" },
+                    "content": { "type": "string" },
+                    "reason": { "type": "string" },
+                    "agent": agent.clone(),
+                },
+                "required": ["note", "content", "reason"],
+            },
+        },
+        {
+            "name": "proposal_status",
+            "description": "The state of a proposal and of each edit, and the feedback of the person.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"],
+            },
+        },
+        {
+            "name": "list_proposals",
+            "description": "Proposals that wait for review, so you do not suggest the same twice.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "note": note,
+                    "all": { "type": "boolean", "description": "Also reviewed proposals" },
+                },
+            },
+        },
+        {
+            "name": "withdraw_proposal",
+            "description": "Remove your proposal that is no longer right.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"],
             },
         },
     ]);
@@ -223,6 +343,15 @@ fn tools() -> Value {
         tool["inputSchema"]["properties"]["vault"] = vault.clone();
     }
     tools
+}
+
+/// Two JSON objects in one: the properties that tools share and their own.
+fn merged(base: &Value, extra: Value) -> Value {
+    let mut out = base.clone();
+    if let (Some(out), Value::Object(extra)) = (out.as_object_mut(), extra) {
+        out.extend(extra);
+    }
+    out
 }
 
 /// `tools/call`. A tool that fails (no such note, a stale line) is a normal
@@ -246,7 +375,14 @@ fn call(host: &mut impl Host, params: &Value) -> Result<Value, (i64, String)> {
         "tasks" => tasks(host, &args),
         "set_task" => set_task(host, &args),
         "agent_comments" => agent_comments(host, &args),
+        "claim_comment" => claim_comment(host, &args),
+        "reply_comment" => reply_comment(host, &args),
         "resolve_comment" => resolve_comment(host, &args),
+        "propose_edit" => propose_edit(host, &args),
+        "propose_note" => propose_note(host, &args),
+        "proposal_status" => proposal_status(host, &args),
+        "list_proposals" => list_proposals(host, &args),
+        "withdraw_proposal" => withdraw_proposal(host, &args),
         _ => return Err((INVALID_PARAMS, format!("неизвестный инструмент: {name}"))),
     };
     let (text, is_error) = match outcome {
@@ -379,7 +515,11 @@ fn list_vaults(host: &impl Host) -> Outcome {
         })?;
         let mut line = format!("{}  заметок: {count}  {root}", vault.name);
         if !vault.labels.is_empty() {
-            let labels: Vec<String> = vault.labels.iter().map(|label| format!("#{label}")).collect();
+            let labels: Vec<String> = vault
+                .labels
+                .iter()
+                .map(|label| format!("#{label}"))
+                .collect();
             line.push_str(&format!("  {}", labels.join(" ")));
         }
         rows.push(line);
@@ -453,8 +593,14 @@ fn backlinks(host: &impl Host, args: &Args) -> Outcome {
             .map(|edge| describe(edge, &edge.from))
             .collect::<Vec<_>>()
     })?;
-    let rows = texts.into_iter().map(|text| row(host, index, text)).collect();
-    Ok(rows_or(rows, &format!("{id}: на эту заметку никто не ссылается")))
+    let rows = texts
+        .into_iter()
+        .map(|text| row(host, index, text))
+        .collect();
+    Ok(rows_or(
+        rows,
+        &format!("{id}: на эту заметку никто не ссылается"),
+    ))
 }
 
 fn links(host: &impl Host, args: &Args) -> Outcome {
@@ -466,7 +612,10 @@ fn links(host: &impl Host, args: &Args) -> Outcome {
             .map(|edge| describe(edge, &edge.to))
             .collect::<Vec<_>>()
     })?;
-    let rows = texts.into_iter().map(|text| row(host, index, text)).collect();
+    let rows = texts
+        .into_iter()
+        .map(|text| row(host, index, text))
+        .collect();
     Ok(rows_or(rows, &format!("{id}: исходящих ссылок нет")))
 }
 
@@ -487,24 +636,34 @@ fn tasks(host: &impl Host, args: &Args) -> Outcome {
         })?;
         rows.extend(texts.into_iter().map(|text| row(host, index, text)));
     }
-    Ok(rows_or(rows, if all { "задач нет" } else { "открытых задач нет" }))
+    Ok(rows_or(
+        rows,
+        if all {
+            "задач нет"
+        } else {
+            "открытых задач нет"
+        },
+    ))
 }
 
 fn set_task(host: &mut impl Host, args: &Args) -> Outcome {
     let (index, id) = args.note(host)?;
     let line = args.uint("line")?;
-    let done = args
-        .bool("done")
-        .ok_or("нужен логический аргумент done")?;
+    let done = args.bool("done").ok_or("нужен логический аргумент done")?;
     host.write(index, |workspace| workspace.set_task(&id, line, done))?
         .map_err(text)?;
     host.changed(index, &id);
-    let state = if done { "выполнена" } else { "открыта" };
+    let state = if done {
+        "выполнена"
+    } else {
+        "открыта"
+    };
     Ok(row(host, index, format!("задача {id}:{line} {state}")))
 }
 
 fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
     let (picked, only) = args.listed(host)?;
+    let all = args.bool("all").unwrap_or(false);
     let mut rows = Vec::new();
     for index in picked {
         let texts = host.read(index, |workspace| {
@@ -512,13 +671,43 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                 .agent_comments()
                 .into_iter()
                 .filter(|(id, _)| only.as_ref().is_none_or(|only| only == *id))
-                .map(|(id, comment)| {
-                    let place = format!("{id}:{}", comment.line);
-                    if comment.anchor.is_empty() {
+                .filter_map(|(id, comment)| {
+                    let thread = comment
+                        .id
+                        .as_deref()
+                        .and_then(|key| workspace.thread(key).ok().flatten());
+                    let status = thread.as_ref().map_or(ThreadStatus::Open, |t| t.status);
+                    if !all && !status.for_agent() && status != ThreadStatus::InProgress {
+                        return None;
+                    }
+                    let key = comment
+                        .id
+                        .as_deref()
+                        .map(|key| format!(" [{key}]"))
+                        .unwrap_or_default();
+                    // "Open" is the usual case and says nothing: only the
+                    // other states are shown.
+                    let state = if status == ThreadStatus::Open {
+                        String::new()
+                    } else {
+                        format!(" ({})", status.word())
+                    };
+                    let place = format!("{id}:{}{key}{state}", comment.line);
+                    let mut text = if comment.anchor.is_empty() {
                         format!("{place}  (на абзац): {}", comment.text)
                     } else {
                         format!("{place}  «{}»: {}", comment.anchor, comment.text)
+                    };
+                    // The first message is the task itself, already in the row.
+                    for message in thread.iter().flat_map(|t| t.messages.iter().skip(1)) {
+                        let who = if message.from == ME {
+                            "человек"
+                        } else {
+                            &message.from
+                        };
+                        text.push_str(&format!("\n    {who}: {}", message.text));
                     }
+                    Some(text)
                 })
                 .collect::<Vec<_>>()
         })?;
@@ -527,14 +716,235 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
     Ok(rows_or(rows, "комментариев нет"))
 }
 
-fn resolve_comment(host: &mut impl Host, args: &Args) -> Outcome {
-    let (index, id) = args.note(host)?;
+/// The name an agent gave, or a neutral word.
+fn agent_name<'a>(args: &'a Args) -> &'a str {
+    args.opt_str("agent")
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && *name != ME)
+        .unwrap_or("агент")
+}
+
+/// The vault and the comment of a tool call: by `id` in any vault, or by
+/// `note`, `line` and `text`.
+fn comment_ref(host: &impl Host, args: &Args) -> Result<(usize, CommentRef), String> {
+    if let Some(key) = args.opt_str("id") {
+        for index in args.vaults(host)? {
+            let found = host.read(index, |workspace| {
+                workspace.thread(key).ok().flatten().is_some()
+                    || workspace
+                        .agent_comments()
+                        .iter()
+                        .any(|(_, comment)| comment.id.as_deref() == Some(key))
+            })?;
+            if found {
+                return Ok((index, CommentRef::Id(key.to_string())));
+            }
+        }
+        return Err(format!("комментарий {key} не найден"));
+    }
+    let (index, note) = args.note(host)?;
     let line = args.uint("line")?;
-    let task = args.str("text")?;
-    host.write(index, |workspace| workspace.resolve_agent_comment(&id, line, task))?
+    let text = args.str("text")?.to_string();
+    Ok((index, CommentRef::Place { note, line, text }))
+}
+
+/// The note of a thread, for `Host::changed`: a reply can give the comment
+/// an ID in the note.
+fn thread_note(thread: &Thread) -> Option<NoteId> {
+    NoteId::parse(&thread.note)
+}
+
+fn claim_comment(host: &mut impl Host, args: &Args) -> Outcome {
+    let (index, target) = comment_ref(host, args)?;
+    let agent = agent_name(args);
+    let thread = host
+        .write(index, |workspace| workspace.claim_comment(&target, agent))?
         .map_err(text)?;
-    host.changed(index, &id);
-    Ok(row(host, index, format!("комментарий {id}:{line} снят")))
+    if let Some(note) = thread_note(&thread) {
+        host.changed(index, &note);
+    }
+    Ok(row(
+        host,
+        index,
+        format!("комментарий {} взят в работу", thread.id),
+    ))
+}
+
+fn reply_comment(host: &mut impl Host, args: &Args) -> Outcome {
+    let (index, target) = comment_ref(host, args)?;
+    let agent = agent_name(args);
+    let message = args.str("message")?;
+    let question = args.bool("question").unwrap_or(false);
+    let thread = host
+        .write(index, |workspace| {
+            workspace.reply_comment(&target, agent, message, question)
+        })?
+        .map_err(text)?;
+    if let Some(note) = thread_note(&thread) {
+        host.changed(index, &note);
+    }
+    let tail = if question {
+        "вопрос задан, ждите ответа человека; эту задачу пока не продолжайте"
+    } else {
+        "ответ записан"
+    };
+    Ok(row(
+        host,
+        index,
+        format!("комментарий {}: {tail}", thread.id),
+    ))
+}
+
+fn resolve_comment(host: &mut impl Host, args: &Args) -> Outcome {
+    let (index, target) = comment_ref(host, args)?;
+    let agent = agent_name(args);
+    let summary = args.opt_str("summary");
+    let note = match &target {
+        CommentRef::Place { note, .. } => Some(note.clone()),
+        CommentRef::Id(key) => host.read(index, |workspace| {
+            workspace
+                .agent_comments()
+                .into_iter()
+                .find(|(_, comment)| comment.id.as_deref() == Some(key))
+                .map(|(note, _)| note.clone())
+        })?,
+    };
+    host.write(index, |workspace| {
+        workspace.resolve_comment(&target, agent, summary)
+    })?
+    .map_err(text)?;
+    let place = match (&target, &note) {
+        (CommentRef::Place { note, line, .. }, _) => format!("{note}:{line}"),
+        (CommentRef::Id(key), _) => key.clone(),
+    };
+    if let Some(note) = note {
+        host.changed(index, &note);
+    }
+    Ok(row(host, index, format!("комментарий {place} снят")))
+}
+
+fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
+    let (index, note) = args.note(host)?;
+    let reason = args.str("reason")?;
+    let agent = agent_name(args);
+    let edits = args
+        .0
+        .get("edits")
+        .and_then(Value::as_array)
+        .ok_or("нужен массив edits из объектов {old, new}")?
+        .iter()
+        .map(|edit| {
+            let field = |key| edit.get(key).and_then(Value::as_str).map(String::from);
+            field("old")
+                .zip(field("new"))
+                .ok_or_else(|| "у каждой правки нужны строки old и new".to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let comment = args.opt_str("comment");
+    let proposal = host
+        .write(index, |workspace| -> AppResult<_> {
+            let proposal = workspace.propose(&note, edits, reason, Some(agent), comment)?;
+            if let Some(key) = comment {
+                // A proposal for a comment that is not there would never close
+                // a task: take it back and tell the agent.
+                let target = CommentRef::Id(key.to_string());
+                if let Err(error) = workspace.thread_proposed(&target, agent, &proposal) {
+                    workspace.remove_proposal(&proposal.id)?;
+                    return Err(error);
+                }
+            }
+            Ok(proposal)
+        })?
+        .map_err(text)?;
+    host.changed(index, &note);
+    Ok(row(
+        host,
+        index,
+        format!(
+            "правка {} к {note} ждёт проверки человеком, изменений: {}",
+            proposal.id,
+            proposal.edits.len()
+        ),
+    ))
+}
+
+fn propose_note(host: &mut impl Host, args: &Args) -> Outcome {
+    let raw = args.str("note")?;
+    let note = NoteId::parse(raw).ok_or_else(|| format!("некорректное имя заметки: {raw}"))?;
+    let content = args.str("content")?;
+    let reason = args.str("reason")?;
+    let agent = agent_name(args);
+    let index = *args.vaults(host)?.first().ok_or("у сервера нет хранилищ")?;
+    if host.vaults().len() > 1 && args.opt_str("vault").is_none() {
+        return Err("хранилищ несколько: укажите vault".to_string());
+    }
+    let proposal = host
+        .write(index, |workspace| {
+            workspace.propose_note(&note, content, reason, Some(agent))
+        })?
+        .map_err(text)?;
+    Ok(row(
+        host,
+        index,
+        format!(
+            "новая заметка {note} ждёт проверки человеком (правка {})",
+            proposal.id
+        ),
+    ))
+}
+
+/// The vault that has the proposal `key`.
+fn proposal_vault(host: &impl Host, args: &Args, key: &str) -> Result<usize, String> {
+    for index in args.vaults(host)? {
+        if host.read(index, |workspace| workspace.proposal(key).is_ok())? {
+            return Ok(index);
+        }
+    }
+    Err(format!("правка {key} не найдена"))
+}
+
+fn proposal_status(host: &impl Host, args: &Args) -> Outcome {
+    let key = args.str("id")?;
+    let index = proposal_vault(host, args, key)?;
+    let proposal = host
+        .read(index, |workspace| workspace.proposal(key))?
+        .map_err(text)?;
+    Ok(row(host, index, proposal.describe()))
+}
+
+fn list_proposals(host: &impl Host, args: &Args) -> Outcome {
+    let (picked, only) = args.listed(host)?;
+    let all = args.bool("all").unwrap_or(false);
+    let mut rows = Vec::new();
+    for index in picked {
+        let found = host
+            .read(index, |workspace| workspace.proposals())?
+            .map_err(text)?;
+        rows.extend(
+            found
+                .iter()
+                .filter(|p| all || p.status() == ProposalStatus::Pending)
+                .filter(|p| only.as_ref().is_none_or(|only| only.as_str() == p.note))
+                .map(|p| row(host, index, p.describe())),
+        );
+    }
+    Ok(rows_or(rows, "правок нет"))
+}
+
+fn withdraw_proposal(host: &mut impl Host, args: &Args) -> Outcome {
+    let key = args.str("id")?;
+    let index = proposal_vault(host, args, key)?;
+    let note = host
+        .write(index, |workspace| -> AppResult<_> {
+            let proposal = workspace.proposal(key)?;
+            workspace.remove_proposal(key)?;
+            Ok(proposal.note_id())
+        })?
+        .map_err(text)?;
+    if let Some(note) = note {
+        host.changed(index, &note);
+    }
+    Ok(row(host, index, format!("правка {key} отозвана")))
 }
 
 /// File of the HTTP server settings in the app config directory.
@@ -716,7 +1126,10 @@ mod tests {
     fn tool(host: &mut TestHost, name: &str, arguments: Value) -> (String, bool) {
         let reply = handle(
             host,
-            &request("tools/call", json!({ "name": name, "arguments": arguments })),
+            &request(
+                "tools/call",
+                json!({ "name": name, "arguments": arguments }),
+            ),
         )
         .unwrap();
         let result = &reply["result"];
@@ -743,7 +1156,10 @@ mod tests {
             &request("initialize", json!({ "protocolVersion": "1999-01-01" })),
         )
         .unwrap();
-        assert_eq!(reply["result"]["protocolVersion"], VERSIONS[VERSIONS.len() - 1]);
+        assert_eq!(
+            reply["result"]["protocolVersion"],
+            VERSIONS[VERSIONS.len() - 1]
+        );
     }
 
     #[test]
@@ -804,7 +1220,10 @@ mod tests {
 
         let (text, _) = tool(&mut host, "read_note", json!({ "note": "план" }));
         let path = host._dirs[0].path().canonicalize().unwrap().join("План.md");
-        assert!(text.starts_with(&format!("путь: {}\n\n# План", path.display())), "{text}");
+        assert!(
+            text.starts_with(&format!("путь: {}\n\n# План", path.display())),
+            "{text}"
+        );
 
         let (backlinks, _) = tool(&mut host, "backlinks", json!({ "note": "Идеи" }));
         assert_eq!(backlinks, "План");
@@ -855,6 +1274,99 @@ mod tests {
     }
 
     #[test]
+    fn a_question_a_proposal_and_a_review_close_the_task() {
+        let mut host = host(&[(
+            "Личное",
+            &[],
+            &[(
+                "План.md",
+                "Занял 14 недель<!-- @agent «14 недель»: проверь цифру -->.\n",
+            )],
+        )]);
+        let place =
+            json!({ "note": "План", "line": 1, "text": "проверь цифру", "agent": "claude" });
+
+        let (asked, error) = tool(
+            &mut host,
+            "reply_comment",
+            merged(&place, json!({ "message": "12 или 14?", "question": true })),
+        );
+        assert!(!error, "{asked}");
+        let key = host.workspaces[0].threads().unwrap()[0].id.clone();
+        let (waiting, _) = tool(&mut host, "agent_comments", json!({}));
+        let (everything, _) = tool(&mut host, "agent_comments", json!({ "all": true }));
+        assert_eq!(waiting, "комментариев нет");
+        assert!(
+            everything.contains(&format!("План:1 [{key}] (вопрос)")),
+            "{everything}"
+        );
+        assert!(everything.contains("claude: 12 или 14?"), "{everything}");
+
+        let target = CommentRef::Id(key.clone());
+        host.workspaces[0]
+            .reply_comment(&target, ME, "12", false)
+            .unwrap();
+        let (claimed, error) = tool(&mut host, "claim_comment", json!({ "id": key }));
+        assert!(!error, "{claimed}");
+        let (proposed, error) = tool(
+            &mut host,
+            "propose_edit",
+            json!({
+                "note": "План",
+                "edits": [{ "old": "14 недель", "new": "12 недель" }],
+                "reason": "человек ответил 12",
+                "comment": key,
+                "agent": "claude",
+            }),
+        );
+        assert!(!error, "{proposed}");
+        let proposal = host.workspaces[0].proposals().unwrap()[0].id.clone();
+        assert!(
+            host.workspaces[0]
+                .read(&NoteId::parse("План").unwrap())
+                .unwrap()
+                .contains("14 недель<")
+        );
+
+        host.workspaces[0]
+            .review_proposal(
+                &proposal,
+                &crate::proposals::Review {
+                    accept: vec![0],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let (status, _) = tool(&mut host, "proposal_status", json!({ "id": proposal }));
+
+        assert!(status.contains("(принято)"), "{status}");
+        assert_eq!(
+            host.workspaces[0]
+                .read(&NoteId::parse("План").unwrap())
+                .unwrap(),
+            "Занял 12 недель.\n"
+        );
+        assert_eq!(
+            host.workspaces[0].thread(&key).unwrap().unwrap().status,
+            ThreadStatus::Done
+        );
+    }
+
+    #[test]
+    fn a_bad_edit_is_an_error_for_the_agent() {
+        let mut host = host(&[("Личное", &[], &[("План.md", "да и да\n")])]);
+
+        let (reply, error) = tool(
+            &mut host,
+            "propose_edit",
+            json!({ "note": "План", "edits": [{ "old": "да", "new": "нет" }], "reason": "" }),
+        );
+
+        assert!(error);
+        assert!(reply.contains("несколько раз"), "{reply}");
+    }
+
+    #[test]
     fn agent_comments_are_found_and_resolved() {
         let mut host = one(&[(
             "План.md",
@@ -862,7 +1374,10 @@ mod tests {
         )]);
 
         let (found, _) = tool(&mut host, "agent_comments", json!({}));
-        assert_eq!(found, "План:3  «быстрый»: замерить\nПлан:5  (на абзац): сократить");
+        assert_eq!(
+            found,
+            "План:3  «быстрый»: замерить\nПлан:5  (на абзац): сократить"
+        );
 
         let (text, is_error) = tool(
             &mut host,
@@ -885,7 +1400,11 @@ mod tests {
                 &["work"],
                 &[("План.md", "- [ ] отчёт<!-- @agent: проверить цифры -->\n")],
             ),
-            ("Дом", &[], &[("План.md", "- [ ] купить\n"), ("Идеи.md", "")]),
+            (
+                "Дом",
+                &[],
+                &[("План.md", "- [ ] купить\n"), ("Идеи.md", "")],
+            ),
         ])
     }
 

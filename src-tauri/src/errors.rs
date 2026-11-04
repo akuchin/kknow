@@ -101,6 +101,18 @@ fn app(error: &kknow_app::Error) -> Coded {
                 ("other", text.clone()),
             ],
         ),
+        E::UnknownProposal(id) => value("unknownProposal", id),
+        E::BadProposal(why) => detail("badProposal", why),
+        E::StaleEdit(id, index) => (
+            "staleEdit",
+            vec![("value", id.clone()), ("line", index.to_string())],
+        ),
+        E::UnknownComment(id) => value("unknownComment", id),
+        E::CommentBusy(id, state) => (
+            "commentBusy",
+            vec![("value", id.clone()), ("other", state.to_string())],
+        ),
+        E::EmptyMessage => ("emptyMessage", vec![]),
         E::UnknownVault(id) => value("unknownVault", id),
         E::UnknownTarget(id) => value("unknownTarget", id),
         E::NotADirectory(path) => value("notADirectory", path.display()),

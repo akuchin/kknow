@@ -63,6 +63,8 @@ function query() {
     runStop: document.querySelector<HTMLButtonElement>("#run-stop")!,
     toggleNotes: document.querySelector<HTMLButtonElement>("#toggle-notes")!,
     notesCount: document.querySelector<HTMLSpanElement>("#notes-count")!,
+    toggleProposals: document.querySelector<HTMLButtonElement>("#toggle-proposals")!,
+    proposalsCount: document.querySelector<HTMLSpanElement>("#proposals-count")!,
     noteTools: document.querySelector<HTMLElement>("#note-tools")!,
     noteBookmarks: document.querySelector<HTMLButtonElement>("#note-bookmarks")!,
     bookmarksCount: document.querySelector<HTMLSpanElement>("#bookmarks-count")!,
@@ -75,6 +77,9 @@ function query() {
     notesFloat: document.querySelector<HTMLElement>("#notes-float")!,
     notesList: document.querySelector<HTMLUListElement>("#notes-list")!,
     notesHide: document.querySelector<HTMLButtonElement>("#notes-hide")!,
+    proposalsFloat: document.querySelector<HTMLElement>("#proposals-float")!,
+    proposalsList: document.querySelector<HTMLUListElement>("#proposals-list")!,
+    proposalsHide: document.querySelector<HTMLButtonElement>("#proposals-hide")!,
   };
 }
 
@@ -120,6 +125,10 @@ export function initDom(): void {
       <button id="toggle-notes" class="ghost" aria-pressed="false" hidden
               title="${t("topbar.notes.title")}">
         ${iconMarkup("comment")}<span id="notes-count"></span>
+      </button>
+      <button id="toggle-proposals" class="ghost" aria-pressed="false" hidden
+              title="${t("topbar.proposals.title")}">
+        ${iconMarkup("pencil")}<span id="proposals-count"></span>
       </button>
       <!-- Note toolbar: the frequent note actions that the note menu hides.
            The menu keeps them too; these buttons only make them one click
@@ -293,6 +302,18 @@ export function initDom(): void {
       </button>
     </h2>
     <ul id="notes-list" class="notes-list"></ul>
+  </section>
+
+  <section id="proposals-float" class="notes-float proposals-float" role="dialog"
+           aria-labelledby="proposals-title" hidden>
+    <h2>
+      <span id="proposals-title">${t("panel.proposals.title")}</span>
+      <button id="proposals-hide" class="ghost bare" title="${t("panel.notes.hide")}"
+              aria-label="${t("panel.notes.hide")}">
+        ${iconMarkup("close")}
+      </button>
+    </h2>
+    <ul id="proposals-list" class="notes-list proposals-list"></ul>
   </section>
 
   <!-- Command output: a float near the status bar, not a panel in the right

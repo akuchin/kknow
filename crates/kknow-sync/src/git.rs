@@ -22,6 +22,7 @@
 //! [`Git::merge`] does not use the network. So the window holds the vault lock
 //! only for the merge.
 
+use crate::shared::Merge;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -81,6 +82,9 @@ pub struct Git {
     root: PathBuf,
     token: Option<String>,
     env: Vec<(String, String)>,
+    /// Joins two versions of a shared file of `.kknow` on a merge conflict,
+    /// as the S3 sync does (see [`crate::shared`]).
+    merge: Option<Merge>,
 }
 
 /// What changed in one file, separately for the index and the work tree.
@@ -164,7 +168,15 @@ impl Git {
             root: root.into(),
             token: None,
             env: Vec::new(),
+            merge: None,
         }
+    }
+
+    /// The function that joins two versions of a shared file. Without it a
+    /// shared file gets a conflict copy, as a note does.
+    pub fn with_merge(mut self, merge: Merge) -> Self {
+        self.merge = Some(merge);
+        self
     }
 
     /// The token for HTTPS. `None` leaves the sign-in to git: its credential
@@ -566,6 +578,16 @@ impl Git {
             let file = self.root.join(path);
 
             match (ours, theirs) {
+                // A copy of a shared file does nothing: no part of the app
+                // reads it. Both versions go into one file instead.
+                (Some(ours), Some(theirs))
+                    if crate::shared::is_shared(path) && self.merge.is_some() =>
+                {
+                    let merge = self.merge.expect("проверено выше");
+                    let joined = merge(path, &ours, &theirs).unwrap_or(ours);
+                    write(&file, &joined)?;
+                    self.run(&["add", "--", path])?;
+                }
                 (Some(ours), Some(theirs)) => {
                     let copy = conflict_copy(path, &theirs);
                     write(&file, &ours)?;
@@ -1092,9 +1114,15 @@ mod tests {
         put(&laptop, "Новая.md", "текст\n");
 
         let staged = laptop.diff("Index.md", None, true).unwrap();
-        assert!(staged.contains("+два") && !staged.contains("+три"), "{staged}");
+        assert!(
+            staged.contains("+два") && !staged.contains("+три"),
+            "{staged}"
+        );
         let unstaged = laptop.diff("Index.md", None, false).unwrap();
-        assert!(unstaged.contains("+три") && !unstaged.contains("+два"), "{unstaged}");
+        assert!(
+            unstaged.contains("+три") && !unstaged.contains("+два"),
+            "{unstaged}"
+        );
         let new = laptop.diff("Новая.md", None, false).unwrap();
         assert!(new.contains("new file") && new.contains("+текст"), "{new}");
     }
@@ -1119,8 +1147,14 @@ mod tests {
         assert_eq!(read(&laptop, "Index.md"), "раз\n");
 
         // A staged rename brings the old name back; the new one leaves the index.
-        fs::rename(laptop.root().join("Старое.md"), laptop.root().join("Новое.md")).unwrap();
-        laptop.stage(&["Старое.md".to_string(), "Новое.md".to_string()]).unwrap();
+        fs::rename(
+            laptop.root().join("Старое.md"),
+            laptop.root().join("Новое.md"),
+        )
+        .unwrap();
+        laptop
+            .stage(&["Старое.md".to_string(), "Новое.md".to_string()])
+            .unwrap();
         fs::remove_file(laptop.root().join("Новое.md")).unwrap();
         laptop.discard("Новое.md", Some("Старое.md"), true).unwrap();
         assert_eq!(read(&laptop, "Старое.md"), "старое\n");

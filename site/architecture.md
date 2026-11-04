@@ -162,6 +162,14 @@ kknow uploads the notes before the manifest. Before it writes the manifest, it
 confirms that the remote manifest did not change since the start. Thus two
 devices that sync at the same time do not remove each other's entries.
 
+Some files of `.kknow` sync with the notes: `bookmarks.json`,
+`threads/*.json` and `proposals/*.json` (`kknow_sync::shared`, a closed list).
+The manifest keeps them in a separate `files` map, with the same three-way
+rules. A conflict in such a file is not a copy: the engine calls a merge
+function from `kknow_app::merge`, which knows each format. Bookmarks become a
+union, thread messages a union in time order, and a decision on a proposed
+edit wins over "waiting". Git uses the same function on a merge conflict.
+
 `SyncProvider` has four synchronous operations on bytes: `get`, `put`,
 `delete` and `list`. Only the S3 implementation needs `tokio`, behind a cargo
 feature. The tests run the same algorithm on storage in memory and on a
@@ -203,8 +211,27 @@ The protocol is in `kknow-app::mcp`, without a transport. It takes one JSON-RPC
 The protocol is written by hand on `serde_json`. It needs only four methods,
 and an SDK would bring an async runtime into the window.
 
-The server has no tool that writes note text. A wrong write loses a person's
-work, and an agent with file access can edit the file itself.
+The server writes note text only in three narrow cases: it marks a task,
+removes a done comment, or applies a proposal that the person accepted. A
+free write would lose a person's work, so an agent changes text through a
+proposal: a list of `old → new` replacements in `.kknow/proposals/`. Each
+`old` must occur exactly once in the note, and the review searches it again,
+so the person can type while a proposal waits.
+
+A comment can have a thread in `.kknow/threads/<id>.json`; the comment in the
+note gets the ID (`@agent#id`). The agent asks there instead of a guess, and
+the person answers in the 💬 list. A proposal can answer a comment: its review
+closes the task or gives it back with the feedback.
+
+```mermaid
+flowchart LR
+  C["@agent comment"] --> CL[claim_comment]
+  CL --> Q{clear?}
+  Q -- no --> RQ["reply_comment<br/>question"] --> A[person answers] --> CL
+  Q -- yes --> PE[propose_edit] --> RV{review}
+  RV -- accepted --> D[comment removed, thread done]
+  RV -- rejected --> A2["thread answered<br/>with feedback"] --> CL
+```
 
 ## Custom commands
 
@@ -237,6 +264,8 @@ The app has two windows: the main window and the settings. Both read
     sync.json              the snapshot of the last sync
     remote.json            the storage address and the conflict policy
     bookmarks.json         bookmarks
+    threads/*.json         threads of the comments for the agent
+    proposals/*.json       edits that agents proposed
     themes/*.json          vault themes
     trash/<entry>/…        deleted notes and folders
 

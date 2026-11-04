@@ -56,6 +56,12 @@ import type {
   ViewMode,
   FileView,
   NoteView as VaultNoteView,
+  ProposalEdit,
+  ProposalView,
+  Review,
+  Thread,
+  ThreadMessage,
+  ThreadStatus,
   RemoteConfig,
 } from "./bindings";
 
@@ -100,6 +106,12 @@ export type {
   TrashEntryView,
   UpdateStatus,
   VaultChanged,
+  ProposalEdit,
+  ProposalView,
+  Review,
+  Thread,
+  ThreadMessage,
+  ThreadStatus,
   VaultInfo,
   VaultStats,
   VaultView,
@@ -113,8 +125,11 @@ export type {
  * bookmarks, and a standalone file has `file: true`, so its `id` is an
  * absolute path and the `*_file` commands read and write it.
  */
-export type NoteView = Omit<VaultNoteView, "bookmarks"> & {
+export type NoteView = Omit<VaultNoteView, "bookmarks" | "threads" | "proposals"> & {
   bookmarks?: BookmarkMark[];
+  /** Comment threads and agent proposals: a standalone file has neither. */
+  threads?: Thread[];
+  proposals?: ProposalView[];
   file?: boolean;
 };
 
@@ -216,6 +231,30 @@ export const api = {
    */
   setTask: (id: string, line: number, done: boolean) =>
     invoke<NoteView>("set_task", { id, line, done }),
+  /**
+   * Applies the decisions on the edits of a proposal. The window saves its
+   * edits first, so the core finds the text of each edit on disk.
+   */
+  reviewProposal: (proposal: string, review: Review) =>
+    invoke<NoteView>("review_proposal", { proposal, review }),
+  /** Drops a proposal without a review. */
+  dismissProposal: (proposal: string) => invoke<void>("dismiss_proposal", { proposal }),
+  /**
+   * The answer of the person in the thread of a comment: by thread ID, or by
+   * line and task text for a comment that has no ID yet.
+   */
+  replyThread: (
+    note: string,
+    target: { thread: string } | { line: number; text: string },
+    message: string,
+  ) =>
+    invoke<NoteView>("reply_thread", {
+      note,
+      thread: "thread" in target ? target.thread : null,
+      line: "line" in target ? target.line : null,
+      text: "text" in target ? target.text : null,
+      message,
+    }),
   preview: (id: string, content: string) =>
     invoke<string>("preview", { id, content }),
   /** Bytes of an image that the note links to. The core resolves the path. */

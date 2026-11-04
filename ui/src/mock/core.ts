@@ -34,6 +34,9 @@ import type {
   VaultStats,
   VaultInfo,
   VaultView,
+  ProposalView,
+  Review,
+  Thread,
 } from "../api";
 import { setTaskBox, taskBox } from "../tasks";
 import type { ErrorView } from "../error-view";
@@ -65,6 +68,61 @@ interface MockNote {
   bookmarks?: BookmarkMark[];
 }
 
+/**
+ * Agent threads and proposals of the mock vault. The core keeps them in
+ * `.kknow/threads` and `.kknow/proposals`; the mock keeps them here, with
+ * one question of the agent and one proposal, so the window shows both.
+ */
+const threads: Thread[] = [
+  {
+    id: "k3f",
+    note: "Rust",
+    anchor: "заимствование",
+    task: "добавить пример с &mut",
+    status: "question",
+    messages: [
+      { from: "me", text: "добавить пример с &mut", at: 1_730_000_000 },
+      {
+        from: "claude",
+        text: "Пример на функции, которая меняет вектор, или на структуре со ссылкой?",
+        at: 1_730_000_600,
+      },
+    ],
+    created: 1_730_000_000,
+    updated: 1_730_000_600,
+  },
+];
+
+const proposals: ProposalView[] = [
+  {
+    id: "p7f3a",
+    note: "Rust",
+    reason: "Уточнил формулировки",
+    author: "claude",
+    create: false,
+    created: 1_730_001_000,
+    updated: 1_730_001_000,
+    status: "pending",
+    stale: [false, false],
+    edits: [
+      { old: "пока даются тяжело", new: "пока даются тяжело: компилятор ругается чаще, чем хотелось бы", state: "pending" },
+      { old: "— отдельная тема", new: "— отдельная большая тема", state: "pending" },
+    ],
+  },
+];
+
+/** The proposal again with its status and stale marks, as the core computes them. */
+function recount(proposal: ProposalView, content: string): ProposalView {
+  const pending = proposal.edits.filter((edit) => edit.state === "pending").length;
+  const accepted = proposal.edits.filter((edit) => edit.state === "accepted").length;
+  const status =
+    pending > 0 ? "pending" : accepted === proposal.edits.length ? "accepted" : accepted === 0 ? "rejected" : "partial";
+  const stale = proposal.edits.map(
+    (edit) => edit.state === "pending" && content.split(edit.old).length !== 2,
+  );
+  return { ...proposal, status, stale };
+}
+
 const notes: MockNote[] = [
   {
     id: "Index",
@@ -82,7 +140,7 @@ const notes: MockNote[] = [
     bookmarks: [{ line: 3 }, { line: 5, name: "владение" }],
     content:
       "# Rust\n\nЯзык, на котором пишу [[Projects/kknow]]. #rust #учёба\n\n" +
-      "Владение и заимствование<!-- @agent «заимствование»: добавить пример с &mut --> пока даются тяжело.\n\n" +
+      "Владение и заимствование<!-- @agent#k3f «заимствование»: добавить пример с &mut --> пока даются тяжело.\n\n" +
       "Времена жизни<!-- @agent «Времена жизни»: расписать на примере структуры, которая держит ссылку на строку, и объяснить, почему компилятор требует аннотацию, а в функции с одним аргументом — нет --> — отдельная тема.\n",
     html:
       // Line marks as in the core: the preview shows bookmarks with them.
@@ -652,6 +710,11 @@ function view(note: MockNote): NoteView {
     outgoing: [],
     tags: note.tags,
     bookmarks: note.bookmarks ?? [],
+    threads: threads.filter((thread) => thread.note === note.id),
+    proposals: proposals
+      .filter((proposal) => proposal.note === note.id)
+      .map((proposal) => recount(proposal, note.content))
+      .filter((proposal) => proposal.status === "pending"),
   };
 }
 
@@ -1138,6 +1201,59 @@ export async function invoke<T>(
           ];
         }),
       ) as T;
+
+    case "review_proposal": {
+      const proposal = proposals.find((each) => each.id === args?.proposal);
+      if (!proposal) throw coded("unknownProposal", `правка ${String(args?.proposal)} не найдена`, { value: String(args?.proposal) });
+      const note = find(proposal.note);
+      const review = args?.review as Review;
+      let content = note.content;
+      for (const index of [...review.accept].sort((a, b) => a - b)) {
+        const edit = proposal.edits[index];
+        if (content.split(edit.old).length !== 2) {
+          throw coded("staleEdit", `в правке ${proposal.id} изменение ${index + 1} больше не находит свой текст: заметка изменилась`, { value: proposal.id, line: String(index + 1) });
+        }
+        content = content.replace(edit.old, edit.new);
+      }
+      note.content = content;
+      for (const index of review.accept) proposal.edits[index].state = "accepted";
+      for (const index of review.reject) proposal.edits[index].state = "rejected";
+      if (review.feedback) proposal.feedback = review.feedback;
+      return view(note) as T;
+    }
+
+    case "dismiss_proposal": {
+      const index = proposals.findIndex((each) => each.id === args?.proposal);
+      if (index >= 0) proposals.splice(index, 1);
+      return undefined as T;
+    }
+
+    case "reply_thread": {
+      const note = find(args?.note as string);
+      let thread = threads.find((each) => each.id === args?.thread);
+      if (!thread) {
+        const id = `t${threads.length + 1}`;
+        thread = {
+          id,
+          note: note.id,
+          anchor: "",
+          task: String(args?.text ?? ""),
+          status: "open",
+          messages: [{ from: "me", text: String(args?.text ?? ""), at: Date.now() / 1000 }],
+          created: Date.now() / 1000,
+          updated: Date.now() / 1000,
+        };
+        threads.push(thread);
+        const lines = note.content.split("\n");
+        const number = (args?.line as number) - 1;
+        lines[number] = (lines[number] ?? "").replace("<!-- @agent ", `<!-- @agent#${id} `).replace("<!-- @agent:", `<!-- @agent#${id}:`);
+        note.content = lines.join("\n");
+      }
+      thread.messages.push({ from: "me", text: args?.message as string, at: Date.now() / 1000 });
+      if (thread.status === "question" || thread.status === "inProgress") thread.status = "answered";
+      thread.updated = Date.now() / 1000;
+      return view(note) as T;
+    }
 
     case "set_task": {
       const note = find(id);

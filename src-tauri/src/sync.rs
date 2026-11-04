@@ -115,7 +115,7 @@ fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
         None
     };
 
-    Ok(kknow_sync::engine(config, secret)?)
+    Ok(kknow_app::merge::sync_engine(config, secret)?)
 }
 
 /// Sync settings of the vault, if sync is configured.
@@ -299,9 +299,21 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
     // the window has one update path, not two. The watcher does not report
     // them: the index already has these files, so they do not look like a new
     // change.
+    // A note whose thread or proposal came from the other machine is
+    // "updated" too: the window draws its comments again.
+    let threaded = slot
+        .read(|workspace| Ok(workspace.notes_of_shared(&report.files_local)))
+        .unwrap_or_default();
+    let mut updated: Vec<String> = report.local_updated().map(ToString::to_string).collect();
+    for note in threaded {
+        let note = note.as_str().to_string();
+        if !updated.contains(&note) {
+            updated.push(note);
+        }
+    }
     let changed = VaultChanged {
         vault: id.clone(),
-        updated: report.local_updated().map(ToString::to_string).collect(),
+        updated,
         removed: report.local_removed().map(ToString::to_string).collect(),
     };
     if !changed.is_empty() {

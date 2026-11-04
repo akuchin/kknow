@@ -12,6 +12,8 @@
   --accent: #4a5cd6;
   --accent-soft: #eceefb;
   --danger: #b3402c;
+  /* Text that an agent proposal adds. */
+  --diff-add: #2f7d45;
   --selection: #d9dcf7;
   /* Code blocks. Own variables, not text shades: syntax needs six distinct
      colors, and one accent cannot give them. */
@@ -49,6 +51,7 @@
   --accent: #97a3f5;
   --accent-soft: #2b2f4a;
   --danger: #e08b7a;
+  --diff-add: #7cc48f;
   --selection: #363a5c;
   --code-keyword: #c9a2ff;
   --code-string: #7fcf8f;
@@ -2713,9 +2716,201 @@ pre.mermaid[data-error]::after {
   height: 15px;
 }
 
-#toggle-notes[aria-pressed="true"] {
+#toggle-notes[aria-pressed="true"],
+#toggle-proposals[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+#toggle-proposals[hidden] {
+  display: none;
+}
+
+/* A question of the agent waits for the person: a dot on the comments button. */
+#toggle-notes.has-question {
+  position: relative;
+}
+
+#toggle-notes.has-question::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+/* Thread of a comment: the state chip, the messages and the reply. */
+.thread-status {
+  align-self: flex-start;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 17px;
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: color-mix(in oklab, var(--text) 8%, transparent);
+}
+
+.thread-status[data-status="question"] {
+  color: var(--text);
+  background: color-mix(in oklab, var(--warning) 35%, transparent);
+}
+
+.thread-status[data-status="review"],
+.thread-status[data-status="inProgress"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.thread-messages {
+  margin: 0 6px 4px 14px;
+  padding: 0 0 0 8px;
+  list-style: none;
+  border-left: 2px solid var(--border);
+  font-size: 12.5px;
+}
+
+.thread-messages li {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.thread-author {
+  margin-right: 6px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.thread-messages li[data-from="agent"] .thread-author {
+  color: var(--accent);
+}
+
+.thread-reply {
+  margin: 0 6px 6px 14px;
+}
+
+.thread-reply-open {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.thread-reply-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.thread-reply-form[hidden],
+.thread-reply-open[hidden] {
+  display: none;
+}
+
+.thread-reply-form textarea,
+.proposal-feedback {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+/* Agent proposals: a wider float, each edit as a small diff. */
+.proposals-float {
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(70vh, 640px);
+}
+
+.proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.proposal:last-child {
+  border-bottom: none;
+}
+
+.proposal-head {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.proposal-author {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.proposal-reason {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.proposal-edits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proposal-edit {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.proposal-edit label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.proposal-diff {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow-y: auto;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--text) 4%, transparent);
+}
+
+.proposal-diff del {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+}
+
+.proposal-diff ins {
+  text-decoration: none;
+  color: var(--diff-add);
+  background: color-mix(in oklab, var(--diff-add) 16%, transparent);
+}
+
+.proposal-edit.is-stale .proposal-diff {
+  opacity: 0.55;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 /* Command result: a failure shows in the summary color, not only in the text. */

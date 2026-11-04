@@ -70,6 +70,8 @@ impl fmt::Display for Action {
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub(crate) actions: Vec<Action>,
+    /// Actions on shared files of `.kknow`.
+    pub(crate) files: Vec<FileAction>,
     pub(crate) local: Manifest,
     pub(crate) remote: Manifest,
     /// Hash of the manifest as we read it. Before the new write, we check that
@@ -82,14 +84,21 @@ impl Plan {
         &self.actions
     }
 
+    pub fn file_actions(&self) -> &[FileAction] {
+        &self.files
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.actions.is_empty()
+        self.actions.is_empty() && self.files.is_empty()
     }
 }
 
 impl fmt::Display for Plan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for action in &self.actions {
+            writeln!(f, "{action}")?;
+        }
+        for action in &self.files {
             writeln!(f, "{action}")?;
         }
         Ok(())
@@ -115,6 +124,60 @@ pub(crate) fn diff(
         .collect()
 }
 
+/// The decision for one path from its three hashes. Notes and shared files
+/// use the same rules; only a conflict ends differently.
+enum Decision {
+    Upload,
+    Download,
+    RemoveLocal,
+    RemoveRemote,
+    /// Both sides changed, and the policy keeps both.
+    Conflict,
+}
+
+fn decide_hashes(
+    here: Option<&str>,
+    there: Option<&str>,
+    known: Option<&str>,
+    policy: ConflictPolicy,
+) -> Option<Decision> {
+    match (here, there) {
+        (Some(here), Some(there)) if here == there => None,
+
+        (Some(here), Some(_)) => Some(if known == Some(here) {
+            Decision::Download
+        } else if known == there {
+            Decision::Upload
+        } else {
+            match policy {
+                ConflictPolicy::PreferLocal => Decision::Upload,
+                ConflictPolicy::PreferRemote => Decision::Download,
+                ConflictPolicy::KeepBoth => Decision::Conflict,
+            }
+        }),
+
+        (Some(here), None) => Some(match known {
+            None => Decision::Upload,
+            Some(known) if known == here => Decision::RemoveLocal,
+            Some(_) => match policy {
+                ConflictPolicy::PreferRemote => Decision::RemoveLocal,
+                _ => Decision::Upload,
+            },
+        }),
+
+        (None, Some(there)) => Some(match known {
+            None => Decision::Download,
+            Some(known) if known == there => Decision::RemoveRemote,
+            Some(_) => match policy {
+                ConflictPolicy::PreferLocal => Decision::RemoveRemote,
+                _ => Decision::Download,
+            },
+        }),
+
+        (None, None) => None,
+    }
+}
+
 fn decide(
     id: &NoteId,
     local: &Manifest,
@@ -122,64 +185,81 @@ fn decide(
     base: &Manifest,
     policy: ConflictPolicy,
 ) -> Option<Action> {
-    let here = local.hash_of(id);
-    let there = remote.hash_of(id);
-    let known = base.hash_of(id);
-
-    match (here, there) {
-        // Same bytes: nothing to do, even if both sides changed.
-        (Some(here), Some(there)) if here == there => None,
-
-        (Some(here), Some(_)) => {
-            if known == Some(here) {
-                // Not touched here, so the cloud moved ahead.
-                Some(Action::Download(id.clone()))
-            } else if known == there {
-                Some(Action::Upload(id.clone()))
-            } else {
-                Some(conflict(id, remote, policy))
-            }
-        }
-
-        (Some(here), None) => match known {
-            // The note appeared here after the last sync.
-            None => Some(Action::Upload(id.clone())),
-            // Another device deleted it, and it did not change here.
-            Some(known) if known == here => Some(Action::RemoveLocal(id.clone())),
-            // Deleted there, changed here. An edit is more valuable than a
-            // delete, so by default the note goes back to the cloud.
-            Some(_) => match policy {
-                ConflictPolicy::PreferRemote => Some(Action::RemoveLocal(id.clone())),
-                _ => Some(Action::Upload(id.clone())),
-            },
-        },
-
-        (None, Some(there)) => match known {
-            None => Some(Action::Download(id.clone())),
-            Some(known) if known == there => Some(Action::RemoveRemote(id.clone())),
-            Some(_) => match policy {
-                ConflictPolicy::PreferLocal => Some(Action::RemoveRemote(id.clone())),
-                _ => Some(Action::Download(id.clone())),
-            },
-        },
-
-        // Gone on both sides: only the base entry is left.
-        (None, None) => None,
-    }
-}
-
-fn conflict(id: &NoteId, remote: &Manifest, policy: ConflictPolicy) -> Action {
-    match policy {
-        ConflictPolicy::PreferLocal => Action::Upload(id.clone()),
-        ConflictPolicy::PreferRemote => Action::Download(id.clone()),
-        ConflictPolicy::KeepBoth => {
+    let decision = decide_hashes(
+        local.hash_of(id),
+        remote.hash_of(id),
+        base.hash_of(id),
+        policy,
+    )?;
+    Some(match decision {
+        Decision::Upload => Action::Upload(id.clone()),
+        Decision::Download => Action::Download(id.clone()),
+        Decision::RemoveLocal => Action::RemoveLocal(id.clone()),
+        Decision::RemoveRemote => Action::RemoveRemote(id.clone()),
+        Decision::Conflict => {
             let short = remote.get(id).map(|entry| entry.short_hash()).unwrap_or("");
             Action::KeepBoth {
                 id: id.clone(),
                 copy: conflict_copy(id, short),
             }
         }
+    })
+}
+
+/// An action on a shared file of `.kknow`.
+///
+/// A conflict is a merge, not two copies: see [`crate::shared`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileAction {
+    Upload(String),
+    Download(String),
+    RemoveLocal(String),
+    RemoveRemote(String),
+    Merge(String),
+}
+
+impl fmt::Display for FileAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FileAction::Upload(key) => write!(f, "выгрузить        {key}"),
+            FileAction::Download(key) => write!(f, "загрузить        {key}"),
+            FileAction::RemoveLocal(key) => write!(f, "удалить локально {key}"),
+            FileAction::RemoveRemote(key) => write!(f, "удалить в облаке {key}"),
+            FileAction::Merge(key) => write!(f, "объединить       {key}"),
+        }
     }
+}
+
+/// [`diff`] for the shared files.
+pub(crate) fn diff_files(
+    local: &Manifest,
+    remote: &Manifest,
+    base: &Manifest,
+    policy: ConflictPolicy,
+) -> Vec<FileAction> {
+    let keys: BTreeSet<&String> = local
+        .file_keys()
+        .chain(remote.file_keys())
+        .chain(base.file_keys())
+        .collect();
+    keys.into_iter()
+        .filter_map(|key| {
+            let decision = decide_hashes(
+                local.file_hash(key),
+                remote.file_hash(key),
+                base.file_hash(key),
+                policy,
+            )?;
+            let key = key.clone();
+            Some(match decision {
+                Decision::Upload => FileAction::Upload(key),
+                Decision::Download => FileAction::Download(key),
+                Decision::RemoveLocal => FileAction::RemoveLocal(key),
+                Decision::RemoveRemote => FileAction::RemoveRemote(key),
+                Decision::Conflict => FileAction::Merge(key),
+            })
+        })
+        .collect()
 }
 
 /// This mark in a name shows a copy left by a conflict.
@@ -299,9 +379,23 @@ mod tests {
 
     #[test]
     fn the_conflict_copy_is_named_after_the_content() {
+        let local = manifest(&[("Index", "моё")]);
         let remote = manifest(&[("Index", "чужое")]);
-        let first = conflict(&id("Index"), &remote, ConflictPolicy::KeepBoth);
-        let second = conflict(&id("Index"), &remote, ConflictPolicy::KeepBoth);
+        let base = manifest(&[("Index", "старое")]);
+        let first = decide(
+            &id("Index"),
+            &local,
+            &remote,
+            &base,
+            ConflictPolicy::KeepBoth,
+        );
+        let second = decide(
+            &id("Index"),
+            &local,
+            &remote,
+            &base,
+            ConflictPolicy::KeepBoth,
+        );
 
         assert_eq!(first, second, "повтор не должен плодить копии");
     }

@@ -238,7 +238,8 @@ same list. The CLI has these commands for notes: `list`, `stats`,
 `links <note>`, `backlinks <note>`, `tags`, `broken`, `orphans`, `show <note>`,
 `render <note>`, `new <name>`, `search <query>`. It also has these commands:
 `watch`, `themes`, `vaults`, `sync`, `commands`, `run`, `bookmarks`,
-`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `trash`, `mcp`.
+`bookmark <note> <line> [--name <name>]`, `tasks [--all]`, `proposals`,
+`trash`, `mcp`.
 
 ```bash
 kknow vaults add ~/notes --name Personal   # add a vault to the list
@@ -302,8 +303,12 @@ The server has these tools:
 | `read_note` | the Markdown of a note and the path to its file |
 | `backlinks`, `links` | notes that link to a note, and notes it links to |
 | `tasks`, `set_task` | open tasks; mark a task as done or open |
-| `agent_comments` | comments for the agent: `note:line  «words»: task` |
+| `agent_comments` | comments for the agent with their threads: `note:line [id]  «words»: task` |
+| `claim_comment` | takes a task, so that a second agent does not do it too |
+| `reply_comment` | writes in the thread of a comment; a question waits for the person |
 | `resolve_comment` | removes a comment after the agent did its task |
+| `propose_edit`, `propose_note` | proposes edits or a new note; nothing changes until the person accepts |
+| `proposal_status`, `list_proposals`, `withdraw_proposal` | the state of proposals and the feedback of the person |
 
 The comments are the main use. Select words in the window, press ⌘⇧M and write
 the task. Then ask the agent to do the comments in the vault. The agent finds
@@ -315,8 +320,15 @@ box does. If the line changed, the tool changes nothing and tells the agent
 to get the list again. A change from the agent shows in the open note at
 once. A change from another program is visible on the next call.
 
-The server does not edit the text of notes. An agent with file access (for
-example, Claude Code) edits the file at the path from `read_note`.
+An agent can ask a question in the thread of a comment instead of a guess:
+the 💬 list shows the thread, and you answer there. An agent can also propose
+edits: the ✎ button shows them as a diff, and you accept or reject each edit.
+The note does not change until you accept. `kknow proposals` does the same in
+the terminal.
+
+The server changes a note only to mark a task, to remove a done comment or to
+apply an accepted proposal. An agent with file access (for example, Claude
+Code) can also edit the file at the path from `read_note`.
 
 ## What the parser understands
 
@@ -767,8 +779,9 @@ kknow keeps bookmarks in the vault, in `.kknow/bookmarks.json`, so the terminal
 also sees them. `kknow bookmarks` prints the list, with names in «». `kknow
 bookmark plan 12` adds or removes a bookmark. `kknow bookmark plan 12 --name
 итоги` gives the bookmark a name, and sets the bookmark if it is not there.
-`--name ""` removes the name. Sync does not copy the service folder `.kknow`, so
-bookmarks stay on one machine. Standalone files have no bookmarks.
+`--name ""` removes the name. Sync copies `bookmarks.json` with the notes. If
+both machines changed the bookmarks, kknow keeps the bookmarks of both.
+Standalone files have no bookmarks.
 
 ## Tasks
 
@@ -813,7 +826,7 @@ or a right click) has "Восстановить" (a single note opens) and "Уд
 removals ask for a confirmation.
 
 A restore does not overwrite a note. If a file of the entry is taken, nothing
-moves. Sync does not copy `.kknow`, so each machine has its own trash.
+moves. Sync does not copy the trash, so each machine has its own trash.
 
 ## Edits outside the app
 

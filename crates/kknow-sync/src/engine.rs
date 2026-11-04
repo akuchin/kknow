@@ -5,8 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use kknow_core::{NoteId, Vault};
 
 use crate::manifest::{Entry, Manifest, state_path};
-use crate::plan::{Action, ConflictPolicy, Plan, diff};
+use crate::plan::{Action, ConflictPolicy, FileAction, Plan, diff, diff_files};
 use crate::provider::SyncProvider;
+use crate::shared::{self, Merge};
 use crate::{Error, Result};
 
 /// Manifest key in the storage. It is hidden in the same way as
@@ -50,12 +51,14 @@ pub struct Progress {
 pub struct Staged {
     plan: Plan,
     outgoing: BTreeMap<NoteId, String>,
+    /// Local bytes of the shared files to upload or merge.
+    outgoing_files: BTreeMap<String, Vec<u8>>,
 }
 
 impl Staged {
     /// Number of actions to do. Progress counts them.
     pub fn len(&self) -> usize {
-        self.plan.actions().len()
+        self.plan.actions().len() + self.plan.file_actions().len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -74,6 +77,10 @@ pub struct Fetched {
     incoming: Vec<(NoteId, String)>,
     /// Notes that disappeared from the storage. They go to the vault trash.
     remove_local: Vec<NoteId>,
+    /// Shared files to write: downloaded or merged.
+    incoming_files: Vec<(String, Vec<u8>)>,
+    /// Shared files that disappeared from the storage.
+    remove_local_files: Vec<String>,
     /// The state both sides agreed on.
     next: Manifest,
     report: Report,
@@ -102,6 +109,11 @@ pub struct Report {
     pub removed_local: Vec<NoteId>,
     pub removed_remote: Vec<NoteId>,
     pub conflicts: Vec<Conflict>,
+    /// Shared files of `.kknow` that sync changed on disk. A caller that keeps
+    /// bookmarks in memory must read them again.
+    pub files_local: Vec<String>,
+    /// Shared files that sync sent to the storage.
+    pub files_remote: Vec<String>,
 }
 
 impl Report {
@@ -111,6 +123,8 @@ impl Report {
             && self.removed_local.is_empty()
             && self.removed_remote.is_empty()
             && self.conflicts.is_empty()
+            && self.files_local.is_empty()
+            && self.files_remote.is_empty()
     }
 
     /// Notes that the sync wrote to disk. A caller that keeps the vault open
@@ -138,6 +152,7 @@ impl Report {
 pub struct SyncEngine<P> {
     provider: P,
     policy: ConflictPolicy,
+    merge: Option<Merge>,
 }
 
 impl<P: SyncProvider> SyncEngine<P> {
@@ -145,7 +160,15 @@ impl<P: SyncProvider> SyncEngine<P> {
         SyncEngine {
             provider,
             policy: ConflictPolicy::default(),
+            merge: None,
         }
+    }
+
+    /// The function that joins two versions of a shared file. Without it the
+    /// local version wins a conflict.
+    pub fn with_merge(mut self, merge: Merge) -> Self {
+        self.merge = Some(merge);
+        self
     }
 
     pub fn with_policy(mut self, policy: ConflictPolicy) -> Self {
@@ -166,6 +189,7 @@ impl<P: SyncProvider> SyncEngine<P> {
 
         Ok(Plan {
             actions: diff(&local, &remote, &base, self.policy),
+            files: diff_files(&local, &remote, &base, self.policy),
             local,
             remote,
             revision,
@@ -194,7 +218,19 @@ impl<P: SyncProvider> SyncEngine<P> {
             }
         }
 
-        Ok(Staged { plan, outgoing })
+        let mut outgoing_files = BTreeMap::new();
+        for action in plan.file_actions() {
+            if let FileAction::Upload(key) | FileAction::Merge(key) = action {
+                let bytes = shared::read(vault.root(), key)?.unwrap_or_default();
+                outgoing_files.insert(key.clone(), bytes);
+            }
+        }
+
+        Ok(Staged {
+            plan,
+            outgoing,
+            outgoing_files,
+        })
     }
 
     /// Transfer: uploads, downloads, remote deletes, and the manifest write.
@@ -203,9 +239,14 @@ impl<P: SyncProvider> SyncEngine<P> {
     /// the network runs without the lock, and an edit in the editor does not
     /// wait for it.
     pub fn transfer(&self, staged: Staged, progress: &mut dyn FnMut(Progress)) -> Result<Fetched> {
-        let Staged { plan, outgoing } = staged;
+        let Staged {
+            plan,
+            outgoing,
+            outgoing_files,
+        } = staged;
         let Plan {
             actions,
+            files,
             local,
             remote,
             revision,
@@ -220,11 +261,18 @@ impl<P: SyncProvider> SyncEngine<P> {
                 next.insert(id.clone(), entry.clone());
             }
         }
+        for (key, entry) in local.file_entries() {
+            if remote.file_hash(key) == Some(entry.hash.as_str()) {
+                next.insert_file(key.clone(), entry.clone());
+            }
+        }
 
-        let total = actions.len();
+        let total = actions.len() + files.len();
         let mut fetched = Fetched {
             incoming: Vec::new(),
             remove_local: Vec::new(),
+            incoming_files: Vec::new(),
+            remove_local_files: Vec::new(),
             next: Manifest::new(),
             report: Report::default(),
         };
@@ -279,6 +327,14 @@ impl<P: SyncProvider> SyncEngine<P> {
             });
         }
 
+        for (done, action) in files.iter().enumerate() {
+            self.transfer_file(action, &outgoing_files, &mut next, &mut fetched)?;
+            progress(Progress {
+                done: actions.len() + done + 1,
+                total,
+            });
+        }
+
         if next != remote {
             self.commit(&next, revision.as_deref())?;
         }
@@ -297,6 +353,8 @@ impl<P: SyncProvider> SyncEngine<P> {
         let Fetched {
             incoming,
             remove_local,
+            incoming_files,
+            remove_local_files,
             next,
             report,
         } = fetched;
@@ -306,6 +364,12 @@ impl<P: SyncProvider> SyncEngine<P> {
         }
         for id in &remove_local {
             vault.remove(id)?;
+        }
+        for (key, bytes) in &incoming_files {
+            shared::write(vault.root(), key, bytes)?;
+        }
+        for key in &remove_local_files {
+            shared::remove(vault.root(), key)?;
         }
 
         next.save(&state_path(vault))?;
@@ -343,12 +407,8 @@ impl<P: SyncProvider> SyncEngine<P> {
     /// list gives keys, not contents, and a download of each note on each
     /// sync is too expensive.
     fn reconcile(&self, remote: &mut Manifest) -> Result<()> {
-        let present: BTreeSet<NoteId> = self
-            .provider
-            .list("")?
-            .iter()
-            .filter_map(|key| note_of_key(key))
-            .collect();
+        let keys = self.provider.list("")?;
+        let present: BTreeSet<NoteId> = keys.iter().filter_map(|key| note_of_key(key)).collect();
 
         let gone: Vec<NoteId> = remote
             .ids()
@@ -363,6 +423,78 @@ impl<P: SyncProvider> SyncEngine<P> {
             if !remote.contains(&id) {
                 let content = self.download(&id)?;
                 remote.insert(id, Entry::of(&content));
+            }
+        }
+
+        // The same for shared files. An older build drops the `files` field
+        // when it writes the manifest; this finds the objects again.
+        let present: BTreeSet<String> = keys
+            .into_iter()
+            .filter(|key| shared::is_shared(key))
+            .collect();
+        let gone: Vec<String> = remote
+            .file_keys()
+            .filter(|key| !present.contains(*key))
+            .cloned()
+            .collect();
+        for key in gone {
+            remote.remove_file(&key);
+        }
+        for key in present {
+            if remote.file_hash(&key).is_none() {
+                if let Some(bytes) = self.provider.get(&key)? {
+                    remote.insert_file(key, Entry::of_bytes(&bytes));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// One action on a shared file during the transfer.
+    fn transfer_file(
+        &self,
+        action: &FileAction,
+        outgoing: &BTreeMap<String, Vec<u8>>,
+        next: &mut Manifest,
+        fetched: &mut Fetched,
+    ) -> Result<()> {
+        match action {
+            FileAction::Upload(key) => {
+                let bytes = outgoing.get(key).cloned().unwrap_or_default();
+                self.provider.put(key, &bytes)?;
+                next.insert_file(key.clone(), Entry::of_bytes(&bytes));
+                fetched.report.files_remote.push(key.clone());
+            }
+            FileAction::Download(key) => {
+                let bytes = self.provider.get(key)?.unwrap_or_default();
+                next.insert_file(key.clone(), Entry::of_bytes(&bytes));
+                fetched.incoming_files.push((key.clone(), bytes));
+                fetched.report.files_local.push(key.clone());
+            }
+            FileAction::RemoveLocal(key) => {
+                next.remove_file(key);
+                fetched.remove_local_files.push(key.clone());
+                fetched.report.files_local.push(key.clone());
+            }
+            FileAction::RemoveRemote(key) => {
+                self.provider.delete(key)?;
+                next.remove_file(key);
+                fetched.report.files_remote.push(key.clone());
+            }
+            FileAction::Merge(key) => {
+                let mine = outgoing.get(key).cloned().unwrap_or_default();
+                let theirs = self.provider.get(key)?.unwrap_or_default();
+                let merged = self
+                    .merge
+                    .and_then(|merge| merge(key, &mine, &theirs))
+                    .unwrap_or_else(|| mine.clone());
+                self.provider.put(key, &merged)?;
+                next.insert_file(key.clone(), Entry::of_bytes(&merged));
+                fetched.report.files_remote.push(key.clone());
+                if merged != mine {
+                    fetched.incoming_files.push((key.clone(), merged));
+                    fetched.report.files_local.push(key.clone());
+                }
             }
         }
         Ok(())

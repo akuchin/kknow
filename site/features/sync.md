@@ -106,11 +106,32 @@ device can be a mistake.
 You can save notes during a sync. The network part runs without the vault
 lock.
 
-## What sync does not copy
+## What sync copies from `.kknow`
 
-S3 and folder sync copy only notes. The `.kknow/` folder stays on each
-machine: bookmarks, the trash and the sync state. Git is different: see
-[What goes into the repository](#what-goes-into-the-repository).
+Most of `.kknow/` belongs to one machine. Some files belong to the notes, and
+S3 and folder sync copy them with the notes:
+
+| File | What it is |
+|---|---|
+| `.kknow/bookmarks.json` | bookmarks |
+| `.kknow/threads/*.json` | threads of the [comments for the agent](/features/agents#threads-the-agent-asks-you-answer) |
+| `.kknow/proposals/*.json` | [proposals](/features/agents#proposals-you-accept-each-edit) of agents |
+
+The sync state, the storage address and the trash stay on each machine. Other
+files in `.kknow/` do not sync until kknow adds them to this list, so a file
+with a secret cannot leave by accident.
+
+When both machines changed one of these files, kknow does not make a conflict
+copy. Nobody would open a copy of `bookmarks.json`. kknow joins the two
+versions instead:
+
+- bookmarks: the bookmarks of both machines. A bookmark that you deleted on one
+  machine can come back from the other.
+- threads: the messages of both machines in time order.
+- proposals: a decision on an edit wins over "waiting".
+
+Git commits these files too, and on a merge conflict it joins them in the
+same way. See [What goes into the repository](#what-goes-into-the-repository).
 
 ## iCloud placeholders
 

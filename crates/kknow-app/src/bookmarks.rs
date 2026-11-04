@@ -182,6 +182,32 @@ impl Bookmarks {
         fs::rename(&temp, path).map_err(|source| Error::io(path, source))
     }
 
+    /// Bookmarks of two machines in one list: ours first, then theirs that
+    /// we do not have. Sync calls it when both machines changed the file.
+    ///
+    /// A bookmark deleted on one machine comes back from the other. Sync
+    /// keeps no old version to tell a delete from "never set", and a
+    /// bookmark that comes back is cheaper than one that is lost.
+    pub fn merged(&self, theirs: &Bookmarks) -> Bookmarks {
+        let mut out = self.clone();
+        for bookmark in &theirs.bookmarks {
+            let same = out.bookmarks.iter_mut().find(|ours| {
+                ours.note == bookmark.note
+                    && ours.line == bookmark.line
+                    && ours.text == bookmark.text
+            });
+            match same {
+                Some(ours) => {
+                    if ours.name.is_none() {
+                        ours.name = bookmark.name.clone();
+                    }
+                }
+                None => out.bookmarks.push(bookmark.clone()),
+            }
+        }
+        out
+    }
+
     /// All bookmarks, in the order they were set.
     pub fn all(&self) -> &[Bookmark] {
         &self.bookmarks

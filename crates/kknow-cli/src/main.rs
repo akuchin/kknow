@@ -2,6 +2,7 @@
 //!
 //! The CLI exists so that the core can grow and be tried without the GUI.
 
+use kknow_app::proposals::{EditState, Review, Status as ProposalStatus};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -85,6 +86,11 @@ enum Command {
         /// Also list done tasks, with `[x]` and `[ ]` before the text.
         #[arg(long)]
         all: bool,
+    },
+    /// Edits that agents proposed through MCP and that wait for review.
+    Proposals {
+        #[command(subcommand)]
+        action: Option<ProposalAction>,
     },
     /// Vaults that kknow knows: the same list as in the window.
     Vaults {
@@ -184,6 +190,35 @@ enum VaultAction {
     /// The list replaces the old one; without labels, the vault has none.
     /// `kknow mcp --label work` serves all vaults with the label.
     Label { vault: String, labels: Vec<String> },
+}
+
+#[derive(Subcommand)]
+enum ProposalAction {
+    /// List proposals. The same as `kknow proposals` without a subcommand.
+    List {
+        /// Also list reviewed proposals.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Apply the edits of a proposal to the note.
+    Accept {
+        /// Proposal ID from `kknow proposals`.
+        id: String,
+        /// Only these edits, by number: `--only 1,3`. The other waiting edits
+        /// are rejected.
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<usize>,
+        /// A note for the agent.
+        #[arg(long)]
+        feedback: Option<String>,
+    },
+    /// Reject all waiting edits of a proposal.
+    Reject {
+        id: String,
+        /// Why: the agent reads it and tries again.
+        #[arg(long)]
+        feedback: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -367,6 +402,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             bookmark(&mut workspace, &note, line, name.as_deref())?
         }
         Command::Tasks { all } => tasks(&workspace, all),
+        Command::Proposals { action } => proposals(&mut workspace, action)?,
         Command::Commands {
             target,
             kind,
@@ -750,6 +786,61 @@ fn tasks(workspace: &Workspace, all: bool) {
     }
 }
 
+fn proposals(workspace: &mut Workspace, action: Option<ProposalAction>) -> Result<(), String> {
+    let failure = |error: kknow_app::Error| error.to_string();
+    match action.unwrap_or(ProposalAction::List { all: false }) {
+        ProposalAction::List { all } => {
+            let list: Vec<_> = workspace
+                .proposals()
+                .map_err(failure)?
+                .into_iter()
+                .filter(|proposal| all || proposal.status() == ProposalStatus::Pending)
+                .collect();
+            if list.is_empty() {
+                println!("правок нет");
+            }
+            for proposal in list {
+                println!("{}", proposal.describe());
+            }
+        }
+        ProposalAction::Accept { id, only, feedback } => {
+            let proposal = workspace.proposal(&id).map_err(failure)?;
+            let waiting: Vec<usize> = proposal
+                .edits
+                .iter()
+                .enumerate()
+                .filter(|(_, edit)| edit.state == EditState::Pending)
+                .map(|(index, _)| index)
+                .collect();
+            let (accept, reject): (Vec<usize>, Vec<usize>) = if only.is_empty() {
+                (waiting, Vec::new())
+            } else {
+                waiting
+                    .into_iter()
+                    .partition(|index| only.contains(&(index + 1)))
+            };
+            let review = Review {
+                accept,
+                reject,
+                feedback,
+            };
+            let (proposal, _) = workspace.review_proposal(&id, &review).map_err(failure)?;
+            println!("{}", proposal.describe());
+        }
+        ProposalAction::Reject { id, feedback } => {
+            let proposal = workspace.proposal(&id).map_err(failure)?;
+            let review = Review {
+                accept: Vec::new(),
+                reject: (0..proposal.edits.len()).collect(),
+                feedback,
+            };
+            let (proposal, _) = workspace.review_proposal(&id, &review).map_err(failure)?;
+            println!("{}", proposal.describe());
+        }
+    }
+    Ok(())
+}
+
 fn bookmark(
     workspace: &mut Workspace,
     note: &str,
@@ -1120,7 +1211,8 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
         Provider::Folder { .. } | Provider::Git(_) => None,
     };
 
-    let engine = kknow_sync::engine(&config, secret).map_err(|error| error.to_string())?;
+    let engine =
+        kknow_app::merge::sync_engine(&config, secret).map_err(|error| error.to_string())?;
 
     if dry_run {
         let plan = workspace
@@ -1183,7 +1275,9 @@ fn sync_git(
             _ => "токен не задан: KKNOW_GIT_TOKEN".to_string(),
         });
     }
-    let git = Git::new(program, workspace.root()).with_token(token);
+    let git = Git::new(program, workspace.root())
+        .with_token(token)
+        .with_merge(kknow_app::merge::merge_shared);
     let failure = |error: kknow_sync::Error| error.to_string();
 
     if dry_run {

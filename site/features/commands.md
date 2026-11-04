@@ -128,7 +128,24 @@ If you have no `commands.json`, kknow gives two commands:
   note.
 - `agent` — gives the [comments for the agent](/features/agents#comments-for-the-agent)
   of the note to a coding agent. The `AGENT` variable selects `claude` (Claude
-  Code, the default) or `copilot` (GitHub Copilot CLI).
+  Code, the default) or `copilot` (GitHub Copilot CLI). The `MODE` variable
+  selects what the agent may do:
+  - `edit` (the default) — the agent edits the file itself. Its questions
+    [go to the thread](/features/agents#an-agent-without-mcp) of the comment;
+  - `propose` — the agent may not edit files. It sends
+    [proposals](/features/agents#proposals-you-accept-each-edit) that you
+    accept in the window, and it asks questions in the
+    [thread](/features/agents#threads-the-agent-asks-you-answer) of a comment.
+    Add the MCP server of kknow to the agent first, with the name `kknow`.
+
+  In both modes the agent does not guess. An unclear comment stays open with a
+  question or with variants to choose from.
+
+  kknow writes the shipped commands to `commands.json` once and does not
+  update them. A file from an older version has the old `agent` script, which
+  does not read `MODE`. To get the new script, rename your `commands.json`
+  and run `kknow commands --example`: it writes the shipped commands to a new
+  file. Then copy your own commands and `env` values back into it.
 
 ## The command does not find my program
 

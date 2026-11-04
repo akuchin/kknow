@@ -57,6 +57,7 @@ fn generate() -> String {
     collect.visit::<crate::commands::SearchResult>();
     collect.visit::<crate::commands::NoteSummary>();
     collect.visit::<crate::commands::NoteView>();
+    collect.visit::<kknow_app::proposals::Review>();
     collect.visit::<crate::commands::BookmarkView>();
     collect.visit::<crate::commands::TaskView>();
     collect.visit::<crate::commands::TrashEntryView>();

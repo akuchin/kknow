@@ -62,7 +62,9 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, root: &Path, config: &RemoteConfig) 
     };
     let program = program(&app.state::<SettingsState>())?;
     let token = token(settings, Some(&settings.url), None)?;
-    Ok(Git::new(program, root).with_token(token))
+    Ok(Git::new(program, root)
+        .with_token(token)
+        .with_merge(kknow_app::merge::merge_shared))
 }
 
 fn git_of<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot) -> Result<Git> {

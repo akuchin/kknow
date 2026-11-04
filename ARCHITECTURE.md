@@ -70,6 +70,8 @@ does not treat this folder as notes. The files are:
 - `.kknow/remote.json` — the storage address and the conflict policy. For git,
   the address and the sign-in.
 - `.kknow/bookmarks.json` — bookmarks.
+- `.kknow/threads/<id>.json` — the thread of an `@agent#id` comment.
+- `.kknow/proposals/<id>.json` — an edit that an agent proposed.
 - `.kknow/themes/*.json` — themes.
 - `.kknow/trash/<entry>/…` — deleted notes and folders.
 
@@ -179,6 +181,34 @@ External edit:
   successful sync (`.kknow/sync.json`).
 - kknow compares these three manifests and makes a `Plan` of actions:
   `Upload`, `Download`, `RemoveLocal`, `RemoveRemote`, `KeepBoth`.
+- **Shared files.** A closed list of `.kknow` files syncs with the notes
+  (`kknow_sync::shared`): `bookmarks.json`, `threads/*.json`,
+  `proposals/*.json`. They belong to the notes: a comment that an agent
+  answered on the laptop must have its answer on the desktop.
+  - The list is closed on purpose. A new file in `.kknow` does not leave the
+    machine until someone adds it, so a secret or a machine path cannot leave
+    by accident. `is_shared` is also the check of a remote key: no `/` and no
+    `..` in the record name.
+  - The manifest keeps them in a separate `files` map, and the plan has a
+    separate list of `FileAction`s. The note part with `NoteId` and the
+    conflict copies stays as it was. The hash rules are one function
+    (`decide_hashes`) for both.
+  - The `files` field came after format 1 without a new version. An older
+    build ignores it and drops it on its next write; then `reconcile` finds
+    the objects again by the key list, as it does for notes from other
+    programs.
+  - A conflict is a merge, not a copy. A copy of `bookmarks.json` would do
+    nothing: no part of the app reads it. The engine takes a `Merge` function
+    (`with_merge`), and `kknow_app::merge` knows the formats: bookmarks are a
+    union, thread messages a union in time order, a decision on an edit wins
+    over "pending". A file that does not parse keeps the local version.
+  - `kknow_app::merge::sync_engine` builds the engine with the merge for both
+    frontends, so neither one can forget it. Git gets the same function
+    (`Git::with_merge`): a merge conflict in a shared file is joined, not
+    copied.
+  - Threads and proposals are read from disk on each call, so after a sync
+    only bookmarks are read again (`absorb`). The window gets the notes of the
+    changed records as "updated" and draws their comments again.
 - `ConflictPolicy` has three values:
   - `KeepBoth` — the default. kknow saves the other version as a copy next to
     the note. You lose nothing.
@@ -1944,6 +1974,62 @@ command. With a target, it prints only the commands for that target.
 `kknow run <command> [target]` returns the exit code of the command itself. On
 timeout the code is 124, as with `timeout(1)`. It does not mix the streams:
 output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
+
+### Agent threads and proposals
+
+- **A proposal** (`kknow-app::proposals`) is a list of `old → new`
+  replacements that waits for the person. An agent without file access can
+  edit a note this way, and an agent on a schedule cannot spoil a note.
+  - It lives in `.kknow/proposals/<id>.json`, not in the note. CriticMarkup
+    in the text would show in other editors, and a rewrite of a paragraph in
+    that form is not readable.
+  - An edit finds its place by text: `old` must occur exactly once. This is
+    the rule of the Edit tool of coding agents, and lines move when the
+    person types above. A match inside an `@agent` comment does not count:
+    the comment repeats its words, so each commented phrase would be there
+    twice.
+  - The check runs when the agent proposes (it gets the error at once) and
+    again at review. An accepted edit without a place fails the whole review:
+    half a review is harder to understand than a refusal. The window shows
+    such an edit as stale.
+  - The status is computed from the edits, never stored.
+- **A thread** (`kknow-app::threads`) is the talk about one comment. Before,
+  the agent could only guess or skip; now it asks.
+  - The task stays in the note, with an ID: `<!-- @agent#k3f «words»: task -->`.
+    An agent without MCP still sees it. The messages and the state are in
+    `.kknow/threads/k3f.json`: one line in a paragraph cannot hold a talk,
+    and each reply would be noise in a git diff.
+  - A comment gets its ID with the first event (a reply or a claim). Comments
+    without an ID stay valid. `@agent#` without a valid ID is not a comment;
+    an old build does not see `@agent#k3f` as a comment at all, which is
+    acceptable because the app updates itself.
+  - States: open, in progress, question, answered, review, done. A claim
+    older than 30 minutes is free again: the agent that took it probably
+    stopped.
+  - A proposal can answer a comment (`comment` = thread ID). Its review
+    moves the thread: accepted closes the task and removes the comment,
+    rejected gives it back as "answered" with the feedback.
+  - An agent without MCP asks in the text: `<!-- @agent-note: … -->` just
+    after the comment (`parse::agent_answers`, at most one line break
+    between). `load_note` in the window moves such notes into the thread as
+    a question (`adopt_agent_answers`) and cuts them from the text. The first
+    version left them in the text, and the person could not answer them in
+    the comments panel, where they looked for the answer. The move runs in
+    `load_note`, not in the watcher: the window loads the note after each
+    change on disk anyway, and a closed note keeps its notes until it opens.
+    The `edit` prompt tells the agent to read the thread file of a comment
+    with an ID, so an answer in the panel reaches it on the next run.
+- One file for each record (`meta::RecordDir`), not one file for all: two
+  machines that change two records change two files and do not conflict.
+  The records are not cached; a vault has tens of them, and a read from disk
+  also sees what sync wrote.
+- **The rule for doubt.** The MCP instructions and the shipped `agent` command
+  say the same: do not guess; ask, or give variants. The old prompt said
+  "do not ask questions", and the person found guesses in the note.
+- The `agent` command has `MODE`: `edit` (the default) or `propose`. In
+  `propose` the agent gets `Read` and the tools of the `kknow` MCP server
+  only. It is an option, not the default: it needs the server set up, and
+  the command must work out of the box.
 
 ### MCP server
 

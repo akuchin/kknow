@@ -5,13 +5,27 @@
 // `initNotesFloat` right after the editor exists.
 
 import type { AgentNote } from "../agent-notes";
-import { t } from "../i18n";
+import { api, type NoteView, type Thread } from "../api";
+import { t, type Key } from "../i18n";
 import { PreviewNotes } from "../preview-notes";
 import { cellOf } from "../table-widget";
 import { el } from "./dom";
 import { editor } from "./editor";
 import { state } from "./state";
-import { setStatus } from "./status";
+import { fail, setStatus } from "./status";
+
+/**
+ * What the floats need from the note zone. `main.ts` passes them: the note
+ * zone imports this module, so an import back would be a cycle.
+ */
+export interface NoteCalls {
+  /** Shows a new view of the open note (`applyNote`). */
+  apply: (view: NoteView, options?: { keepEditor?: boolean; reload?: boolean }) => void;
+  /** Writes the pending edits of the editor to disk. */
+  flush: () => Promise<void>;
+}
+
+let calls: NoteCalls;
 
 /** Agent notes in the open text, listed in the float. */
 let agentNotes: AgentNote[] = [];
@@ -27,7 +41,8 @@ export let previewNotes: PreviewNotes;
 export let tableNotes: PreviewNotes;
 
 /** Creates the two popups and the buttons of the float. */
-export function initNotesFloat(): void {
+export function initNotesFloat(noteCalls: NoteCalls): void {
+  calls = noteCalls;
   previewNotes = new PreviewNotes(el.preview, {
     enabled: () => state.mode !== "edit" && state.note !== null,
     add: (words, index, total, text) => editor.addNoteFromPreview(words, index, total, text),
@@ -47,6 +62,19 @@ export function initNotesFloat(): void {
 
   el.toggleNotes.onclick = () => showNotesFloat(el.notesFloat.hidden);
   el.notesHide.onclick = () => showNotesFloat(false);
+  // Threads come with the note: a reply or a sync brings a new view.
+  state.on("note", () => showNotes(agentNotes));
+}
+
+/** The thread of a note, if the agent or the person already wrote in it. */
+function threadOf(note: AgentNote): Thread | undefined {
+  if (note.id === null) return undefined;
+  return state.note?.threads?.find((thread) => thread.id === note.id);
+}
+
+/** A question of the agent waits for the person: the button shows it. */
+function asking(): boolean {
+  return agentNotes.some((note) => threadOf(note)?.status === "question");
 }
 
 /**
@@ -61,6 +89,8 @@ export function showNotes(notes: AgentNote[]): void {
   agentNotes = notes;
   el.notesCount.textContent = String(notes.length);
   el.toggleNotes.hidden = notes.length === 0 && el.notesFloat.hidden;
+  el.toggleNotes.classList.toggle("has-question", asking());
+  el.toggleNotes.title = asking() ? t("topbar.notes.question") : t("topbar.notes.title");
   if (!el.notesFloat.hidden) renderNotes();
 }
 
@@ -99,7 +129,105 @@ function renderNotes(): void {
 
     const item = document.createElement("li");
     item.append(button);
+    const thread = threadOf(note);
+    if (thread) {
+      words.after(statusChip(thread));
+      item.append(threadMessages(thread));
+    }
+    if (thread?.status !== "done") item.append(replyForm(note, thread));
     el.notesList.append(item);
+  }
+}
+
+function statusChip(thread: Thread): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "thread-status";
+  chip.dataset.status = thread.status;
+  chip.textContent = t(`thread.status.${thread.status}` as Key);
+  return chip;
+}
+
+/** The messages after the task: the task itself is already the item text. */
+function threadMessages(thread: Thread): HTMLElement {
+  const list = document.createElement("ol");
+  list.className = "thread-messages";
+  for (const message of thread.messages.slice(1)) {
+    const row = document.createElement("li");
+    row.dataset.from = message.from === "me" ? "me" : "agent";
+    const who = document.createElement("span");
+    who.className = "thread-author";
+    who.textContent = message.from === "me" ? t("thread.me") : message.from;
+    row.append(who, message.text);
+    list.append(row);
+  }
+  return list;
+}
+
+/**
+ * The reply field under a comment. Most comments never need it, so it is a
+ * small link that opens the field; a question of the agent opens it at once.
+ */
+function replyForm(note: AgentNote, thread: Thread | undefined): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "thread-reply";
+  const open = document.createElement("button");
+  open.className = "ghost bare thread-reply-open";
+  open.textContent = t("panel.notes.reply");
+  const field = document.createElement("textarea");
+  field.rows = 2;
+  field.placeholder = t("panel.notes.reply.placeholder");
+  const send = document.createElement("button");
+  send.className = "primary";
+  send.textContent = t("panel.notes.send");
+  const form = document.createElement("div");
+  form.className = "thread-reply-form";
+  form.append(field, send);
+  form.hidden = thread?.status !== "question";
+  open.hidden = !form.hidden;
+  open.onclick = () => {
+    form.hidden = false;
+    open.hidden = true;
+    field.focus();
+  };
+  const submit = () => {
+    const text = field.value.trim();
+    if (text !== "") void reply(note, thread, text);
+  };
+  send.onclick = submit;
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      submit();
+    }
+  });
+  box.append(open, form);
+  return box;
+}
+
+/**
+ * Sends the answer. A comment without an ID goes by its line and task: the
+ * core gives it an ID, so the editor text changes, and the pending edits go
+ * to disk first.
+ */
+async function reply(note: AgentNote, thread: Thread | undefined, text: string): Promise<void> {
+  const current = state.note;
+  if (!current || current.file) return;
+  const id = current.id;
+  await calls.flush();
+  try {
+    const target = thread
+      ? { thread: thread.id }
+      : {
+          line: editor.getText().slice(0, note.from).split("\n").length,
+          text: note.text,
+        };
+    const view = await api.replyThread(id, target, text);
+    if (state.note?.id !== id) return;
+    // Without a thread the ID went into the text: the editor takes it.
+    calls.apply(view, thread ? { keepEditor: true } : { reload: true });
+    setStatus(t("status.replySent"));
+  } catch (error) {
+    fail(error);
   }
 }
 

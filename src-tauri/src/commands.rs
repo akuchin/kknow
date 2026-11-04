@@ -1,6 +1,8 @@
 //! Commands that the frontend calls. All logic lives in `kknow-app`; this
 //! module only translates between it and JSON.
 
+use kknow_app::proposals::{ProposalView, Review};
+use kknow_app::threads::{CommentRef, ME, Thread};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -117,6 +119,10 @@ pub struct NoteView {
     tags: Vec<String>,
     /// Bookmarks in this text: 1-based lines with optional names.
     bookmarks: Vec<Mark>,
+    /// Threads of the `@agent#id` comments of this note.
+    threads: Vec<Thread>,
+    /// Proposals of agents for this note that wait for review.
+    proposals: Vec<ProposalView>,
 }
 
 /// A bookmark in the palette list.
@@ -224,6 +230,9 @@ fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> NoteView {
             .map(|parsed| parsed.tags.iter().map(|tag| tag.name.clone()).collect())
             .unwrap_or_default(),
         bookmarks,
+        // A broken record folder must not stop the note from opening.
+        threads: workspace.note_threads(id).unwrap_or_default(),
+        proposals: workspace.note_proposals(id).unwrap_or_default(),
     }
 }
 
@@ -490,8 +499,20 @@ pub fn load_note(
     id: String,
     vault: Option<String>,
 ) -> Result<NoteView> {
-    state.slot(vault.as_deref())?.read(|workspace| {
+    let slot = state.slot(vault.as_deref())?;
+    let view = slot.read(|workspace| {
         let id = note_id(workspace, &id)?;
+        let content = workspace.read(&id)?;
+        Ok(note_view(workspace, &id, content))
+    })?;
+    // An agent without MCP asks in the text (`@agent-note`). The question
+    // goes to the thread of its comment, where the person can answer it.
+    if kknow_index::parse::agent_answers(&view.content).is_empty() {
+        return Ok(view);
+    }
+    slot.write(|workspace| {
+        let id = note_id(workspace, &id)?;
+        workspace.adopt_agent_answers(&id)?;
         let content = workspace.read(&id)?;
         Ok(note_view(workspace, &id, content))
     })
@@ -874,6 +895,70 @@ pub fn set_task(
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
         let content = workspace.set_task(&id, line, done)?;
+        Ok(note_view(workspace, &id, content))
+    })
+}
+
+/// Applies the decisions on the edits of a proposal.
+///
+/// The window saves its edits before the call, so the edits find their text
+/// on disk. The view comes back with the new text and the remaining
+/// proposals.
+#[tauri::command(async)]
+pub fn review_proposal(
+    state: State<'_, AppState>,
+    proposal: String,
+    review: Review,
+    vault: Option<String>,
+) -> Result<NoteView> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        let (reviewed, _) = workspace.review_proposal(&proposal, &review)?;
+        let id = note_id(workspace, &reviewed.note)?;
+        let content = workspace.read(&id)?;
+        Ok(note_view(workspace, &id, content))
+    })
+}
+
+/// Drops a proposal without a review: the person does not want it at all.
+#[tauri::command(async)]
+pub fn dismiss_proposal(
+    state: State<'_, AppState>,
+    proposal: String,
+    vault: Option<String>,
+) -> Result<()> {
+    state
+        .slot(vault.as_deref())?
+        .write(|workspace| Ok(workspace.remove_proposal(&proposal)?))
+}
+
+/// The answer of the person in the thread of a comment.
+///
+/// `thread` names a comment that already has an ID. A comment without one
+/// comes by place (`line` and `text`), and the core gives it an ID.
+#[tauri::command(async)]
+#[allow(clippy::too_many_arguments)]
+pub fn reply_thread(
+    state: State<'_, AppState>,
+    note: String,
+    thread: Option<String>,
+    line: Option<usize>,
+    text: Option<String>,
+    message: String,
+    vault: Option<String>,
+) -> Result<NoteView> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        let id = note_id(workspace, &note)?;
+        let target = match (thread, line, text) {
+            (Some(key), _, _) => CommentRef::Id(key),
+            (None, Some(line), Some(text)) => CommentRef::Place {
+                note: id.clone(),
+                line,
+                text,
+            },
+            _ => return Err(Error::NotFound(note.clone())),
+        };
+        workspace.reply_comment(&target, ME, &message, false)?;
+        let content = workspace.read(&id)?;
         Ok(note_view(workspace, &id, content))
     })
 }
@@ -1633,8 +1718,13 @@ mod tests {
         assert!(!found[1].vault_name.is_empty());
 
         // The label filter of the sidebar: only the listed vaults.
-        let found =
-            search_all(app.state(), "компиляторы".into(), None, Some(vec![ids[1].clone()])).unwrap();
+        let found = search_all(
+            app.state(),
+            "компиляторы".into(),
+            None,
+            Some(vec![ids[1].clone()]),
+        )
+        .unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].vault, ids[1]);
     }

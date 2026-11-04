@@ -38,9 +38,13 @@ pub struct Entry {
 
 impl Entry {
     pub fn of(content: &str) -> Self {
+        Entry::of_bytes(content.as_bytes())
+    }
+
+    pub fn of_bytes(bytes: &[u8]) -> Self {
         Entry {
-            hash: hash(content.as_bytes()),
-            size: content.len() as u64,
+            hash: hash(bytes),
+            size: bytes.len() as u64,
         }
     }
 
@@ -60,6 +64,8 @@ pub fn hash(bytes: &[u8]) -> String {
 #[serde(try_from = "Wire", into = "Wire")]
 pub struct Manifest {
     notes: BTreeMap<NoteId, Entry>,
+    /// Shared files of `.kknow` (see [`crate::shared`]) by their path.
+    files: BTreeMap<String, Entry>,
 }
 
 impl Manifest {
@@ -78,7 +84,31 @@ impl Manifest {
             let content = vault.read(id)?;
             notes.insert(id.clone(), Entry::of(&content));
         }
-        Ok(Manifest { notes })
+        let files = crate::shared::read_all(vault.root())?
+            .into_iter()
+            .map(|(key, bytes)| (key, Entry::of_bytes(&bytes)))
+            .collect();
+        Ok(Manifest { notes, files })
+    }
+
+    pub fn file_hash(&self, key: &str) -> Option<&str> {
+        self.files.get(key).map(|entry| entry.hash.as_str())
+    }
+
+    pub fn insert_file(&mut self, key: String, entry: Entry) {
+        self.files.insert(key, entry);
+    }
+
+    pub fn remove_file(&mut self, key: &str) {
+        self.files.remove(key);
+    }
+
+    pub fn file_keys(&self) -> impl ExactSizeIterator<Item = &String> {
+        self.files.keys()
+    }
+
+    pub fn file_entries(&self) -> impl ExactSizeIterator<Item = (&String, &Entry)> {
+        self.files.iter()
     }
 
     pub fn get(&self, id: &NoteId) -> Option<&Entry> {
@@ -165,6 +195,11 @@ pub fn state_path(vault: &Vault) -> PathBuf {
 struct Wire {
     format: u32,
     notes: BTreeMap<String, Entry>,
+    /// Added after format 1 without a new version: an older build ignores the
+    /// field, and the next sync of a newer build finds the objects again
+    /// (`reconcile`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    files: BTreeMap<String, Entry>,
 }
 
 impl From<Manifest> for Wire {
@@ -176,6 +211,7 @@ impl From<Manifest> for Wire {
                 .into_iter()
                 .map(|(id, entry)| (id.as_str().to_string(), entry))
                 .collect(),
+            files: manifest.files,
         }
     }
 }
@@ -196,7 +232,15 @@ impl TryFrom<Wire> for Manifest {
             let id = NoteId::parse(&raw).ok_or_else(|| format!("недопустимый ключ: {raw}"))?;
             notes.insert(id, entry);
         }
-        Ok(Manifest { notes })
+        for key in wire.files.keys() {
+            if !crate::shared::is_shared(key) {
+                return Err(format!("недопустимый служебный файл: {key}"));
+            }
+        }
+        Ok(Manifest {
+            notes,
+            files: wire.files,
+        })
     }
 }
 

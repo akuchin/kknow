@@ -201,6 +201,11 @@ confirm: boolean, };
  */
 export type ConflictPolicy = "keepBoth" | "preferLocal" | "preferRemote";
 
+/**
+ * The decision on one edit.
+ */
+export type EditState = "pending" | "accepted" | "rejected";
+
 export type ErrorView = { code: string, params: { [key in string]: string }, message: string, };
 
 /**
@@ -356,12 +361,69 @@ export type NoteView = { id: string, title: string, content: string, html: strin
 /**
  * Bookmarks in this text: 1-based lines with optional names.
  */
-bookmarks: Array<BookmarkMark>, };
+bookmarks: Array<BookmarkMark>, 
+/**
+ * Threads of the `@agent#id` comments of this note.
+ */
+threads: Array<Thread>, 
+/**
+ * Proposals of agents for this note that wait for review.
+ */
+proposals: Array<ProposalView>, };
 
 /**
  * What was opened from outside or from the window, and how to show it.
  */
 export type Opened = { "kind": "note", vault: string, id: string, } | { "kind": "file", path: string, };
+
+/**
+ * One replacement: `old` becomes `new`.
+ */
+export type ProposalEdit = { old: string, new: string, state: EditState, };
+
+/**
+ * The state of the whole proposal. It is computed from the edits, not
+ * stored: a stored copy could disagree with them.
+ */
+export type ProposalStatus = "pending" | "accepted" | "rejected" | "partial";
+
+/**
+ * A proposal for the window: the record and, for each edit, whether its
+ * place is still in the note.
+ */
+export type ProposalView = { status: ProposalStatus, 
+/**
+ * `stale[i]` is true when edit `i` waits and its `old` is not exactly
+ * once in the note now.
+ */
+stale: Array<boolean>, id: string, 
+/**
+ * Note ID ([`NoteId::as_str`]).
+ */
+note: string, 
+/**
+ * Why the agent suggests this, in its words.
+ */
+reason: string, 
+/**
+ * The program that made the proposal, if it said.
+ */
+author?: string, 
+/**
+ * The comment thread that this proposal answers. Its review closes or
+ * opens the thread again.
+ */
+comment?: string, 
+/**
+ * The note does not exist yet: the only edit has an empty `old` and the
+ * whole text in `new`.
+ */
+create: boolean, created: number, updated: number, edits: Array<ProposalEdit>, 
+/**
+ * What the person said on review. The agent reads it with
+ * `proposal_status` and tries again.
+ */
+feedback?: string, };
 
 /**
  * The kind of storage on the other end.
@@ -393,6 +455,19 @@ autoSyncMinutes: number, };
  * A moved note: its new ID and the number of notes whose links changed.
  */
 export type RenamedNote = { id: string, relinked: number, };
+
+/**
+ * What a person decided in one review.
+ */
+export type Review = { 
+/**
+ * Indexes of the edits to apply.
+ */
+accept: Array<number>, 
+/**
+ * Indexes of the edits to drop.
+ */
+reject: Array<number>, feedback?: string, };
 
 /**
  * One output line of a running command, for the output popup.
@@ -600,6 +675,32 @@ problems: Array<string>, };
  * A built-in theme has no file at all.
  */
 export type ThemeSource = "vault" | "global" | "builtIn";
+
+export type Thread = { id: string, 
+/**
+ * Note ID ([`NoteId::as_str`]).
+ */
+note: string, 
+/**
+ * The words of the comment, as it was when the thread started.
+ */
+anchor: string, 
+/**
+ * The task, as it was when the thread started.
+ */
+task: string, status: ThreadStatus, messages: Array<ThreadMessage>, 
+/**
+ * The proposal that answers the task, while it waits for review.
+ */
+proposal?: string, created: number, updated: number, };
+
+export type ThreadMessage = { 
+/**
+ * [`ME`] for the person, else the name of the agent.
+ */
+from: string, text: string, at: number, };
+
+export type ThreadStatus = "open" | "inProgress" | "question" | "answered" | "review" | "done";
 
 /**
  * One deletion in the trash of a vault.

@@ -356,3 +356,84 @@ fn downloads_land_on_disk_only_when_the_exchange_is_committed() {
     second.vault.rescan().unwrap();
     assert_eq!(second.read("Заметка"), "из первого\n");
 }
+
+/// Joins two texts line by line: enough to see that both sides reached the
+/// merge. The app has the real merge for each format.
+fn join_lines(_key: &str, mine: &[u8], theirs: &[u8]) -> Option<Vec<u8>> {
+    let mut lines: Vec<&[u8]> = mine.split(|b| *b == b'\n').collect();
+    for line in theirs.split(|b| *b == b'\n') {
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    Some(lines.join(&b'\n'))
+}
+
+fn put_shared(device: &Device, key: &str, text: &str) {
+    let path = device.path().join(key);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
+}
+
+fn shared(device: &Device, key: &str) -> Option<String> {
+    fs::read_to_string(device.path().join(key)).ok()
+}
+
+#[test]
+fn shared_files_travel_and_machine_files_stay() {
+    let cloud = MemoryProvider::new();
+    let mut first = Device::new(&cloud);
+    let mut second = Device::new(&cloud);
+    put_shared(&first, ".kknow/threads/k3f.json", "{\"id\":\"k3f\"}");
+    put_shared(&first, ".kknow/bookmarks.json", "[]");
+    put_shared(&first, ".kknow/remote.json", "{\"секрет\":1}");
+
+    let sent = first.sync();
+    second.sync();
+
+    assert_eq!(sent.files_remote.len(), 2);
+    assert_eq!(
+        shared(&second, ".kknow/threads/k3f.json").as_deref(),
+        Some("{\"id\":\"k3f\"}")
+    );
+    assert_eq!(
+        shared(&second, ".kknow/bookmarks.json").as_deref(),
+        Some("[]")
+    );
+    assert_eq!(shared(&second, ".kknow/remote.json"), None);
+
+    fs::remove_file(second.path().join(".kknow/threads/k3f.json")).unwrap();
+    second.sync();
+    first.sync();
+
+    assert_eq!(shared(&first, ".kknow/threads/k3f.json"), None);
+}
+
+#[test]
+fn a_shared_file_changed_on_both_sides_is_merged() {
+    let cloud = MemoryProvider::new();
+    let mut first = Device::new(&cloud);
+    first.engine = SyncEngine::new(cloud.clone()).with_merge(join_lines);
+    let mut second = Device::new(&cloud);
+    second.engine = SyncEngine::new(cloud.clone()).with_merge(join_lines);
+    put_shared(&first, ".kknow/bookmarks.json", "a");
+    first.sync();
+    second.sync();
+
+    put_shared(&first, ".kknow/bookmarks.json", "a\nb");
+    put_shared(&second, ".kknow/bookmarks.json", "a\nc");
+    first.sync();
+    let merged = second.sync();
+    first.sync();
+
+    assert_eq!(merged.files_local, [".kknow/bookmarks.json"]);
+    assert_eq!(
+        shared(&second, ".kknow/bookmarks.json").as_deref(),
+        Some("a\nc\nb")
+    );
+    assert_eq!(
+        shared(&first, ".kknow/bookmarks.json").as_deref(),
+        Some("a\nc\nb")
+    );
+    assert!(second.ids().iter().all(|id| !id.contains("конфликт")));
+}

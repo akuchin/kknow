@@ -29,6 +29,7 @@ import { applyKeymap, initKeys, refreshKeymap } from "./window/keys";
 import { rememberOpened, saveBookmarks } from "./window/marks";
 import {
   LAST_FILE,
+  applyNote,
   changeCurrentScale,
   defaultMode,
   flushPendingSave,
@@ -39,6 +40,7 @@ import {
   syncWithDisk,
 } from "./window/note";
 import { initNotesFloat, showNotes } from "./window/notes-float";
+import { initProposalsFloat } from "./window/proposals-float";
 import { initMcp, mcpFloat, showMcpSetup } from "./window/mcp";
 import { initPalette, resolveConflicts } from "./window/palette";
 import { state } from "./window/state";
@@ -74,7 +76,9 @@ async function boot(): Promise<void> {
     onBookmark: (marks, change) => void saveBookmarks(marks, change),
     saveImage: savePastedImage,
   });
-  initNotesFloat();
+  const noteCalls = { apply: applyNote, flush: flushPendingSave };
+  initNotesFloat(noteCalls);
+  initProposalsFloat(noteCalls);
   initStatus(
     {
       vault: (anchor) => openVaultMenu(anchor),

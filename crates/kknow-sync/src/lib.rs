@@ -32,6 +32,7 @@ pub mod git;
 pub mod manifest;
 mod plan;
 pub mod provider;
+pub mod shared;
 
 #[cfg(feature = "s3")]
 pub mod s3;
@@ -47,7 +48,7 @@ pub use engine::{
 pub use folder::FolderProvider;
 pub use git::{ChangeKind, Git, GitChange, GitConflict, GitReport, GitStatus, Merged};
 pub use manifest::Manifest;
-pub use plan::{Action, CONFLICT_MARK, ConflictPolicy, Plan, is_conflict_copy};
+pub use plan::{Action, CONFLICT_MARK, ConflictPolicy, FileAction, Plan, is_conflict_copy};
 pub use provider::{MemoryProvider, SyncProvider};
 
 #[cfg(feature = "s3")]
