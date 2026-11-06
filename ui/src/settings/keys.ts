@@ -54,6 +54,9 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "format.bold": "settings.keys.action.format.bold",
   "format.italic": "settings.keys.action.format.italic",
   "format.strike": "settings.keys.action.format.strike",
+  "link.follow": "settings.keys.action.link.follow",
+  "item.up": "settings.keys.action.item.up",
+  "item.down": "settings.keys.action.item.down",
   "table.rowUp": "settings.keys.action.table.rowUp",
   "table.rowDown": "settings.keys.action.table.rowDown",
   "table.columnLeft": "settings.keys.action.table.columnLeft",
@@ -62,8 +65,9 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
 
 /** Groups of the keys page, by the first part of the action ID. */
 const KEY_GROUPS: { label: Key; has: (action: Action) => boolean }[] = [
-  { label: "settings.keys.group.app", has: (action) => !/^(format|table)\./.test(action) },
+  { label: "settings.keys.group.app", has: (action) => !/^(format|item|table)\./.test(action) },
   { label: "settings.keys.group.format", has: (action) => action.startsWith("format.") },
+  { label: "settings.keys.group.list", has: (action) => action.startsWith("item.") },
   { label: "settings.keys.group.table", has: (action) => action.startsWith("table.") },
 ];
 

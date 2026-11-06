@@ -49,6 +49,10 @@ const DEFAULTS = {
   "format.bold": ["Mod-b"],
   "format.italic": ["Mod-i"],
   "format.strike": ["Mod-Shift-x"],
+  "link.follow": ["Alt-Enter"],
+  // On a line that is no list item, the editor moves the line itself.
+  "item.up": ["Alt-ArrowUp"],
+  "item.down": ["Alt-ArrowDown"],
   "table.rowUp": ["Alt-Shift-ArrowUp"],
   "table.rowDown": ["Alt-Shift-ArrowDown"],
   "table.columnLeft": ["Alt-Shift-ArrowLeft"],

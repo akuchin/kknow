@@ -28,6 +28,7 @@ import type {
   SyncStatus,
   TargetKind,
   TaskView,
+  LinkTargetView,
   ThemeSet,
   TrashEntryView,
   UpdateStatus,
@@ -757,6 +758,41 @@ function bookmarkLines(marks: BookmarkMark[], content: string): BookmarkMark[] {
   return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
+/**
+ * A link target as the core finds it: the full ID or the file name, then the
+ * heading or `^block` line. The mock reads headings and blocks from the text.
+ */
+function linkTarget(from: string, link: string): LinkTargetView | null {
+  const [target, subpath] = link.split("|")[0].split(/#(.*)/s);
+  const wanted = target.trim().replace(/\.md$/i, "").toLowerCase();
+  const note = wanted
+    ? activeVault.notes.find(
+        (each) =>
+          each.id.toLowerCase() === wanted ||
+          (each.id.split("/").pop() ?? "").toLowerCase() === wanted,
+      )
+    : activeVault.notes.find((each) => each.id === from);
+  if (!note) return null;
+  const lines = note.content.split("\n");
+  const headings = lines.flatMap((text, index) => {
+    const found = /^(#{1,6})\s+(.*?)\s*$/.exec(text);
+    return found ? [{ level: found[1].length, text: found[2], line: index + 1 }] : [];
+  });
+  const blocks = lines.flatMap((text, index) => {
+    const found = /(?:^|\s)\^([A-Za-z0-9-]+)\s*$/.exec(text);
+    return found ? [{ id: found[1], line: index + 1 }] : [];
+  });
+  const sub = subpath?.trim() ?? "";
+  let line: number | null = null;
+  if (sub.startsWith("^")) {
+    line = blocks.find((each) => each.id.toLowerCase() === sub.slice(1).toLowerCase())?.line ?? null;
+  } else if (sub) {
+    const last = (sub.split("#").pop() ?? sub).toLowerCase();
+    line = headings.find((each) => each.text.toLowerCase() === last)?.line ?? null;
+  }
+  return { id: note.id, line, headings, blocks: blocks.map((each) => each.id) };
+}
+
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
   if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
@@ -1291,6 +1327,9 @@ export async function invoke<T>(
       const source = args?.source as string;
       return mockAttachment(source.slice(source.lastIndexOf("/") + 1), null) as T;
     }
+
+    case "link_target":
+      return linkTarget(args?.from as string, args?.target as string) as T;
 
     case "create_note": {
       const name = args?.name as string;

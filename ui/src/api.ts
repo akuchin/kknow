@@ -45,6 +45,8 @@ import type {
   SyncStatus,
   TargetKind,
   TaskView,
+  LinkTargetView,
+  HeadingView,
   Theme,
   ThemeSet,
   TrashEntryView,
@@ -101,6 +103,8 @@ export type {
   SyncStatus,
   TargetKind,
   TaskView,
+  LinkTargetView,
+  HeadingView,
   Theme,
   ThemeSet,
   TrashEntryView,
@@ -276,6 +280,12 @@ export const api = {
   attachFile: (source: string, file: string | null) =>
     invoke<string>("attach_file", { source, file }),
   createNote: (name: string) => invoke<NoteView>("create_note", { name }),
+  /**
+   * Where a link of note `from` leads: `note`, `note#Heading`, `note#^block`
+   * or `#Heading`. `null` means the note does not exist.
+   */
+  linkTarget: (from: string, target: string) =>
+    invoke<LinkTargetView | null>("link_target", { from, target }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
   /** Trash entries of the vault, the newest first. */

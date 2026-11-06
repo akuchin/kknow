@@ -109,6 +109,9 @@ would load a note again while you type in it.
   math, and the scanner skips them.
 - Before rendering, kknow changes wiki links and tags to usual links with the
   `kknow://` scheme. The window catches clicks on them.
+- The parser keeps the line of each heading and finds block IDs (`^id` at a
+  line end). The `link_target` command uses them: the editor asks it where a
+  link leads and which headings and blocks the note has.
 - The renderer removes raw HTML. A note from another vault must not run a
   script with the app's privileges.
 - A rename rewrites only the links that would break or find a different note.

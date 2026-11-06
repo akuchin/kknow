@@ -1,3 +1,4 @@
+import { autocompletion } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
@@ -31,7 +32,10 @@ import { editorGutter, setLineNumbers } from "./gutter";
 import { confluence } from "./confluence";
 import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
-import { bindings } from "./actions";
+import { MAC, bindings } from "./actions";
+import { followLinks, linkAt } from "./editor-links";
+import { linkCompletion, type LinkAnchors, type LinkNote } from "./link-complete";
+import { moveCommand, shiftCommand } from "./list-editing";
 import { t } from "./i18n";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
 import { headingsOf, type Heading } from "./outline";
@@ -117,6 +121,44 @@ const theme = EditorView.theme({
   },
   ".cm-searchMatch-selected": {
     backgroundColor: "color-mix(in oklab, var(--accent) 70%, transparent)",
+  },
+
+  // Link and tag completion. CodeMirror draws it for a light page with a
+  // monospace font, so it is restyled here, in the same scope.
+  ".cm-tooltip.cm-tooltip-autocomplete": {
+    backgroundColor: "var(--bg-raised)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    padding: "4px",
+    boxShadow: "0 6px 24px color-mix(in oklab, black 18%, transparent)",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+    fontFamily: "var(--font-text)",
+    fontSize: "14px",
+    maxHeight: "16em",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+    padding: "3px 8px",
+    borderRadius: "5px",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    backgroundColor: "color-mix(in oklab, var(--accent) 22%, transparent)",
+    color: "var(--text)",
+  },
+  ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },
+  ".cm-completionDetail": {
+    marginLeft: "0.8em",
+    fontStyle: "normal",
+    color: "var(--text-muted)",
+  },
+  ".cm-tooltip.cm-completionInfo": {
+    backgroundColor: "var(--bg-raised)",
+    color: "var(--text-muted)",
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    fontFamily: "var(--font-text)",
+    fontSize: "13px",
   },
 });
 
@@ -219,6 +261,47 @@ const formatKeymap = [
   ...bindings("format.strike", toggleInline("~~")),
 ];
 
+/** Tab, ⇧Tab and the move keys on a list item; outside a list they pass. */
+const listKeymap = [
+  { key: "Tab", run: shiftCommand(1) },
+  { key: "Shift-Tab", run: shiftCommand(-1) },
+  ...bindings("item.up", moveCommand(-1)),
+  ...bindings("item.down", moveCommand(1)),
+];
+
+/**
+ * Links between notes in the editor: the window gives the vault data and
+ * opens the target. A standalone file gives no notes.
+ */
+export interface EditorLinks {
+  /** The notes of the vault for `[[` and the tags for `#`. */
+  notes(): readonly LinkNote[];
+  /** Headings and blocks of the note that a link target finds. */
+  anchors(target: string): Promise<LinkAnchors | null>;
+  /** Opens the target of a link: `note`, `note#Heading`, `#^block`. */
+  follow(target: string): void;
+}
+
+/** Completion, ⌘-click and the `link.follow` key. */
+function links(options: EditorLinks) {
+  return [
+    autocompletion({
+      // Only our source: the Markdown language also offers HTML tags.
+      override: [linkCompletion({ ...options, headings: headingsOf })],
+      icons: false,
+    }),
+    followLinks(options.follow, MAC),
+    keymap.of(
+      bindings("link.follow", (view) => {
+        const target = linkAt(view.state, view.state.selection.main.head);
+        if (!target) return false;
+        options.follow(target);
+        return true;
+      }),
+    ),
+  ];
+}
+
 /**
  * Where the user was reading a note: cursor and scroll.
  *
@@ -239,6 +322,8 @@ export interface EditorOptions {
   onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
   /** Saves a pasted image; without it a paste of an image does nothing special. */
   saveImage?: SaveImage;
+  /** Links to other notes: completion and ⌘-click. See `setLinks`. */
+  links?: EditorLinks;
 }
 
 /** A CodeMirror wrapper that exposes only the text. */
@@ -273,10 +358,19 @@ export class Editor {
         tableEditing(),
         EditorState.phrases.of(PHRASES),
         // Search goes first: ⌘F and ⌘G must reach it, not the editor.
-        keymap.of([...searchKeymap, ...formatKeymap, ...defaultKeymap, ...historyKeymap]),
+        // The list keys go before the default ones: ⌥↑ on a list item moves
+        // the item with its children, elsewhere the default moves the line.
+        keymap.of([
+          ...searchKeymap,
+          ...formatKeymap,
+          ...listKeymap,
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
         // GFM base, not CommonMark: the core renders tables, and the editor
         // parser must see them the same way.
-        markdown({ base: markdownLanguage, codeLanguages }),
+        markdown({ base: markdownLanguage, codeLanguages, completeHTMLTags: false }),
+        options.links ? links(options.links) : [],
         livePreview(),
         agentNotes(),
         confluence(),
@@ -303,6 +397,15 @@ export class Editor {
         }),
       ],
     });
+  }
+
+  /**
+   * Takes the vault data for links. The next text (`setText`) gets `[[`
+   * completion and ⌘-click; the window calls this at startup, before a note
+   * opens.
+   */
+  setLinks(links: EditorLinks): void {
+    this.options = { ...this.options, links };
   }
 
   /** Replaces the whole document; the undo history starts over. */

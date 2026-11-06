@@ -26,10 +26,8 @@ The plan for the redesign is closed. Its archive copy is
   Revisit if real vaults are much larger: memory grows with the note count.
   A vault with auto-sync must stay open for its scheduler, so closing needs
   more than a timer.
-- **Finish live preview.** Two items are open: lists as widgets, and a click on
-  a `[[link]]` in the editor. Backlinks are also a problem. They are below the
-  preview, so the "Edit" mode does not show them. Move them below the text or
-  into the note menu.
+- **Backlinks are not visible in "Edit".** They are below the preview. The
+  side panel below (item 4) solves this.
 - **Conflict resolution is only a list of files.** "Resolve" opens the copies
   in the palette. Add a side-by-side comparison of the two versions. Put the
   "accept" and "delete copy" buttons next to it.
@@ -78,6 +76,31 @@ The plan for the redesign is closed. Its archive copy is
     the watcher skips `.kknow`. The HTTP server of the window has no such
     problem.
   - A proposal shows edits one by one, not inside the editor text.
+
+## Reading: the next features
+
+These follow the link completion and the list keys. Do them in this order.
+
+4. **A side panel of the note: outline and backlinks.** A panel on the right
+   with two sections.
+   - The outline shows the headings and marks the section on the screen.
+     A click goes to the heading. The editor outline (`headingsOf`) already
+     gives the headings with unsaved edits.
+   - The backlinks list the notes that link here, with the line of each link.
+     `NoteView.backlinks` has them.
+   - Unlinked mentions: lines where the note name stands as plain text.
+     A button changes the text into `[[link]]`. The core needs a search by
+     the name and the aliases from the frontmatter.
+   - The panel works in all three modes. Hide it with a key and remember the
+     state per window, not per note.
+5. **Hover preview, then real embeds.**
+   - ⌘ plus hover on a link shows a popup with the note, or with the section
+     of `#Heading`. The core needs a render of one section:
+     `Workspace::render_section(id, subpath)`, by the heading line from
+     `link_target`.
+   - Then `![[note]]` and `![[note#Heading]]` show the content in place, in
+     the preview and in live preview. Limit the depth (3) and stop on a
+     loop. An embed is read-only; a click opens the note.
 
 ## Larger tasks
 

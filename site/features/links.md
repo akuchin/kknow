@@ -11,6 +11,7 @@ know.
 | `[[note\|alias]]` | link with a different text |
 | `[[note#Heading]]` | link to a heading |
 | `[[note#^block]]` | link to a block |
+| `text ^block` | a block ID at the end of a paragraph or a list item |
 | `![[note]]` | embed a note or an image |
 | `[text](note.md)` | usual Markdown link |
 | `#tag`, `#nested/tag` | tags |
@@ -29,6 +30,14 @@ A short link follows the usual wiki rules:
 
 If many notes have the same name, kknow selects the note that is closest in the
 folder tree.
+
+## Write and open links
+
+The editor completes links and tags as you type, and <kbd>⌘</kbd>-click opens
+a link. See [Editor → Links](/features/editor#links).
+
+A link to a heading matches the heading text without case. A Markdown link can
+also use the slug: `[plan](Plan.md#next-steps)` finds `## Next steps`.
 
 ## Backlinks
 

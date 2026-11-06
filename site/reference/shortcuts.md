@@ -17,6 +17,15 @@ same in any keyboard layout, for example in Russian.
 | <kbd>⌘⇧M</kbd> | add a comment for the agent |
 | <kbd>⌘⇧B</kbd> | set or remove a bookmark on the cursor line |
 
+## Editing
+
+| Keys | Action |
+|---|---|
+| <kbd>⌘</kbd>-click, <kbd>⌥Enter</kbd> | open the link under the cursor |
+| <kbd>Tab</kbd>, <kbd>⇧Tab</kbd> | nest or un-nest a list item |
+| <kbd>⌥↑</kbd>, <kbd>⌥↓</kbd> | move a list item with its nested items, or the line |
+| <kbd>⌘B</kbd>, <kbd>⌘I</kbd>, <kbd>⌘⇧X</kbd> | bold, italic, strikethrough |
+
 ## Search and navigation
 
 | Keys | Action |

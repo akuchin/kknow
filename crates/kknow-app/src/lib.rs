@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 
 use kknow_core::{Note, NoteId, Trash, Vault};
 use kknow_index::{
-    AgentComment, Edge, LinkGraph, ParsedNote, Relink, Resolver, SearchHit, SearchIndex, Task,
+    AgentComment, Block, Edge, Heading, LinkGraph, ParsedNote, Relink, Resolver, SearchHit,
+    SearchIndex, Task,
 };
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Git, GitAuth, GitReport, GitSettings, Merged, Plan as SyncPlan,
@@ -161,6 +162,21 @@ pub enum Saved {
 pub struct Relinked {
     pub notes: usize,
     pub links: usize,
+}
+
+/// Where a link leads: the note and the line of its `#Heading` or `#^block`.
+///
+/// The anchors of the note come too: the editor completes `[[note#…` and
+/// `[[note#^…` from them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTarget<'a> {
+    pub id: NoteId,
+    /// 1-based line of the heading or block. `None` for a link without a
+    /// subpath, or with one that the note does not have: the note opens at
+    /// the top.
+    pub line: Option<usize>,
+    pub headings: &'a [Heading],
+    pub blocks: &'a [Block],
 }
 
 /// Vault summary: number of notes, folders and bytes.
@@ -936,6 +952,72 @@ impl Workspace {
     pub fn resolve(&self, target: &str, from: &NoteId) -> Option<NoteId> {
         self.resolver.resolve(target, from)
     }
+
+    /// Follows a link written in note `from`: `note`, `note#Heading`,
+    /// `note#^block`, `#Heading` (the same note), with or without `|alias`.
+    ///
+    /// The same resolution rules as for the graph apply. `None` means the
+    /// note does not exist: the caller can create it.
+    pub fn link_target(&self, from: &NoteId, link: &str) -> Option<LinkTarget<'_>> {
+        let link = link.split('|').next().unwrap_or_default();
+        let (target, subpath) = match link.split_once('#') {
+            Some((target, subpath)) => (target, Some(subpath.trim())),
+            None => (link, None),
+        };
+        let id = if target.trim().is_empty() {
+            self.parsed.get_key_value(from)?.0.clone()
+        } else {
+            self.resolve(target, from)?
+        };
+        let parsed = self.parsed.get(&id)?;
+        let line = subpath.filter(|sub| !sub.is_empty()).and_then(|sub| {
+            match sub.strip_prefix('^') {
+                Some(block) => parsed
+                    .blocks
+                    .iter()
+                    .find(|each| each.id.eq_ignore_ascii_case(block.trim()))
+                    .map(|each| each.line),
+                // `[[note#Part#Section]]` names the path to a heading; the
+                // last part is the heading itself.
+                None => heading_line(&parsed.headings, sub.rsplit('#').next().unwrap_or(sub)),
+            }
+        });
+        Some(LinkTarget {
+            id,
+            line,
+            headings: &parsed.headings,
+            blocks: &parsed.blocks,
+        })
+    }
+}
+
+/// The line of the heading with this text. The exact text wins, without case
+/// and extra spaces. Else a slug matches too: a Markdown link writes
+/// `note.md#my-heading` for `# My heading`.
+fn heading_line(headings: &[Heading], wanted: &str) -> Option<usize> {
+    fn plain(text: &str) -> String {
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+    fn slug(text: &str) -> String {
+        text.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+    let (plain_wanted, slug_wanted) = (plain(wanted), slug(wanted));
+    headings
+        .iter()
+        .find(|heading| plain(&heading.text) == plain_wanted)
+        .or_else(|| {
+            headings
+                .iter()
+                .find(|heading| !slug_wanted.is_empty() && slug(&heading.text) == slug_wanted)
+        })
+        .map(|heading| heading.line)
 }
 
 /// Name of the copy for text that did not go into the file: the note ID,
@@ -974,6 +1056,19 @@ mod tests {
         )
         .unwrap();
 
+        let workspace = Workspace::open(dir.path()).unwrap();
+        (dir, workspace)
+    }
+
+    fn link_workspace() -> (tempfile::TempDir, Workspace) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("Projects")).unwrap();
+        fs::write(
+            dir.path().join("Projects/Plan.md"),
+            "# Plan\n\n## Next steps\n\nShip it ^ship\n\n### Risks\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("Home.md"), "# Home\n\n[[Plan]]\n").unwrap();
         let workspace = Workspace::open(dir.path()).unwrap();
         (dir, workspace)
     }
@@ -1656,5 +1751,45 @@ mod tests {
         assert_eq!(changes.updated, std::slice::from_ref(&id));
         assert!(workspace.contains(&id));
         assert_eq!(found(&workspace, "появилась"), ["Извне"]);
+    }
+
+    #[test]
+    fn a_link_finds_the_note_and_the_line_of_its_heading() {
+        let (_dir, workspace) = link_workspace();
+        let home = NoteId::parse("Home").unwrap();
+
+        let plain = workspace.link_target(&home, "Plan").unwrap();
+        assert_eq!(plain.id.as_str(), "Projects/Plan");
+        assert_eq!(plain.line, None);
+        let headings: Vec<_> = plain.headings.iter().map(|h| h.text.as_str()).collect();
+        assert_eq!(headings, ["Plan", "Next steps", "Risks"]);
+        assert_eq!(plain.blocks[0].id, "ship");
+
+        let line = |link: &str| workspace.link_target(&home, link).unwrap().line;
+        assert_eq!(line("Plan#Next steps"), Some(3));
+        assert_eq!(line("Plan#next  STEPS|alias"), Some(3));
+        assert_eq!(line("Plan#Next steps#Risks"), Some(7));
+        assert_eq!(line("Plan.md#next-steps"), Some(3));
+        assert_eq!(line("Plan#^ship"), Some(5));
+        assert_eq!(line("Plan#No such heading"), None);
+    }
+
+    #[test]
+    fn a_link_with_only_a_heading_points_to_the_same_note() {
+        let (_dir, workspace) = link_workspace();
+        let plan = NoteId::parse("Projects/Plan").unwrap();
+
+        let target = workspace.link_target(&plan, "#Risks").unwrap();
+        assert_eq!(target.id, plan);
+        assert_eq!(target.line, Some(7));
+    }
+
+    #[test]
+    fn a_link_to_a_missing_note_finds_nothing() {
+        let (_dir, workspace) = link_workspace();
+        let home = NoteId::parse("Home").unwrap();
+
+        assert!(workspace.link_target(&home, "Ghost").is_none());
+        assert!(workspace.link_target(&home, "Ghost#Plan").is_none());
     }
 }

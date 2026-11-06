@@ -297,6 +297,11 @@ behind: number, changes: Array<GitChange>, };
 export type GlobalResult = { vault: string, vaultName: string, color: string, id: string, title: string, folder: string | null, snippet: string, };
 
 /**
+ * A heading of a note.
+ */
+export type HeadingView = { level: number, text: string, line: number, };
+
+/**
  * Action ID → its keys.
  */
 export type Keymap = { [key in string]: Array<string> };
@@ -315,6 +320,24 @@ file: string | null,
 problems: Array<string>, };
 
 export type LinkRef = { id: string, title: string, label: string | null, };
+
+/**
+ * Where a link in the editor leads, and the anchors of that note for
+ * completion.
+ */
+export type LinkTargetView = { 
+/**
+ * The note ID.
+ */
+id: string, 
+/**
+ * 1-based line of the `#Heading` or `#^block`; `null` opens the top.
+ */
+line: number | null, headings: Array<HeadingView>, 
+/**
+ * Block IDs without the caret.
+ */
+blocks: Array<string>, };
 
 /**
  * Which app opens markdown now.

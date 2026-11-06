@@ -334,6 +334,7 @@ Code) can also edit the file at the path from `read_note`.
 
 - `[[link]]`, `[[link|alias]]`, `[[link#Heading]]`, `[[link#^block]]`
 - embeds `![[note]]` and Markdown links `[text](note.md)`
+- block IDs: `^id` at the end of a paragraph or a list item
 - tags `#tag` and `#nested/tags`
 - YAML frontmatter, the metadata block at the top of a note. For now the parser
   removes it. Field parsing comes later.
@@ -457,6 +458,16 @@ A note has three modes. Press ⌘E to go to the next mode:
 kknow keeps the mode for each note. For example, you read a reference and edit a
 draft. A note without its own mode opens in the default mode from the settings
 ("Edit").
+
+Links and lists in the editor:
+
+- `[[` offers the notes of the vault, `[[note#` its headings, `[[note#^` its
+  block IDs, `#` the tags.
+- ⌘-click or ⌥Enter opens the link under the cursor. A link to a missing note
+  creates the note.
+- A list shows dots, and a task shows a box that you can click.
+- **Tab** and **⇧Tab** nest and un-nest a list item. **⌥↑** and **⌥↓** move it
+  with its nested items.
 
 Tables work as in Obsidian. A table always looks like a table. Click a cell to
 edit its Markdown in place:

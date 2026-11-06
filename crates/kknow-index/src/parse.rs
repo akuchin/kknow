@@ -11,7 +11,19 @@ use crate::wikilink::{self, WikiLink};
 pub struct Heading {
     pub level: u8,
     pub text: String,
+    /// 1-based source line, frontmatter included.
+    pub line: usize,
     pub span: Range<usize>,
+}
+
+/// A block ID: `^id` at the end of a paragraph or list item line. A link
+/// `[[note#^id]]` points to this line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Block {
+    /// The ID without the caret.
+    pub id: String,
+    /// 1-based source line, frontmatter included.
+    pub line: usize,
 }
 
 /// YAML block at the start of the file.
@@ -163,6 +175,8 @@ pub struct AgentComment {
 pub struct ParsedNote {
     pub frontmatter: Option<Frontmatter>,
     pub headings: Vec<Heading>,
+    /// Block IDs (`^id`) in source order.
+    pub blocks: Vec<Block>,
     pub wiki_links: Vec<WikiLink>,
     pub markdown_links: Vec<MarkdownLink>,
     pub tags: Vec<Tag>,
@@ -222,7 +236,7 @@ pub fn parse(source: &str) -> ParsedNote {
     // Raw HTML of the note in order. Comment metadata comes from it.
     let mut raw_html = String::new();
 
-    let mut heading: Option<(u8, Range<usize>, String)> = None;
+    let mut heading: Option<(u8, usize, Range<usize>, String)> = None;
     let mut link: Option<(String, Range<usize>, String)> = None;
     let mut tasks = Vec::new();
     let mut agent_comments = Vec::new();
@@ -235,13 +249,14 @@ pub fn parse(source: &str) -> ParsedNote {
 
         match event {
             Event::Start(MdTag::Heading { level, .. }) => {
-                heading = Some((level as u8, range, String::new()));
+                heading = Some((level as u8, lines.line_at(range.start), range, String::new()));
             }
             Event::End(TagEnd::Heading(_)) => {
-                if let Some((level, span, heading_text)) = heading.take() {
+                if let Some((level, line, span, heading_text)) = heading.take() {
                     headings.push(Heading {
                         level,
                         text: heading_text.trim().to_string(),
+                        line,
                         span,
                     });
                 }
@@ -317,7 +332,7 @@ pub fn parse(source: &str) -> ParsedNote {
                 if let Some(task) = task.as_mut() {
                     task.text.push_str(&chunk);
                 }
-                if let Some((_, _, buffer)) = heading.as_mut() {
+                if let Some((_, _, _, buffer)) = heading.as_mut() {
                     buffer.push_str(&chunk);
                 }
                 if let Some((_, _, label)) = link.as_mut() {
@@ -338,6 +353,7 @@ pub fn parse(source: &str) -> ParsedNote {
     take_comment_fields(&raw_html, &mut fields);
 
     let wiki_links = wikilink::scan(source, &skip);
+    let blocks = scan_blocks(source, &skip);
 
     // A `#` inside a link is a subpath (`[[note#Section]]`, `(note.md#anchor)`),
     // not a tag, so the tag scan skips the links found.
@@ -348,6 +364,7 @@ pub fn parse(source: &str) -> ParsedNote {
     ParsedNote {
         frontmatter,
         headings,
+        blocks,
         wiki_links,
         markdown_links,
         tags: tag::scan(source, &tag_skip),
@@ -499,6 +516,35 @@ pub fn set_agent_comment_id(source: &str, line: usize, text: &str, id: &str) -> 
 }
 
 /// Line numbers of growing offsets, without a recount from the start.
+/// Finds `^id` at the end of lines. The caret needs a space or the line start
+/// before it, so `x^2` is no block. An ID is Latin letters, digits and
+/// dashes, as Obsidian writes it. A caret in code, math or HTML (`skip`) is
+/// part of that text.
+fn scan_blocks(source: &str, skip: &[Range<usize>]) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut start = 0;
+    for (index, line) in source.split('\n').enumerate() {
+        let text = line.trim_end();
+        if let Some(caret) = text.rfind('^') {
+            let id = &text[caret + 1..];
+            let before = &text[..caret];
+            let at = start + caret;
+            if !id.is_empty()
+                && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && (before.is_empty() || before.ends_with([' ', '\t']))
+                && !skip.iter().any(|range| range.contains(&at))
+            {
+                blocks.push(Block {
+                    id: id.to_string(),
+                    line: index + 1,
+                });
+            }
+        }
+        start += line.len() + 1;
+    }
+    blocks
+}
+
 struct LineCounter<'a> {
     source: &'a str,
     offset: usize,
@@ -996,5 +1042,29 @@ mod tests {
         assert!(agent_answers("x<!-- @agent: do it -->\n\n<!-- @agent-note: other -->\n").is_empty());
         assert!(agent_answers("text\n<!-- @agent-note: cannot do it -->\n").is_empty());
         assert!(agent_answers("x<!-- @agent: do it -->\n<!-- @agent-notes: no -->\n").is_empty());
+    }
+
+    #[test]
+    fn headings_know_their_lines_with_frontmatter() {
+        let note = parse("---\ntitle: x\n---\n# Top\n\ntext\n\n## Below\n");
+
+        let lines: Vec<_> = note.headings.iter().map(|h| (h.text.as_str(), h.line)).collect();
+        assert_eq!(lines, [("Top", 4), ("Below", 8)]);
+    }
+
+    #[test]
+    fn block_ids_end_a_line_after_a_space() {
+        let note = parse("A paragraph ^intro\n\n- item ^item-2\n\nx^2 is math\nonly^tail\n");
+
+        let blocks: Vec<_> = note.blocks.iter().map(|b| (b.id.as_str(), b.line)).collect();
+        assert_eq!(blocks, [("intro", 1), ("item-2", 3)]);
+    }
+
+    #[test]
+    fn a_block_id_in_code_or_frontmatter_is_text() {
+        let note = parse("---\nkey: a ^meta\n---\n```\ncode ^nope\n```\n`inline ^no`\nreal ^yes\n");
+
+        let ids: Vec<_> = note.blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["yes"]);
     }
 }

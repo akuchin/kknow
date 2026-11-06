@@ -35,6 +35,7 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 
 import { addAgentNote, noteAt } from "./agent-notes";
 import { addPageComment } from "./confluence";
+import { addListMark } from "./live-lists";
 import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
 import { paintCode } from "./highlight";
 import { icon } from "./icons";
@@ -486,6 +487,9 @@ function build(state: EditorState): Live {
         case "Link":
           marks.push(link.range(node.from, node.to));
           break;
+        case "ListMark":
+          addListMark(state, node.node, marks);
+          break;
         case "Comment":
           // `<!-- @agent … -->`: the words are highlighted, the comment is hidden.
           addAgentNote(state, node.from, node.to, marks);
@@ -828,7 +832,9 @@ function addWikilinks(
     if (touched(state, from, to) || insideMarkup(tree, from)) continue;
 
     marks.push(link.range(from, to));
-    marks.push(hidden.range(from, from + 2));
+    // `[[note|alias]]` shows the alias alone, as the preview does.
+    const pipe = match[1].indexOf("|");
+    marks.push(hidden.range(from, from + 2 + (pipe < 0 ? 0 : pipe + 1)));
     marks.push(hidden.range(to - 2, to));
   }
 }

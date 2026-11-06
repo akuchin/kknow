@@ -1480,6 +1480,28 @@ img.note-image {
   color: var(--accent);
 }
 
+/* ⌘ is down: a click on a link follows it (`editor-links.ts`). */
+.cm-follow .cm-live-link {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Live preview of lists (`live-lists.ts`): the bullet takes the place of
+   the dash, so the text does not move when the markup shows. */
+.cm-list-bullet {
+  display: inline-block;
+  width: 1ch;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.cm-task-box {
+  margin: 0 0.4em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* A translucent tint, not `--bg-soft`: the CodeMirror selection layer is drawn
    under the text, and an opaque background hid the selection inside the code. */
 .cm-inline-code {

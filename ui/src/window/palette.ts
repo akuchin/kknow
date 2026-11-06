@@ -1,10 +1,16 @@
 // The search palette: its sources and actions. The links of the preview live
-// here too: a tag in the preview opens the palette with its query.
+// here too: a tag in the preview opens the palette with its query. So do the
+// links of the editor text: the data for `[[` completion and the jump on
+// ⌘-click. The editor finds the link; the core resolves it in the active
+// vault. A standalone file has no vault: no completion, no jump.
 //
 // The module does not touch the DOM on import: `initPalette` creates the
 // palette where the old top-level code created it.
 
 import { api, parseLink } from "../api";
+import type { EditorLinks } from "../editor";
+import type { LinkAnchors } from "../link-complete";
+import { scrollToLine } from "../preview-lines";
 import { t } from "../i18n";
 import { MODES } from "../note-mode";
 import { Palette } from "../palette";
@@ -16,6 +22,7 @@ import { pickFile } from "./files";
 import { goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, openFound, openNote, setMode, travel } from "./note";
 import { state } from "./state";
+import { fail } from "./status";
 import { showGit } from "./git";
 import { isGit, runSync } from "./sync";
 import { activeNotes, filteredVaults, pickedLabelsText, toggleSidebar } from "./tree";
@@ -30,8 +37,13 @@ import { reloadVault, switchVault } from "./vaults";
  */
 export let palette: Palette;
 
-/** Wires the links of the preview, then creates the palette and its button. */
+/**
+ * Wires the links of the preview and of the editor, then creates the palette
+ * and its button.
+ */
 export function initPalette(): void {
+  editor.setLinks(editorLinks);
+
   // Links in the preview navigate inside the vault, not to the outside.
   el.preview.addEventListener("click", (event) => {
     const anchor = (event.target as HTMLElement).closest("a");
@@ -124,3 +136,49 @@ export async function resolveConflicts(id: string): Promise<void> {
   await switchVault(id);
   palette.open(t("statusbar.chip.query"));
 }
+
+/** The open vault note, or `null` for a standalone file and an empty window. */
+function vaultNote(): string | null {
+  return state.vault && state.note && !state.note.file ? state.note.id : null;
+}
+
+async function anchors(target: string): Promise<LinkAnchors | null> {
+  const from = vaultNote();
+  if (!from) return null;
+  try {
+    return await api.linkTarget(from, target);
+  } catch {
+    // Completion is a hint: an error must not show up while the user types.
+    return null;
+  }
+}
+
+/**
+ * Opens the note of a link, at its heading or block. A link to a note that
+ * does not exist creates it, as a click in the preview does.
+ */
+async function follow(target: string): Promise<void> {
+  const from = vaultNote();
+  if (!from) return;
+  try {
+    const found = await api.linkTarget(from, target);
+    if (!found) {
+      const name = target.split("#")[0].trim().replace(/\.md$/i, "");
+      if (name) await createNote(name);
+      return;
+    }
+    if (found.id !== state.note?.id) await openNote(found.id);
+    if (found.line && state.note?.id === found.id) {
+      editor.goToLine(found.line);
+      if (state.mode !== "edit") scrollToLine(el.preview, found.line);
+    }
+  } catch (error) {
+    fail(error);
+  }
+}
+
+const editorLinks: EditorLinks = {
+  notes: () => (vaultNote() ? activeNotes() : []),
+  anchors,
+  follow: (target) => void follow(target),
+};

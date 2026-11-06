@@ -27,6 +27,44 @@ type, for example an agent, git or a different editor. Then kknow does not
 overwrite that version. It writes your text next to it as a copy
 `Note (конфликт 3f9a1c2b).md`. You lose neither version.
 
+## Links
+
+Type `[[` to link to a note. kknow shows the notes of the vault. Type to filter
+them and press <kbd>Enter</kbd>.
+
+| You type | kknow offers |
+|---|---|
+| `[[` | the notes of the vault |
+| `[[note#` | the headings of that note |
+| `[[note#^` | the block IDs of that note |
+| `[[#` | the headings of the open note |
+| `#ta` | the tags of the vault |
+
+kknow inserts the file name of the note. If two notes have the same name, it
+inserts the full path. It also adds the closing `]]`.
+
+To open a link, hold <kbd>⌘</kbd> and click it. You can also put the cursor
+in the link and press <kbd>⌥Enter</kbd>. A link to a heading or a block opens
+the note at that line. A link to a missing note creates the note.
+
+A plain click puts the cursor into the link, so you can change its text.
+
+## Lists
+
+A list shows a dot for each item. A nested list shows a ring, and a deeper one
+a square. A task `- [ ]` shows a box. Click the box to mark the task as done.
+The markup shows when the cursor is in it.
+
+| Keys | Action |
+|---|---|
+| <kbd>Enter</kbd> | Next item. In an empty item, leaves the list. |
+| <kbd>Tab</kbd> | Nest the item under the item above. |
+| <kbd>⇧Tab</kbd> | Move the item one level up. |
+| <kbd>⌥↑</kbd> / <kbd>⌥↓</kbd> | Move the item with its nested items. |
+
+After each change kknow puts the numbers of an ordered list in order again.
+The first number of a list stays, so a list can start at 5.
+
 ## Tables
 
 Tables work as in Obsidian. A table always looks like a table. Click a cell to

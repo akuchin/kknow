@@ -125,6 +125,10 @@ External edit:
     removed the note from the index, so the event changes nothing.
 - Parsing: `[[link]]`, `[[link|alias]]`, `[[link#Heading]]`,
   `[[link#^block]]`, `![[embed]]`, Markdown links, tags, frontmatter.
+  Headings know their line. A block ID is `^id` at a line end after a space;
+  a caret in code, math or frontmatter is text.
+- `Workspace::link_target` follows a link from a note: the note, the line of
+  its heading or block, and all anchors of the note for completion.
 - A link graph with wikilink resolution rules (full path, then file name, and
   so on) and backlinks.
 - A rename or a move rewrites the links that point to the moved notes
@@ -1419,7 +1423,68 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   - Commands: `save_attachment` for pasted bytes, `attach_file` for a dropped
     path. The frontend gives only a file name or the dropped path. The core
     selects the folder (`kknow_core::image::save`).
-- This is not a full live preview yet: lists stay as text.
+- Lists (`ui/src/live-lists.ts`): a bullet becomes a dot, a ring or a square
+  by its depth. A task `- [ ]` becomes a box without the bullet. A click on
+  the box changes one character, so ⌘Z undoes it. The number of an ordered
+  item stays as text: the user wrote it.
+  - The markup shows while the cursor is inside it. The cursor at the start
+    of the item text does not show it: after Enter the user types there, and
+    the dash must not jump in and out under the cursor.
+- `[[note|alias]]` shows only the alias, as the preview does.
+- The Markdown grammar also sees `[x]` inside `[[x]]`, so a wikilink gets two
+  nested `cm-live-link` marks. They look like one. Tests take the inner one.
+
+### Links in the editor
+
+- `[[` starts completion (`ui/src/link-complete.ts`, `@codemirror/autocomplete`):
+  - `[[` lists the notes of the active vault. A pick inserts the file name if
+    no other note has it, else the full path. The core resolves both the same
+    way. The pick adds `]]` if it is not there yet.
+  - `[[note#` lists the headings of that note, `[[note#^` its block IDs. They
+    come from the `link_target` command. `[[#` lists the headings of the open
+    text itself: the editor outline knows unsaved edits.
+  - `#ta` lists the tags of the vault from the note list of the tree.
+  - Code, HTML and comments get no completion. The Markdown language also
+    offers HTML tags; `completeHTMLTags: false` turns that off.
+- ⌘-click (Ctrl-click) and `link.follow` (⌥Enter) open the link under the
+  cursor (`ui/src/editor-links.ts`). A plain click stays an edit. In Obsidian
+  a plain click follows the link, and then you need the arrow keys to change
+  the link text.
+  - The editor only finds the target text: a wikilink, or the URL of a
+    Markdown link without a scheme. The window asks `link_target`. The core
+    resolves the note with the graph rules and finds the line of
+    `#Heading` or `#^block`.
+  - A heading matches by its text without case and extra spaces. Else a slug
+    matches: `note.md#my-heading` finds `# My heading`.
+  - A link to a note that does not exist creates the note, as a click in the
+    preview does.
+  - A standalone file has no vault, so it gets no completion and no jump.
+- The window gives the editor the vault data through `Editor.setLinks` in
+  `initPalette`. The palette module already handles the links of the preview.
+  `main.ts` has a line limit, and the hook does not need it.
+
+### Lists
+
+- Enter and Backspace come from `@codemirror/lang-markdown`: Enter continues
+  the list, Enter in an empty item leaves it.
+- Tab and ⇧Tab nest and un-nest a list item (`ui/src/list-editing.ts`).
+  `item.up` and `item.down` (⌥↑ and ⌥↓) move it. On other lines the keys
+  pass: Tab does nothing, ⌥↑ moves the line (`moveLineUp`).
+  - An item moves with its block: the deeper lines after it. A blank line
+    belongs to the block only if a deeper line follows.
+  - Tab puts the item at the text column of the item above (2 columns after
+    `- `, 3 after `1. `). So the Markdown nests for every parser. With no item
+    above at the same level, Tab changes nothing but keeps the focus.
+  - Several selected items take the step of the first one, so siblings stay
+    siblings.
+  - A move swaps the item with its sibling. At the edge of the list the item
+    passes one line, so it can leave the list.
+  - After each change the ordered lists near it count up again. The first
+    number of a list stays: the user chose it. A nested item that starts a
+    new level gets 1.
+- The commands work on an array of lines, so the Node tests check them
+  without a view. The edit changes only the different part of each line.
+  Thus CodeMirror maps the cursor itself.
 
 ### Tables
 
@@ -1864,8 +1929,8 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
     `ui/src/tasks.ts`). It is a usual edit, so ⌘Z undoes it, and the cursor
     stays. The editor text is again equal to the disk, so the next save
     writes nothing.
-- Live preview draws lists as text, so it has no boxes to click. There you
-  edit `[ ]` as text.
+- In live preview a task box is a widget of the editor. Its click is an edit
+  of the text, as typing `x` would be (see "Live preview").
 
 ### Hotkeys
 
@@ -1876,6 +1941,9 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
 - ⌘F — search in the open note.
 - ⌘⇧O — go to a heading of the open note, as "Go to symbol" in VS Code.
 - ⌘E — next note mode.
+- ⌥Enter — open the link under the cursor (also ⌘-click).
+- Tab / ⇧Tab — nest and un-nest a list item.
+- ⌥↑ / ⌥↓ — move a list item with its children, or the line.
 - ⌘\\ — sidebar.
 - ⌘⌥← / ⌘⌥→ — back and forward.
 - ⌘⇧B — bookmark on the cursor line (⌘B in the editor is bold).

@@ -320,6 +320,7 @@ pub fn run() {
             commands::save_attachment,
             commands::attach_file,
             commands::create_note,
+            commands::link_target,
             commands::delete_note,
             commands::list_folders,
             commands::create_folder,

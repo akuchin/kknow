@@ -125,6 +125,29 @@ pub struct NoteView {
     proposals: Vec<ProposalView>,
 }
 
+/// Where a link in the editor leads, and the anchors of that note for
+/// completion.
+#[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct LinkTargetView {
+    /// The note ID.
+    id: String,
+    /// 1-based line of the `#Heading` or `#^block`; `null` opens the top.
+    line: Option<usize>,
+    headings: Vec<HeadingView>,
+    /// Block IDs without the caret.
+    blocks: Vec<String>,
+}
+
+/// A heading of a note.
+#[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct HeadingView {
+    level: u8,
+    text: String,
+    line: usize,
+}
+
 /// A bookmark in the palette list.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -587,6 +610,37 @@ pub fn preview(
     state.slot(vault.as_deref())?.read(|workspace| {
         let id = note_id(workspace, &id)?;
         Ok(workspace.render(&id, &content))
+    })
+}
+
+/// Follows a link that note `from` has: `note`, `note#Heading`,
+/// `note#^block`, `#Heading`. `null` means the note does not exist.
+#[tauri::command(async)]
+pub fn link_target(
+    state: State<'_, AppState>,
+    from: String,
+    target: String,
+    vault: Option<String>,
+) -> Result<Option<LinkTargetView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        // The note can be new and not saved yet: the ID is enough here.
+        let from = NoteId::parse(&from).ok_or_else(|| Error::NotFound(from.clone()))?;
+        Ok(workspace
+            .link_target(&from, &target)
+            .map(|found| LinkTargetView {
+                id: found.id.as_str().to_string(),
+                line: found.line,
+                headings: found
+                    .headings
+                    .iter()
+                    .map(|heading| HeadingView {
+                        level: heading.level,
+                        text: heading.text.clone(),
+                        line: heading.line,
+                    })
+                    .collect(),
+                blocks: found.blocks.iter().map(|block| block.id.clone()).collect(),
+            }))
     })
 }
 
@@ -1454,6 +1508,22 @@ mod tests {
             fs::read_to_string(dir.path().join("Index.md")).unwrap(),
             "# Оглавление\n\n[[Projects/kknow|мой проект]]\n"
         );
+    }
+
+    #[test]
+    fn link_target_finds_the_note_and_its_headings() {
+        let dir = vault();
+        let app = app(&[dir.path()]);
+
+        let found = link_target(app.state(), "Index".into(), "kknow#kknow".into(), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, "Projects/kknow");
+        assert_eq!(found.line, Some(1));
+        assert_eq!(found.headings[0].text, "kknow");
+
+        let missing = link_target(app.state(), "Index".into(), "Ghost".into(), None).unwrap();
+        assert!(missing.is_none());
     }
 
     #[test]

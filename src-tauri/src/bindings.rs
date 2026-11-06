@@ -60,6 +60,7 @@ fn generate() -> String {
     collect.visit::<kknow_app::proposals::Review>();
     collect.visit::<crate::commands::BookmarkView>();
     collect.visit::<crate::commands::TaskView>();
+    collect.visit::<crate::commands::LinkTargetView>();
     collect.visit::<crate::commands::TrashEntryView>();
     collect.visit::<crate::commands::RenamedNote>();
     collect.visit::<crate::commands::SaveOutcome>();

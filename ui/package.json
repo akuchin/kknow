@@ -12,6 +12,7 @@
     "e2e:webkit": "playwright test --project=webkit"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6",
     "@codemirror/lang-markdown": "^6",
     "@codemirror/language": "^6",
