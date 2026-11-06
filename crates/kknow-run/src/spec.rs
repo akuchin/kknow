@@ -565,7 +565,7 @@ At the end, write a short list: each proposal, each question, and each comment t
     claude_tools="Read,mcp__kknow"
     copilot_tool="kknow"
     ;;
-  *) echo "MODE=«$MODE»: укажите edit или propose" >&2; exit 2 ;;
+  *) echo "MODE=«${MODE}»: укажите edit или propose" >&2; exit 2 ;;
 esac
 
 # The threads are in the vault root, above the folder of the note.
@@ -575,7 +575,7 @@ if [ -n "$KKNOW_VAULT" ]; then set -- --add-dir "$KKNOW_VAULT"; fi
 case "$AGENT" in
   claude) exec claude -p "$prompt" --allowedTools "$claude_tools" "$@" ;;
   copilot) exec copilot -p "$prompt" --silent --allow-tool "$copilot_tool" "$@" ;;
-  *) echo "AGENT=«$AGENT»: укажите claude или copilot" >&2; exit 2 ;;
+  *) echo "AGENT=«${AGENT}»: укажите claude или copilot" >&2; exit 2 ;;
 esac
 "#;
 
