@@ -39,6 +39,15 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 # The MCP server of the app: a small blocking HTTP server for one local client.
 tiny_http = "0.12"
 
+# Keep target/debug small: full debug info on macOS keeps one object file per
+# codegen unit, and stale copies pile up to tens of GB. Line tables are enough
+# for backtraces; dependencies get no debug info.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
