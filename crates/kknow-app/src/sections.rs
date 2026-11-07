@@ -2,7 +2,7 @@
 //! heading, the block of a `^id`, or the whole body.
 
 use kknow_core::NoteId;
-use kknow_index::ParsedNote;
+use kknow_index::{EmbedSource, ParsedNote};
 
 use crate::{Result, Workspace, subpath_line};
 
@@ -33,9 +33,19 @@ impl Workspace {
             return Ok(None);
         };
         Ok(Some(Section {
-            html: kknow_index::fragment_to_html(&text, id, &self.resolver),
+            html: kknow_index::fragment_to_html_with_embeds(&text, id, &self.resolver, self),
             line,
         }))
+    }
+}
+
+/// `![[note#Heading]]` reads the section from the disk, the same part that a
+/// hover preview shows.
+impl EmbedSource for Workspace {
+    fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String> {
+        let parsed = self.parsed(id)?;
+        let source = self.read(id).ok()?;
+        section_text(&source, parsed, subpath).map(|(text, _)| text)
     }
 }
 
@@ -146,6 +156,22 @@ mod tests {
         let part = section(&workspace, "Setext", Some("Part")).unwrap();
         assert!(part.html.contains("more"), "{}", part.html);
         assert!(!part.html.contains("text</p>"), "{}", part.html);
+    }
+
+    #[test]
+    fn the_preview_shows_embeds_and_a_section_preview_too() {
+        let (dir, mut workspace) = workspace();
+        fs::write(dir.path().join("Home.md"), "# Home\n\n![[Plan#Risks]]\n").unwrap();
+        workspace.save(&NoteId::parse("Home").unwrap(), "# Home\n\n![[Plan#Risks]]\n").unwrap();
+        let home = NoteId::parse("Home").unwrap();
+
+        let html = workspace.render(&home, "# Home\n\n![[Plan#Risks]]\n");
+        assert!(html.contains(r#"class="embed" data-note="Plan" data-sub="Risks""#), "{html}");
+        assert!(html.contains("Still late."), "{html}");
+        assert!(!html.contains("Ship it."), "{html}");
+
+        let section = section(&workspace, "Home", None).unwrap();
+        assert!(section.html.contains("Still late."), "{}", section.html);
     }
 
     #[test]

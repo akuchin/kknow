@@ -21,6 +21,7 @@ import {
   applyNote,
   flushPendingSave,
   openNote,
+  redrawPreview,
   releaseNote,
   showHeading,
   showPreview,
@@ -386,6 +387,9 @@ export async function onExternalChange(
   if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
   // Other notes can link to the open one now, or stop.
   refreshAsideLinks();
+  // An embedded note changed: the embed shows its new text.
+  const embeds = [...el.preview.querySelectorAll<HTMLElement>(".embed[data-note]")];
+  if (embeds.some((embed) => updated.includes(embed.dataset.note ?? ""))) redrawPreview();
 
   if (removed.includes(state.note.id)) {
     setStatus(t("status.noteRemoved"), "error");

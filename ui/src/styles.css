@@ -3745,3 +3745,41 @@ body[data-palette="open"] #app {
 .hover-preview-body h1 {
   font-size: 1.35em;
 }
+
+/* An embedded note or section (`![[note#Heading]]`): read-only, in a frame
+   with the link on top. A click opens the note. Nested embeds get one more
+   frame each. */
+.embed {
+  margin: 0.8em 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in oklab, var(--accent) 55%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--bg-soft) 60%, transparent);
+  padding: 2px 14px 6px;
+  cursor: pointer;
+}
+
+.embed-head {
+  font-size: 0.8em;
+  padding-top: 4px;
+}
+
+.embed-head a {
+  color: var(--text-muted);
+}
+
+.embed-body > :first-child {
+  margin-top: 0.3em;
+}
+
+.embed-body > :last-child {
+  margin-bottom: 0.2em;
+}
+
+/* A loop or an embed too deep: a link with a dashed frame and the reason in
+   its tooltip. */
+.embed.embed-stopped {
+  padding: 4px 14px;
+  border-style: dashed;
+  cursor: help;
+}

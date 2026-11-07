@@ -105,7 +105,6 @@ These are the next large features, in this order:
 - Full YAML (YAML Ain't Markup Language) parsing in frontmatter. The app reads
   scalar fields, and commands use them. It does not read nested mappings and
   lists.
-- Real content embedding for `![[…]]`. Now the app shows it as a link.
 - Arbitrary label colors.
 - Tabs and editor splits.
 - Dragging notes in the tree.

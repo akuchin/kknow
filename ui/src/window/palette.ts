@@ -52,8 +52,16 @@ export function initPalette(): void {
   // Links in the preview navigate inside the vault, not to the outside.
   el.preview.addEventListener("click", (event) => {
     const anchor = (event.target as HTMLElement).closest("a");
-    if (!anchor) return;
-    if (followAnchor(anchor)) event.preventDefault();
+    if (anchor) {
+      if (followAnchor(anchor)) event.preventDefault();
+      return;
+    }
+    // A click on an embed opens its note at its section. A click that ends
+    // a selection selects text instead.
+    const embed = (event.target as HTMLElement).closest<HTMLElement>(".embed:not(.embed-stopped)");
+    if (!embed?.dataset.note || !document.getSelection()?.isCollapsed) return;
+    const { note, sub } = embed.dataset;
+    void follow(sub ? `${note}#${sub}` : note);
   });
   initHover();
 

@@ -269,6 +269,7 @@ export function showPreview(html: string): void {
   if (state.mode === "edit") return;
   el.preview.innerHTML = html;
   enableTaskBoxes();
+  explainStoppedEmbeds();
   paintBookmarks(el.preview, editor.getBookmarks());
   paintCodeBlocks(el.preview);
   paintImages(el.preview);
@@ -499,8 +500,24 @@ export async function openNote(id: string): Promise<void> {
 function enableTaskBoxes(): void {
   if (!state.note || state.note.file) return;
   for (const box of el.preview.querySelectorAll<HTMLInputElement>("li input[type=checkbox]")) {
-    box.disabled = false;
+    // A task in an embed belongs to a different note: it has no line here.
+    if (!box.closest(".embed")) box.disabled = false;
   }
+}
+
+/** An embed the core stopped (a loop, too deep) tells why on hover. */
+function explainStoppedEmbeds(): void {
+  for (const embed of el.preview.querySelectorAll<HTMLElement>(".embed-stopped")) {
+    embed.title = t(embed.dataset.reason === "loop" ? "embed.loop" : "embed.depth");
+  }
+}
+
+/**
+ * Renders the preview again from the editor text: a note that the open note
+ * embeds changed on disk.
+ */
+export function redrawPreview(): void {
+  if (state.note && state.mode !== "edit") void refreshPreview(editor.getText());
 }
 
 /**

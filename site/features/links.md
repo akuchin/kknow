@@ -13,12 +13,31 @@ know.
 | `[[note#^block]]` | link to a block |
 | `text ^block` | a block ID at the end of a paragraph or a list item |
 | `![[note]]` | embed a note or an image |
+| `![[note#Heading]]` | embed one section of a note |
 | `[text](note.md)` | usual Markdown link |
 | `#tag`, `#nested/tag` | tags |
 | `---` … `---` at the top | YAML frontmatter |
 
 The parser skips code and math. `` `[[this is not a link]]` `` is not a link,
 and `#include` in a code block is not a tag.
+
+## Embeds
+
+`![[note]]` shows the text of the other note in place, in a frame. The preview
+and Read mode show it. `![[note#Heading]]` shows one section: the heading and
+the text up to the next heading of the same or a higher level.
+`![[note#^block]]` shows the paragraph of the block.
+
+- An embed is read-only. To change the text, open the note: a click on the
+  embed opens it at that section.
+- An embed can contain embeds, three levels deep. A deeper embed stays a link.
+- A note cannot embed itself, also through other notes. Such an embed stays a
+  link with a dashed frame, and its tooltip tells why.
+- When the embedded note changes, the embed shows the new text.
+- Search does not find the text of an embed in the note that embeds it. The
+  text belongs to the other note, and search finds it there.
+- `![[picture.png]]` is an image, not a note. See
+  [Editor → Images](/features/editor).
 
 ## How a short link finds a note
 

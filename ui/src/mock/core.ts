@@ -274,6 +274,23 @@ const notes: MockNote[] = [
     html: `<h1>Картинки</h1>\n<p>Широкая:</p>\n<p><img class="note-image" data-src="img/wide.svg" alt="панорама"></p>\n<p>Высокая, по имени файла:</p>\n<p><img class="note-image" data-src="tall.svg" alt=""></p>\n<p>С размером: <img class="note-image" data-src="wide.svg" alt="" style="width:200px"> и дальше текст.</p>\n<p>Пропавшая: <img class="note-image" data-src="img/missing.png" alt="нет"></p>\n<p>Из сети: <img class="note-image" data-src="https://example.com/a.png" alt=""></p>\n`,
   },
   {
+    // Embeds as the core renders them: a section of another note with a task
+    // box in it, and a loop that stays a link.
+    id: "Embeds",
+    title: "Embeds",
+    folder: null,
+    tags: [],
+    content: "# Embeds\n\n![[Reading#Books]]\n\n![[Embeds]]\n",
+    html:
+      `<h1>${line(1)}Embeds</h1>${line(3, true)}` +
+      `<div class="embed" data-note="Reading" data-sub="Books"><div class="embed-head">` +
+      `<a href="kknow://note/Reading#Books">Reading#Books</a></div><div class="embed-body">` +
+      `<h2>Books</h2><p>The Rust book first, then the kknow docs.</p>` +
+      `<ul><li><input disabled="" type="checkbox"> read more</li></ul></div></div>` +
+      `${line(5, true)}<div class="embed embed-stopped" data-reason="loop" data-note="Embeds">` +
+      `<a href="kknow://note/Embeds">Embeds</a></div>`,
+  },
+  {
     // Plain-text names of other notes: the note panel lists them as mentions
     // without a link. Sections and a long body give the outline a section to
     // follow on scroll.

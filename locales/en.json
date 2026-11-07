@@ -427,6 +427,8 @@
   "palette.found_other": "{{count}} results",
   "panel.sync.title": "Sync",
   "panel.sync.hide": "Hide",
+  "embed.loop": "This note is already shown above: an embed of it here would loop",
+  "embed.depth": "Embeds go three levels deep: this one is a link",
   "hover.missing": "No note «{{name}}» yet: a click on the link creates it",
   "hover.open": "Open the note",
   "hover.partMissing": "no such heading, the whole note",

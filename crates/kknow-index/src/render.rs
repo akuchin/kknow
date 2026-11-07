@@ -49,9 +49,66 @@ const LINE_SENTINEL: &str = "\0kknow-line:";
 /// renderer sees them, and the code does not need to change the parser event
 /// stream.
 pub fn to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
+    render(source, from, &mut Context::new(resolver, None, from), false)
+}
+
+/// The same as [`to_html`], and `![[note]]` and `![[note#Heading]]` show the
+/// content of that note or section in place.
+///
+/// An embed is a block: inside a paragraph, the paragraph closes before it
+/// and opens again after it. Embeds go [`MAX_EMBED_DEPTH`] levels deep; a
+/// deeper one, and one that would show a part already open above it (a
+/// loop), stays a link in a `div.embed.embed-stopped` with `data-reason`.
+pub fn to_html_with_embeds(
+    source: &str,
+    from: &NoteId,
+    resolver: &Resolver,
+    embeds: &dyn EmbedSource,
+) -> String {
+    render(source, from, &mut Context::new(resolver, Some(embeds), from), false)
+}
+
+/// How deep embeds go: a note, its embed, an embed in that, and one more.
+pub const MAX_EMBED_DEPTH: usize = 3;
+
+/// Class of an embedded note or section.
+pub const EMBED_CLASS: &str = "embed";
+
+/// Where the text of an embedded note comes from. The index does not read the
+/// disk: the workspace does.
+pub trait EmbedSource {
+    /// The text of note `id`, or of its part `subpath` (`Heading`,
+    /// `Part#Heading`, `^block`), without frontmatter. `None` when the note
+    /// or the part does not exist.
+    fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String>;
+}
+
+/// The state of one render with its nested embeds.
+struct Context<'a> {
+    resolver: &'a Resolver,
+    embeds: Option<&'a dyn EmbedSource>,
+    /// How deep the text being rendered is: 0 for the note itself.
+    depth: usize,
+    /// The parts open above the current text, to stop a loop.
+    open: Vec<(NoteId, Option<String>)>,
+}
+
+impl<'a> Context<'a> {
+    fn new(resolver: &'a Resolver, embeds: Option<&'a dyn EmbedSource>, from: &NoteId) -> Self {
+        Context {
+            resolver,
+            embeds,
+            depth: 0,
+            open: vec![(from.clone(), None)],
+        }
+    }
+}
+
+fn render(source: &str, from: &NoteId, context: &mut Context<'_>, fragment: bool) -> String {
     let parsed = parse(source);
-    let (prepared, lines) = rewrite(source, &parsed, from, resolver);
-    markdown_to_html(&prepared, &lines, None)
+    let mut embedded = Vec::new();
+    let (prepared, lines) = rewrite(source, &parsed, from, context, &mut embedded);
+    markdown_to_html(&prepared, &lines, fragment.then_some(from), &embedded)
 }
 
 /// Renders a part of note `from` to show inside a different note: a hover
@@ -62,9 +119,17 @@ pub fn to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
 /// image gets `data-note`: the window loads it relative to `from`, not to the
 /// open note.
 pub fn fragment_to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
-    let parsed = parse(source);
-    let (prepared, lines) = rewrite(source, &parsed, from, resolver);
-    markdown_to_html(&prepared, &lines, Some(from))
+    render(source, from, &mut Context::new(resolver, None, from), true)
+}
+
+/// [`fragment_to_html`] with embeds, as in [`to_html_with_embeds`].
+pub fn fragment_to_html_with_embeds(
+    source: &str,
+    from: &NoteId,
+    resolver: &Resolver,
+    embeds: &dyn EmbedSource,
+) -> String {
+    render(source, from, &mut Context::new(resolver, Some(embeds), from), true)
 }
 
 /// Where a piece of the prepared text comes from in the source.
@@ -102,16 +167,28 @@ impl LineMap {
     }
 }
 
+/// `embedded` gets the HTML of each embed; the prepared text has a
+/// `kknow://embed/<index>` link in its place.
 fn rewrite(
     source: &str,
     parsed: &ParsedNote,
     from: &NoteId,
-    resolver: &Resolver,
+    context: &mut Context<'_>,
+    embedded: &mut Vec<String>,
 ) -> (String, LineMap) {
+    let resolver = context.resolver;
     let mut replacements: Vec<(Range<usize>, String)> = Vec::new();
 
     for link in &parsed.wiki_links {
-        replacements.push((link.span.clone(), link_markdown(link, from, resolver)));
+        let markdown = match embed_html(link, from, context) {
+            Some(html) => {
+                embedded.push(html);
+                let text = escape_text(link.display_text());
+                format!("[{text}](<{SCHEME}embed/{}>)", embedded.len() - 1)
+            }
+            None => link_markdown(link, from, resolver),
+        };
+        replacements.push((link.span.clone(), markdown));
     }
     for link in &parsed.markdown_links {
         let text = escape_text(&link.label);
@@ -165,6 +242,60 @@ fn rewrite(
     (out, LineMap { pieces, starts })
 }
 
+/// The HTML of a note embed, or `None` when the link is no note embed: a plain
+/// link, an image, an embed inside the same note, a missing note, or a render
+/// without an embed source.
+fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Option<String> {
+    if link.kind != WikiKind::Embed || link.is_internal() || kknow_core::image::is_image(&link.target) {
+        return None;
+    }
+    let source = context.embeds?;
+    let id = context.resolver.resolve(&link.target, from)?;
+    let sub = link.subpath.as_ref().map(|sub| match sub {
+        crate::wikilink::Subpath::Heading(heading) => heading.clone(),
+        crate::wikilink::Subpath::Block(block) => format!("^{block}"),
+    });
+
+    let note = escape_html(id.as_str());
+    let sub_attr = sub
+        .as_deref()
+        .map_or(String::new(), |sub| format!(" data-sub=\"{}\"", escape_html(sub)));
+    let href = format!(
+        "{SCHEME}note/{}{}",
+        encode(id.as_str()),
+        sub.as_deref().map_or(String::new(), |sub| format!("#{}", encode(sub)))
+    );
+    let title = escape_html(link.display_text());
+    let head = format!("<a href=\"{href}\">{title}</a>");
+
+    let stopped = |reason: &str| {
+        Some(format!(
+            "<div class=\"{EMBED_CLASS} embed-stopped\" data-reason=\"{reason}\" data-note=\"{note}\"{sub_attr}>{head}</div>"
+        ))
+    };
+    let part = (id.clone(), sub.clone());
+    if context.open.contains(&part) {
+        return stopped("loop");
+    }
+    if context.depth >= MAX_EMBED_DEPTH {
+        return stopped("depth");
+    }
+    // A missing part stays a plain link, as a link to a missing note does.
+    let text = source.embed_text(&id, sub.as_deref())?;
+
+    context.depth += 1;
+    context.open.push(part);
+    let body = render(&text, &id, context, true);
+    context.open.pop();
+    context.depth -= 1;
+
+    Some(format!(
+        "<div class=\"{EMBED_CLASS}\" data-note=\"{note}\"{sub_attr}>\
+         <div class=\"embed-head\">{head}</div>\
+         <div class=\"embed-body\">{body}</div></div>"
+    ))
+}
+
 fn link_markdown(link: &WikiLink, from: &NoteId, resolver: &Resolver) -> String {
     // `![[diagram.png|300]]` is an embedded image. From here it takes the same
     // path as `![300](diagram.png)`, with the size in the alt text.
@@ -205,7 +336,12 @@ fn subpath_text(subpath: &crate::wikilink::Subpath) -> String {
 
 /// `fragment` is the note of a fragment (see `fragment_to_html`): no line
 /// marks, and images name their note.
-fn markdown_to_html(source: &str, lines: &LineMap, fragment: Option<&NoteId>) -> String {
+fn markdown_to_html(
+    source: &str,
+    lines: &LineMap,
+    fragment: Option<&NoteId>,
+    embedded: &[String],
+) -> String {
     // Text is merged into one event per paragraph piece. The parser splits it
     // at special characters, but the words to highlight are searched at the end
     // of one piece.
@@ -215,12 +351,84 @@ fn markdown_to_html(source: &str, lines: &LineMap, fragment: Option<&NoteId>) ->
             Some(_) => vec![event],
             None => mark_line(event, lines.line(range.start)),
         });
-    let events = agent_notes(TextMergeStream::new(marked));
+    let events = embeds(agent_notes(TextMergeStream::new(marked)), embedded);
 
     let mut html = String::with_capacity(source.len() * 3 / 2);
     let events = mermaid_blocks(images(events.into_iter(), fragment)).map(line_marks);
     pulldown_cmark::html::push_html(&mut html, events);
-    html
+    if embedded.is_empty() {
+        return html;
+    }
+    // An embed alone in its paragraph leaves the paragraph empty.
+    html.replace("<p></p>", "")
+}
+
+/// Is the open paragraph empty so far, but for its line mark? Then it goes
+/// away, and the mark becomes a block mark before the embed.
+fn paragraph_is_empty(out: &mut Vec<Event<'_>>) -> bool {
+    let mark = match out.last() {
+        Some(Event::Html(html)) if html.starts_with(LINE_SENTINEL) => Some(html.to_string()),
+        _ => None,
+    };
+    let start = out.len() - usize::from(mark.is_some());
+    if start == 0 || !matches!(out[start - 1], Event::Start(Tag::Paragraph)) {
+        return false;
+    }
+    out.truncate(start - 1);
+    if let Some(mark) = mark {
+        let line = mark[LINE_SENTINEL.len()..].trim_start_matches('i');
+        out.push(Event::Html(format!("{LINE_SENTINEL}b{line}").into()));
+    }
+    true
+}
+
+/// Puts the HTML of each embed in place of its `kknow://embed/<index>` link.
+///
+/// An embed is a block, and a block cannot stand in a paragraph. So inside a
+/// paragraph the embed closes it and opens a new one after itself.
+fn embeds<'a>(events: Vec<Event<'a>>, embedded: &[String]) -> Vec<Event<'a>> {
+    if embedded.is_empty() {
+        return events;
+    }
+    let prefix = format!("{SCHEME}embed/");
+    let mut out = Vec::with_capacity(events.len());
+    let mut paragraph = false;
+    let mut skip = false;
+    for event in events {
+        match &event {
+            Event::Start(Tag::Paragraph) => paragraph = true,
+            Event::End(TagEnd::Paragraph) => paragraph = false,
+            Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with(&prefix) => {
+                let html = dest_url[prefix.len()..]
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| embedded.get(index));
+                if let Some(html) = html {
+                    let html = if paragraph && paragraph_is_empty(&mut out) {
+                        // The embed starts the paragraph: no empty paragraph
+                        // before it. Its line mark becomes a block mark.
+                        format!("{html}<p>")
+                    } else if paragraph {
+                        format!("</p>{html}<p>")
+                    } else {
+                        html.clone()
+                    };
+                    out.push(Event::Html(html.into()));
+                    skip = true;
+                    continue;
+                }
+            }
+            Event::End(TagEnd::Link) if skip => {
+                skip = false;
+                continue;
+            }
+            _ => {}
+        }
+        if !skip {
+            out.push(event);
+        }
+    }
+    out
 }
 
 /// Puts a line mark at the start of a block. In a paragraph, heading and list
@@ -774,6 +982,88 @@ mod tests {
 
         assert!(html.contains(r#"href="kknow://note/Rust#Ownership%20rules""#), "{html}");
         assert!(html.contains(r#"href="kknow://note/Rust#^key""#), "{html}");
+    }
+
+    /// Notes for embeds: the whole text for `None`, a section by its key.
+    struct Notes(Vec<(&'static str, Option<&'static str>, &'static str)>);
+
+    impl EmbedSource for Notes {
+        fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String> {
+            self.0
+                .iter()
+                .find(|(note, sub, _)| *note == id.as_str() && *sub == subpath)
+                .map(|(_, _, text)| text.to_string())
+        }
+    }
+
+    fn embed(source: &str, notes: Notes) -> String {
+        let mut names: Vec<&str> = notes.0.iter().map(|(id, _, _)| *id).collect();
+        names.push("Current");
+        to_html_with_embeds(source, &NoteId::parse("Current").unwrap(), &resolver(&names), &notes)
+    }
+
+    #[test]
+    fn a_note_embed_shows_the_note_in_place() {
+        let html = embed(
+            "Before\n\n![[Plan#Goals]]\n\nAfter",
+            Notes(vec![("Plan", Some("Goals"), "## Goals\n\nShip **it**.\n")]),
+        );
+
+        assert!(html.contains(r#"<div class="embed" data-note="Plan" data-sub="Goals">"#), "{html}");
+        assert!(html.contains(r#"<a href="kknow://note/Plan#Goals">Plan</a>"#), "{html}");
+        assert!(html.contains("<strong>it</strong>"), "{html}");
+        // The embedded text has no line marks of its own.
+        let body = &html[html.find("embed-body").unwrap()..html.find("</div></div>").unwrap()];
+        assert!(!body.contains("data-line"), "{html}");
+        assert!(!html.contains("<p></p>"), "{html}");
+    }
+
+    #[test]
+    fn an_embed_inside_a_paragraph_splits_it() {
+        let html = embed("See ![[Plan]] here", Notes(vec![("Plan", None, "Plan text")]));
+
+        let embed_at = html.find("<div class=\"embed\"").unwrap();
+        assert!(html[..embed_at].ends_with("</p>"), "{html}");
+        assert!(html[embed_at..].contains("</div></div><p>"), "{html}");
+        assert!(html.contains("here</p>"), "{html}");
+    }
+
+    #[test]
+    fn a_loop_stops_and_stays_a_link() {
+        let html = embed(
+            "![[A]]",
+            Notes(vec![("A", None, "in A ![[B]]"), ("B", None, "in B ![[A]] ![[Current]]")]),
+        );
+
+        assert!(html.contains("in A"), "{html}");
+        assert!(html.contains("in B"), "{html}");
+        assert_eq!(html.matches(r#"data-reason="loop""#).count(), 2, "{html}");
+    }
+
+    #[test]
+    fn embeds_stop_at_the_depth_limit() {
+        let html = embed(
+            "![[A]]",
+            Notes(vec![
+                ("A", None, "a ![[B]]"),
+                ("B", None, "b ![[C]]"),
+                ("C", None, "c ![[D]]"),
+                ("D", None, "d"),
+            ]),
+        );
+
+        assert!(html.contains("c "), "{html}");
+        assert!(!html.contains(">d<"), "{html}");
+        assert!(html.contains(r#"data-reason="depth" data-note="D""#), "{html}");
+    }
+
+    #[test]
+    fn a_missing_part_and_a_plain_render_keep_the_link() {
+        let html = embed("![[Plan#Ghost]]", Notes(vec![("Plan", None, "text")]));
+        assert!(!html.contains("class=\"embed"), "{html}");
+        assert!(html.contains("kknow://note/Plan#Ghost"), "{html}");
+
+        assert!(!render("![[Rust]]", &["Rust"]).contains("class=\"embed"));
     }
 
     #[test]

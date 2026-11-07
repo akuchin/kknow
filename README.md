@@ -333,7 +333,9 @@ Code) can also edit the file at the path from `read_note`.
 ## What the parser understands
 
 - `[[link]]`, `[[link|alias]]`, `[[link#Heading]]`, `[[link#^block]]`
-- embeds `![[note]]` and Markdown links `[text](note.md)`
+- embeds `![[note]]` and `![[note#Heading]]`: the preview shows the note or
+  its section in place, three levels deep, and a loop stays a link
+- Markdown links `[text](note.md)`
 - block IDs: `^id` at the end of a paragraph or a list item
 - tags `#tag` and `#nested/tags`
 - YAML frontmatter, the metadata block at the top of a note. For now the parser

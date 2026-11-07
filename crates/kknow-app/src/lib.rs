@@ -976,8 +976,10 @@ impl Workspace {
     /// Renders the text as note `id`, with links resolved against the vault.
     ///
     /// The text is a separate argument, so the preview can show unsaved edits.
+    /// `![[note]]` and `![[note#Heading]]` show that note or section in place
+    /// (`sections.rs` reads them).
     pub fn render(&self, id: &NoteId, content: &str) -> String {
-        kknow_index::to_html(content, id, &self.resolver)
+        kknow_index::to_html_with_embeds(content, id, &self.resolver, self)
     }
 
     /// Image that note `from` refers to: a path from the note, a path from the

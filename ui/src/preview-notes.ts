@@ -51,8 +51,12 @@ interface Picked extends PreviewWords {
 }
 
 
-/** Text where a note is useless or impossible: code and diagrams. */
-const SKIPPED = "pre, code, svg";
+/**
+ * Text where a note is useless or impossible: code, diagrams and embeds. The
+ * text of an embed belongs to a different note: the open one has no such
+ * words, and they must not count among its matches.
+ */
+const SKIPPED = "pre, code, svg, .embed";
 
 export class PreviewNotes {
   private readonly dom = document.createElement("div");

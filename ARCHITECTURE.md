@@ -2249,6 +2249,26 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
 
 ## Key decisions and their reasons
 
+- **Embeds render in the core, and search does not index them.**
+  `![[note#Heading]]` becomes a `div.embed` with the section, in the HTML of
+  the core (`to_html_with_embeds`; `Workspace` is the `EmbedSource` that
+  reads the section from the disk).
+  - The prepared Markdown gets a `kknow://embed/<n>` link in place of the
+    embed. The event stream puts the rendered HTML there. Inside a paragraph
+    the embed closes the paragraph and opens a new one after itself; at the
+    start of a paragraph its line mark becomes a block mark before the embed.
+  - The embedded text is a fragment: no line marks, images with `data-note`.
+    Task boxes in it stay disabled, and a selection in it gets no comment
+    popup (`.embed` is in `SKIPPED`): the text belongs to a different note.
+  - Depth 3 and a stack of open parts stop the render. A stopped embed is
+    `div.embed.embed-stopped` with `data-reason` (`loop`, `depth`), and the
+    window puts the reason into its tooltip.
+  - A note keeps its own text in search. With embedded text, a word would
+    find many notes, and a change of one note would need a new index of the
+    notes that embed it.
+  - On `vault-changed`, the window renders the preview again if an `.embed`
+    names a changed note. A deeper embed updates on the next render.
+
 - **kknow finds wikilinks in the raw text, not through parser events.** `[[…]]`
   is not part of CommonMark. pulldown-cmark can split such a sequence into
   several text events. Instead, the parser gives the code and math ranges, and
