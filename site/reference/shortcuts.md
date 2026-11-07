@@ -35,6 +35,7 @@ same in any keyboard layout, for example in Russian.
 | <kbd>⌘F</kbd> | search in the open note |
 | <kbd>⌘G</kbd>, <kbd>⌘⇧G</kbd> | next and previous match |
 | <kbd>⌘⇧O</kbd> | go to a heading of the open note |
+| <kbd>⌘</kbd> + pointer on a link | a preview of the linked note or section |
 | <kbd>⌘⌥B</kbd> | bookmarks of the vault |
 | <kbd>⌘⌥T</kbd> | open tasks of the vault |
 | <kbd>⌘⌥←</kbd>, <kbd>⌘⌥→</kbd> | back and forward through opened notes |

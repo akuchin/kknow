@@ -1508,6 +1508,30 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   - A link to a note that does not exist creates the note, as a click in the
     preview does.
   - A standalone file has no vault, so it gets no completion and no jump.
+- Hover preview (`ui/src/hover-preview.ts`, wired in `window/palette.ts`):
+  ⌘ and the pointer on a link show the linked note in a popup.
+  - The editor reports the link under the pointer while ⌘ is down
+    (`EditorLinks.peek`, from `followLinks`). It keeps the last pointer
+    position, so pressing ⌘ over a link counts too. The preview does the same
+    with `elementFromPoint`.
+  - The window asks `link_preview(from, target)`. The core resolves the link
+    as `link_target` does and renders the part with `render_section`:
+    `#Heading` is the heading and its text up to the next heading of the same
+    or a higher level, `#^block` is the paragraph around the block line, no
+    subpath is the body without frontmatter. An unknown heading gives the
+    whole note with `partMissing`; a missing note gives `null`.
+  - The part is rendered with `fragment_to_html`: no line marks (their
+    numbers belong to a different text, and bookmarks and task clicks would
+    go to the open note), and images carry `data-note`, so the window loads
+    them relative to their own note.
+  - The popup waits 300 ms on a link, stays while the pointer is on the link
+    or in it, and hides 250 ms after the pointer leaves both, at once on Esc,
+    a click outside or another note. Previews are cached until a different
+    note opens or `vault-changed` comes.
+  - A note link in the preview keeps its subpath: `kknow://note/<id>#<sub>`
+    (a `#` inside the ID is encoded). `parseLink` splits it, and a click goes
+    to the heading. `kknow://heading/<text>` (a link inside the note) also
+    goes there now.
 - The window gives the editor the vault data through `Editor.setLinks` in
   `initPalette`. The palette module already handles the links of the preview.
   `main.ts` has a line limit, and the hook does not need it.

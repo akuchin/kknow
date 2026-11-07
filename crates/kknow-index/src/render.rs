@@ -51,7 +51,20 @@ const LINE_SENTINEL: &str = "\0kknow-line:";
 pub fn to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
     let parsed = parse(source);
     let (prepared, lines) = rewrite(source, &parsed, from, resolver);
-    markdown_to_html(&prepared, &lines)
+    markdown_to_html(&prepared, &lines, None)
+}
+
+/// Renders a part of note `from` to show inside a different note: a hover
+/// preview or an embed.
+///
+/// There are no line marks: their numbers would be lines of a different text,
+/// and the window would put bookmarks and task clicks on the wrong note. An
+/// image gets `data-note`: the window loads it relative to `from`, not to the
+/// open note.
+pub fn fragment_to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
+    let parsed = parse(source);
+    let (prepared, lines) = rewrite(source, &parsed, from, resolver);
+    markdown_to_html(&prepared, &lines, Some(from))
 }
 
 /// Where a piece of the prepared text comes from in the source.
@@ -169,7 +182,16 @@ fn link_markdown(link: &WikiLink, from: &NoteId, resolver: &Resolver) -> String 
     }
 
     match resolver.resolve(&link.target, from) {
-        Some(id) => format!("[{text}](<{SCHEME}note/{}>)", encode(id.as_str())),
+        // `#` after the ID keeps the heading or the block: a click goes there,
+        // and a hover preview shows that part. Inside the ID, `#` is encoded.
+        Some(id) => {
+            let part = match &link.subpath {
+                Some(crate::wikilink::Subpath::Heading(heading)) => format!("#{}", encode(heading)),
+                Some(crate::wikilink::Subpath::Block(block)) => format!("#^{}", encode(block)),
+                None => String::new(),
+            };
+            format!("[{text}](<{SCHEME}note/{}{part}>)", encode(id.as_str()))
+        }
         None => format!("[{text}](<{SCHEME}missing/{}>)", encode(&link.target)),
     }
 }
@@ -181,17 +203,22 @@ fn subpath_text(subpath: &crate::wikilink::Subpath) -> String {
     }
 }
 
-fn markdown_to_html(source: &str, lines: &LineMap) -> String {
+/// `fragment` is the note of a fragment (see `fragment_to_html`): no line
+/// marks, and images name their note.
+fn markdown_to_html(source: &str, lines: &LineMap, fragment: Option<&NoteId>) -> String {
     // Text is merged into one event per paragraph piece. The parser splits it
     // at special characters, but the words to highlight are searched at the end
     // of one piece.
     let marked = Parser::new_ext(source, options())
         .into_offset_iter()
-        .flat_map(|(event, range)| mark_line(event, lines.line(range.start)));
+        .flat_map(|(event, range)| match fragment {
+            Some(_) => vec![event],
+            None => mark_line(event, lines.line(range.start)),
+        });
     let events = agent_notes(TextMergeStream::new(marked));
 
     let mut html = String::with_capacity(source.len() * 3 / 2);
-    let events = mermaid_blocks(images(events.into_iter())).map(line_marks);
+    let events = mermaid_blocks(images(events.into_iter(), fragment)).map(line_marks);
     pulldown_cmark::html::push_html(&mut html, events);
     html
 }
@@ -287,7 +314,11 @@ fn agent_notes<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
 /// The alt text can carry a size: `![diagram|300](a.png)` sets the width,
 /// `|300x200` sets width and height, `![300](a.png)` is a size without alt
 /// text. CSS limits the rest, so a huge screenshot does not break reading.
-fn images<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = Event<'a>> {
+fn images<'a>(
+    events: impl Iterator<Item = Event<'a>>,
+    note: Option<&NoteId>,
+) -> impl Iterator<Item = Event<'a>> {
+    let note = note.map(|id| escape_html(id.as_str()));
     // `Some` while inside an image: the URL and the alt text collected so far.
     let mut image: Option<(String, String)> = None;
 
@@ -296,7 +327,9 @@ fn images<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = E
             image = Some((dest_url.to_string(), String::new()));
             None
         }
-        Event::End(TagEnd::Image) => image.take().map(|(target, alt)| image_html(&target, &alt)),
+        Event::End(TagEnd::Image) => image
+            .take()
+            .map(|(target, alt)| image_html(&target, &alt, note.as_deref())),
         Event::Text(text) | Event::Code(text) if image.is_some() => {
             if let Some((_, alt)) = image.as_mut() {
                 alt.push_str(&text);
@@ -308,7 +341,7 @@ fn images<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = E
     })
 }
 
-fn image_html<'a>(target: &str, alt: &str) -> Event<'a> {
+fn image_html<'a>(target: &str, alt: &str, note: Option<&str>) -> Event<'a> {
     let (alt, size) = match alt.rsplit_once('|') {
         Some((alt, size)) if parse_size(size).is_some() => (alt, parse_size(size)),
         _ if parse_size(alt).is_some() => ("", parse_size(alt)),
@@ -321,8 +354,10 @@ fn image_html<'a>(target: &str, alt: &str) -> Event<'a> {
     };
     let target = escape_html(target);
     let alt = escape_html(alt.trim());
+    let note = note.map_or(String::new(), |id| format!(" data-note=\"{id}\""));
     Event::InlineHtml(
-        format!("<img class=\"{IMAGE_CLASS}\" data-src=\"{target}\" alt=\"{alt}\"{style}>").into(),
+        format!("<img class=\"{IMAGE_CLASS}\" data-src=\"{target}\"{note} alt=\"{alt}\"{style}>")
+            .into(),
     )
 }
 
@@ -720,6 +755,25 @@ mod tests {
             "{html}"
         );
         assert!(!html.contains(" src="), "{html}");
+    }
+
+    #[test]
+    fn a_fragment_has_no_line_marks_and_its_images_name_the_note() {
+        let from = NoteId::parse("Docs/Plan").unwrap();
+        let resolver = Resolver::new([&from]);
+        let html = fragment_to_html("## Goals\n\n![shot](img/a.png) and [[Plan]]\n", &from, &resolver);
+
+        assert!(!html.contains("data-line"), "{html}");
+        assert!(html.contains(r#"data-src="img/a.png" data-note="Docs/Plan""#), "{html}");
+        assert!(html.contains("kknow://note/Docs/Plan"), "{html}");
+    }
+
+    #[test]
+    fn a_link_keeps_its_heading_or_block_after_the_id() {
+        let html = render("[[Rust#Ownership rules]] and [[Rust#^key]]", &["Rust"]);
+
+        assert!(html.contains(r#"href="kknow://note/Rust#Ownership%20rules""#), "{html}");
+        assert!(html.contains(r#"href="kknow://note/Rust#^key""#), "{html}");
     }
 
     #[test]

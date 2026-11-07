@@ -340,6 +340,24 @@ file: string | null,
  */
 problems: Array<string>, };
 
+/**
+ * The note or the part of it that a link names, for a hover preview.
+ */
+export type LinkPreview = { id: string, title: string, 
+/**
+ * HTML without line marks; images name their note.
+ */
+html: string, 
+/**
+ * 1-based line of the heading or block; `null` for the whole note.
+ */
+line: number | null, 
+/**
+ * The link names a heading or block that the note does not have: the
+ * preview shows the whole note.
+ */
+partMissing: boolean, };
+
 export type LinkRef = { id: string, title: string, label: string | null, };
 
 /**

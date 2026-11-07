@@ -478,6 +478,8 @@ Links and lists in the editor:
   block IDs, `#` the tags.
 - ⌘-click or ⌥Enter opens the link under the cursor. A link to a missing note
   creates the note.
+- ⌘ and the pointer on a link, in the editor or in the preview, show the
+  linked note in a popup. `[[note#Heading]]` shows only that section.
 - A list shows dots, and a task shows a box that you can click.
 - **Tab** and **⇧Tab** nest and un-nest a list item. **⌥↑** and **⌥↓** move it
   with its nested items.
@@ -1352,6 +1354,7 @@ event, and both windows apply it immediately.
 | ⌘F | search within the open note |
 | ⌘G, ⌘⇧G | next and previous match |
 | ⌘⇧O | go to a heading of the open note |
+| ⌘ + pointer on a link | preview of the linked note or section |
 | Esc in note search | close the search panel |
 | ⌘E | next note mode: Edit, Side by side, Read |
 | ⌘\\ | hide or show the sidebar |

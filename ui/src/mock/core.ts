@@ -31,6 +31,7 @@ import type {
   LinkTargetView,
   BacklinkLineView,
   MentionView,
+  LinkPreview,
   LinkRef,
   ThemeSet,
   TrashEntryView,
@@ -896,6 +897,38 @@ function linkMention(from: string, start: number, end: number, text: string, tar
   return view(find(target)).backlinks;
 }
 
+/**
+ * A hover preview as the core gives it. The mock cuts the section by the
+ * heading lines of the text and shows it as paragraphs, without Markdown.
+ */
+function linkPreview(from: string, link: string): LinkPreview | null {
+  const target = linkTarget(from, link);
+  if (!target) return null;
+  const note = find(target.id);
+  const lines = note.content.split("\n");
+  const sub = link.split("|")[0].split(/#(.*)/s)[1]?.trim() ?? "";
+  const start = target.line;
+  let part = lines;
+  if (start !== null) {
+    const level = /^(#+)\s/.exec(lines[start - 1])?.[1].length ?? 7;
+    const end = lines.findIndex(
+      (text, index) => index >= start && (/^(#+)\s/.exec(text)?.[1].length ?? 7) <= level,
+    );
+    part = lines.slice(start - 1, end < 0 ? lines.length : end);
+  }
+  // The whole note: its HTML without the line marks, as the core gives it.
+  const whole = note.html.replace(/<span class="line-mark[^"]*" data-line="\d+"><\/span>/g, "");
+  const html = start === null ? whole : part
+    .filter((text) => text.trim() && !text.startsWith("<!--"))
+    .map((text) => {
+      const heading = /^(#+)\s+(.*)$/.exec(text);
+      const escaped = (heading?.[2] ?? text).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      return heading ? `<h${heading[1].length}>${escaped}</h${heading[1].length}>` : `<p>${escaped}</p>`;
+    })
+    .join("");
+  return { id: note.id, title: note.title, html, line: start, partMissing: Boolean(sub) && start === null };
+}
+
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
   if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
@@ -1433,6 +1466,9 @@ export async function invoke<T>(
 
     case "link_target":
       return linkTarget(args?.from as string, args?.target as string) as T;
+
+    case "link_preview":
+      return linkPreview(args?.from as string, args?.target as string) as T;
 
     case "note_backlinks":
       return noteBacklinks(args?.id as string) as T;

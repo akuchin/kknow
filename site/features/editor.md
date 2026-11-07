@@ -49,6 +49,21 @@ the note at that line. A link to a missing note creates the note.
 
 A plain click puts the cursor into the link, so you can change its text.
 
+### Hover preview
+
+Hold <kbd>⌘</kbd> and point at a link, in the editor or in the preview. After
+a short pause, a popup shows the linked note. A link to `note#Heading` shows
+only that section: the heading and the text up to the next heading of the
+same or a higher level. A link to `note#^block` shows the paragraph of the
+block.
+
+- You can also point first and press <kbd>⌘</kbd> after that.
+- Move the pointer into the popup to scroll it or to click a link in it.
+- A click on the note name at the top opens the note at that section.
+- <kbd>Esc</kbd>, a click outside or a different note hides the popup.
+- If the note has no such heading, the popup shows the whole note and says so.
+  A link to a missing note says that the note does not exist.
+
 ## Lists
 
 A list shows a dot for each item. A nested list shows a ring, and a deeper one

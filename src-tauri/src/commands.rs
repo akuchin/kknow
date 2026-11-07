@@ -172,6 +172,22 @@ pub struct MentionView {
     end: usize,
 }
 
+/// The note or the part of it that a link names, for a hover preview.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct LinkPreview {
+    id: String,
+    title: String,
+    /// HTML without line marks; images name their note.
+    html: String,
+    /// 1-based line of the heading or block; `null` for the whole note.
+    line: Option<usize>,
+    /// The link names a heading or block that the note does not have: the
+    /// preview shows the whole note.
+    part_missing: bool,
+}
+
 /// A heading of a note.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -747,6 +763,45 @@ pub fn link_mention(
         workspace.link_mention(&from, start..end, &text, &target)?;
         Ok(dedup(workspace, workspace.backlinks(&target), |edge| {
             &edge.from
+        }))
+    })
+}
+
+/// What a link of note `from` shows in a hover preview: the section of
+/// `#Heading`, the block of `#^id`, or the whole note. `null` means the note
+/// does not exist.
+#[tauri::command(async)]
+pub fn link_preview(
+    state: State<'_, AppState>,
+    from: String,
+    target: String,
+    vault: Option<String>,
+) -> Result<Option<LinkPreview>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        let from = NoteId::parse(&from).ok_or_else(|| Error::NotFound(from.clone()))?;
+        let Some(found) = workspace.link_target(&from, &target) else {
+            return Ok(None);
+        };
+        let id = found.id;
+        let subpath = target
+            .split('|')
+            .next()
+            .and_then(|link| link.split_once('#'))
+            .map(|(_, sub)| sub.trim())
+            .filter(|sub| !sub.is_empty());
+        let (section, part_missing) = match workspace.render_section(&id, subpath)? {
+            Some(section) => (section, false),
+            None => match workspace.render_section(&id, None)? {
+                Some(whole) => (whole, subpath.is_some()),
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(LinkPreview {
+            id: id.as_str().to_string(),
+            title: title_of(workspace, &id),
+            html: section.html,
+            line: section.line,
+            part_missing,
         }))
     })
 }
@@ -1659,6 +1714,32 @@ mod tests {
             fs::read_to_string(dir.path().join("Notes.md")).unwrap(),
             "about [[kknow]] today\n"
         );
+    }
+
+    #[test]
+    fn a_link_preview_shows_the_section_or_the_whole_note() {
+        let dir = vault();
+        fs::write(
+            dir.path().join("Plan.md"),
+            "# Plan\n\n## Goals\n\nShip it.\n\n## Done\n\nNothing.\n",
+        )
+        .unwrap();
+        let app = app(&[dir.path()]);
+
+        let goals = link_preview(app.state(), "Index".into(), "Plan#Goals|g".into(), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!((goals.id.as_str(), goals.line), ("Plan", Some(3)));
+        assert!(goals.html.contains("Ship it.") && !goals.html.contains("Nothing."));
+        assert!(!goals.part_missing);
+
+        let ghost = link_preview(app.state(), "Index".into(), "Plan#Ghost".into(), None)
+            .unwrap()
+            .unwrap();
+        assert!(ghost.part_missing && ghost.html.contains("Nothing."));
+
+        let missing = link_preview(app.state(), "Index".into(), "Nobody".into(), None).unwrap();
+        assert!(missing.is_none());
     }
 
     #[test]

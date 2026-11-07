@@ -10,6 +10,7 @@ pub mod keymap;
 pub mod lines;
 pub mod mcp;
 pub mod mentions;
+pub mod sections;
 pub mod merge;
 pub mod meta;
 pub mod proposals;
@@ -1009,24 +1010,29 @@ impl Workspace {
             self.resolve(target, from)?
         };
         let parsed = self.parsed.get(&id)?;
-        let line = subpath.filter(|sub| !sub.is_empty()).and_then(|sub| {
-            match sub.strip_prefix('^') {
-                Some(block) => parsed
-                    .blocks
-                    .iter()
-                    .find(|each| each.id.eq_ignore_ascii_case(block.trim()))
-                    .map(|each| each.line),
-                // `[[note#Part#Section]]` names the path to a heading; the
-                // last part is the heading itself.
-                None => heading_line(&parsed.headings, sub.rsplit('#').next().unwrap_or(sub)),
-            }
-        });
+        let line = subpath
+            .filter(|sub| !sub.is_empty())
+            .and_then(|sub| subpath_line(parsed, sub));
         Some(LinkTarget {
             id,
             line,
             headings: &parsed.headings,
             blocks: &parsed.blocks,
         })
+    }
+}
+
+/// The line of `#Heading` or `#^block` in a note.
+pub(crate) fn subpath_line(parsed: &ParsedNote, sub: &str) -> Option<usize> {
+    match sub.strip_prefix('^') {
+        Some(block) => parsed
+            .blocks
+            .iter()
+            .find(|each| each.id.eq_ignore_ascii_case(block.trim()))
+            .map(|each| each.line),
+        // `[[note#Part#Section]]` names the path to a heading; the last part
+        // is the heading itself.
+        None => heading_line(&parsed.headings, sub.rsplit('#').next().unwrap_or(sub)),
     }
 }
 

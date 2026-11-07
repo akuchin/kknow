@@ -73,25 +73,34 @@ function dataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/** A `data:` URL, or `null` if the image is missing. */
-function imageUrl(target: string): Promise<string | null> {
-  const known = cache.get(target);
+/**
+ * A `data:` URL, or `null` if the image is missing.
+ *
+ * `note` is the note of a fragment from another note (a hover preview, an
+ * embed): its image paths are relative to that note, not to the open one.
+ */
+function imageUrl(target: string, note?: string): Promise<string | null> {
+  const key = note ? `${note}\n${target}` : target;
+  const known = cache.get(key);
   if (known) return known;
 
   const asked = owner;
   const loading = (async () => {
     if (!asked || isExternal(target)) return null;
     try {
-      const bytes = asked.file
-        ? await api.fileImage(asked.path, target)
-        : await api.noteImage(asked.id, target);
+      const bytes =
+        note && !asked.file
+          ? await api.noteImage(note, target)
+          : asked.file
+            ? await api.fileImage(asked.path, target)
+            : await api.noteImage(asked.id, target);
       const ext = /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(target)?.[1]?.toLowerCase() ?? "";
       return await dataUrl(new Blob([toBytes(bytes)], { type: MIME[ext] ?? "" }));
     } catch {
       return null;
     }
   })();
-  cache.set(target, loading);
+  cache.set(key, loading);
   return loading;
 }
 
@@ -143,7 +152,7 @@ export function paintImages(root: ParentNode, loaded?: () => void): void {
     };
     // The file exists, but the browser cannot decode it: a label is clearer than "?".
     img.onerror = () => fail("image.broken");
-    void imageUrl(target).then((url) => {
+    void imageUrl(target, img.dataset.note).then((url) => {
       if (url) img.src = url;
       else fail(isExternal(target) ? "image.external" : "image.missing");
     });

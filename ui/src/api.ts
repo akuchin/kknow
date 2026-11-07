@@ -48,6 +48,7 @@ import type {
   LinkTargetView,
   BacklinkLineView,
   MentionView,
+  LinkPreview,
   HeadingView,
   Theme,
   ThemeSet,
@@ -108,6 +109,7 @@ export type {
   LinkTargetView,
   BacklinkLineView,
   MentionView,
+  LinkPreview,
   HeadingView,
   Theme,
   ThemeSet,
@@ -290,6 +292,12 @@ export const api = {
    */
   linkTarget: (from: string, target: string) =>
     invoke<LinkTargetView | null>("link_target", { from, target }),
+  /**
+   * What a link of note `from` shows in a hover preview: the section, the
+   * block or the whole note. `null` means the note does not exist.
+   */
+  linkPreview: (from: string, target: string) =>
+    invoke<LinkPreview | null>("link_preview", { from, target }),
   /** Links to the note with their lines, by source note, then in text order. */
   noteBacklinks: (id: string) => invoke<BacklinkLineView[]>("note_backlinks", { id }),
   /** Places where the name or an alias of the note stands as plain text. */
@@ -569,8 +577,14 @@ export function onUpdateStatus(handler: (status: UpdateStatus) => void) {
   return listen<UpdateStatus>("update-status", (event) => handler(event.payload));
 }
 
-/** Parses a `kknow://note/<id>` link made by the renderer. */
-export function parseLink(href: string): { kind: string; value: string } | null {
+/**
+ * Parses a `kknow://note/<id>#<heading>` link made by the renderer. `sub` is
+ * the heading or `^block` after `#`, if the link has one; a `#` inside the ID
+ * is encoded.
+ */
+export function parseLink(
+  href: string,
+): { kind: string; value: string; sub?: string } | null {
   const prefix = "kknow://";
   if (!href.startsWith(prefix)) return null;
 
@@ -578,8 +592,24 @@ export function parseLink(href: string): { kind: string; value: string } | null 
   const slash = rest.indexOf("/");
   if (slash < 0) return null;
 
-  return {
-    kind: rest.slice(0, slash),
-    value: decodeURIComponent(rest.slice(slash + 1)),
+  const kind = rest.slice(0, slash);
+  const [value, sub] = rest.slice(slash + 1).split(/#(.*)/s);
+  const link: { kind: string; value: string; sub?: string } = {
+    kind,
+    value: decodeURIComponent(value),
   };
+  if (kind === "note" && sub) link.sub = decodeURIComponent(sub);
+  return link;
+}
+
+/**
+ * The link text that `link_target` and `link_preview` take for a parsed
+ * preview link: `id#sub`, `#heading` for a link inside the note, or the
+ * target of a missing note. A tag is no link: `null`.
+ */
+export function linkText(link: { kind: string; value: string; sub?: string }): string | null {
+  if (link.kind === "note") return link.sub ? `${link.value}#${link.sub}` : link.value;
+  if (link.kind === "heading") return `#${link.value}`;
+  if (link.kind === "missing") return link.value;
+  return null;
 }

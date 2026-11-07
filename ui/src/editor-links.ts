@@ -70,9 +70,24 @@ function followKey(event: MouseEvent | KeyboardEvent, mac: boolean): boolean {
  * ⌘-click on a link calls `follow`. While ⌘ is down, the editor has the
  * `cm-follow` class: the links get a pointer, so the user sees what a click
  * does.
+ *
+ * `peek` gets the link under the pointer while ⌘ is down, and `null` when
+ * there is none: the window shows a preview of the note. Pressing ⌘ over a
+ * link counts too, so the extension keeps the last pointer position.
  */
-export function followLinks(follow: (target: string) => void, mac: boolean): Extension {
+export function followLinks(
+  follow: (target: string) => void,
+  mac: boolean,
+  peek?: (target: string | null, x: number, y: number) => void,
+): Extension {
   const mark = (view: EditorView, on: boolean) => view.dom.classList.toggle("cm-follow", on);
+  let pointer: { x: number; y: number } | null = null;
+  const report = (view: EditorView, on: boolean) => {
+    if (!peek) return;
+    if (!on || !pointer) return peek(null, 0, 0);
+    const pos = view.posAtCoords(pointer);
+    peek(pos === null ? null : linkAt(view.state, pos), pointer.x, pointer.y);
+  };
   return EditorView.domEventHandlers({
     mousedown(event, view) {
       if (event.button !== 0 || !followKey(event, mac)) return false;
@@ -80,19 +95,29 @@ export function followLinks(follow: (target: string) => void, mac: boolean): Ext
       const target = pos === null ? null : linkAt(view.state, pos);
       if (!target) return false;
       event.preventDefault();
+      peek?.(null, 0, 0);
       follow(target);
       return true;
     },
     mousemove(event, view) {
+      pointer = { x: event.clientX, y: event.clientY };
       mark(view, followKey(event, mac));
+      report(view, followKey(event, mac));
+      return false;
+    },
+    mouseleave(_event, view) {
+      pointer = null;
+      report(view, false);
       return false;
     },
     keydown(event, view) {
       mark(view, followKey(event, mac));
+      if (event.key === "Meta" || event.key === "Control") report(view, followKey(event, mac));
       return false;
     },
     keyup(event, view) {
       mark(view, followKey(event, mac));
+      if (event.key === "Meta" || event.key === "Control") report(view, followKey(event, mac));
       return false;
     },
     blur(_event, view) {

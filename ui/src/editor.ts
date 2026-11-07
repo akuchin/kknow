@@ -280,6 +280,11 @@ export interface EditorLinks {
   anchors(target: string): Promise<LinkAnchors | null>;
   /** Opens the target of a link: `note`, `note#Heading`, `#^block`. */
   follow(target: string): void;
+  /**
+   * ⌘ and the pointer are on a link (`null`: no longer): the window shows a
+   * preview at the pointer.
+   */
+  peek?(target: string | null, x: number, y: number): void;
 }
 
 /** Completion, ⌘-click and the `link.follow` key. */
@@ -290,7 +295,7 @@ function links(options: EditorLinks) {
       override: [linkCompletion({ ...options, headings: headingsOf })],
       icons: false,
     }),
-    followLinks(options.follow, MAC),
+    followLinks(options.follow, MAC, options.peek),
     keymap.of(
       bindings("link.follow", (view) => {
         const target = linkAt(view.state, view.state.selection.main.head);

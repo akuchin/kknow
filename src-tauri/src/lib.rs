@@ -324,6 +324,7 @@ pub fn run() {
             commands::note_backlinks,
             commands::unlinked_mentions,
             commands::link_mention,
+            commands::link_preview,
             commands::delete_note,
             commands::list_folders,
             commands::create_folder,

@@ -79,15 +79,11 @@ The plan for the redesign is closed. Its archive copy is
 
 These follow the link completion and the list keys. Do them in this order.
 
-5. **Hover preview, then real embeds.** The plan is in
+5. **Real embeds.** The hover preview is done. The plan is in
    [docs/reading-2026.md](docs/reading-2026.md).
-   - ⌘ plus hover on a link shows a popup with the note, or with the section
-     of `#Heading`. The core needs a render of one section:
-     `Workspace::render_section(id, subpath)`, by the heading line from
-     `link_target`.
-   - Then `![[note]]` and `![[note#Heading]]` show the content in place, in
-     the preview and in live preview. Limit the depth (3) and stop on a
-     loop. An embed is read-only; a click opens the note.
+   - `![[note]]` and `![[note#Heading]]` show the content in place, in the
+     preview and in live preview. Limit the depth (3) and stop on a loop. An
+     embed is read-only; a click opens the note.
 
 ## Larger tasks
 

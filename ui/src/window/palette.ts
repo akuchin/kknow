@@ -7,8 +7,13 @@
 // The module does not touch the DOM on import: `initPalette` creates the
 // palette where the old top-level code created it.
 
-import { api, parseLink } from "../api";
+import { MAC } from "../actions";
+import { api, linkText, onVaultChanged, parseLink, type LinkPreview } from "../api";
+import { renderDiagrams } from "../diagram";
 import type { EditorLinks } from "../editor";
+import { paintCodeBlocks } from "../highlight";
+import { HoverPreview } from "../hover-preview";
+import { paintImages } from "../images";
 import type { LinkAnchors } from "../link-complete";
 import { scrollToLine } from "../preview-lines";
 import { t } from "../i18n";
@@ -48,20 +53,9 @@ export function initPalette(): void {
   el.preview.addEventListener("click", (event) => {
     const anchor = (event.target as HTMLElement).closest("a");
     if (!anchor) return;
-
-    const link = parseLink(anchor.getAttribute("href") ?? "");
-    if (!link) return;
-    event.preventDefault();
-
-    if (link.kind === "note") {
-      void openNote(link.value);
-    } else if (link.kind === "missing") {
-      void createNote(link.value);
-    } else if (link.kind === "tag") {
-      // A tag in the preview is a ready query: the palette opens with it.
-      palette.open(`tag:${link.value}`);
-    }
+    if (followAnchor(anchor)) event.preventDefault();
   });
+  initHover();
 
   palette = new Palette({
     // Search all vaults at once: the user wants the note, the vault is secondary.
@@ -154,6 +148,97 @@ async function anchors(target: string): Promise<LinkAnchors | null> {
 }
 
 /**
+ * Follows a link of the preview or of a hover popup. `false`: it is no link
+ * of ours, and the browser can have the click.
+ */
+function followAnchor(anchor: HTMLAnchorElement): boolean {
+  const link = parseLink(anchor.getAttribute("href") ?? "");
+  if (!link) return false;
+
+  if (link.kind === "note" && !link.sub) {
+    void openNote(link.value);
+  } else if (link.kind === "note" || link.kind === "heading") {
+    // The heading or the block of the link: the core finds its line.
+    void follow(linkText(link) ?? link.value);
+  } else if (link.kind === "missing") {
+    void createNote(link.value);
+  } else if (link.kind === "tag") {
+    // A tag in the preview is a ready query: the palette opens with it.
+    palette.open(`tag:${link.value}`);
+  }
+  return true;
+}
+
+/** The note and the line of a hover preview. */
+async function openPreview(preview: LinkPreview): Promise<void> {
+  if (preview.id !== state.note?.id) await openNote(preview.id);
+  if (!preview.line || state.note?.id !== preview.id) return;
+  editor.goToLine(preview.line, "start");
+  if (state.mode !== "edit") scrollToLine(el.preview, preview.line);
+}
+
+/** ⌘ in the window: the key that follows a link and shows its preview. */
+function followKey(event: MouseEvent | KeyboardEvent): boolean {
+  return MAC ? event.metaKey : event.ctrlKey;
+}
+
+let hover: HoverPreview;
+
+/**
+ * ⌘ and the pointer on a link of the editor or of the preview show the
+ * linked note in a popup. A standalone file has no vault, so no preview.
+ */
+function initHover(): void {
+  hover = new HoverPreview({
+    load: (target) => {
+      const from = vaultNote();
+      return from ? api.linkPreview(from, target) : Promise.resolve(null);
+    },
+    paint: (root) => {
+      paintCodeBlocks(root);
+      paintImages(root);
+      void renderDiagrams(root);
+    },
+    open: (preview) => void openPreview(preview),
+    follow: (anchor) => void followAnchor(anchor),
+  });
+
+  // The preview: the anchor under the pointer, also when ⌘ goes down later.
+  let pointer: { x: number; y: number } | null = null;
+  const peek = (on: boolean) => {
+    if (!on || !pointer || !vaultNote()) return hover.point(null, 0, 0);
+    const anchor = document.elementFromPoint(pointer.x, pointer.y)?.closest("a");
+    const link =
+      anchor && el.preview.contains(anchor) ? parseLink(anchor.getAttribute("href") ?? "") : null;
+    hover.point(link ? linkText(link) : null, pointer.x, pointer.y);
+  };
+  el.preview.addEventListener("mousemove", (event) => {
+    pointer = { x: event.clientX, y: event.clientY };
+    peek(followKey(event));
+  });
+  el.preview.addEventListener("mouseleave", () => {
+    pointer = null;
+    peek(false);
+  });
+  for (const type of ["keydown", "keyup"] as const) {
+    document.addEventListener(type, (event) => {
+      if (pointer && (event.key === "Meta" || event.key === "Control")) peek(followKey(event));
+    });
+  }
+
+  // Another note: its links resolve from a different place.
+  let shown: string | null = null;
+  state.on("note", (note) => {
+    if ((note?.id ?? null) === shown) return;
+    shown = note?.id ?? null;
+    hover.hide();
+    hover.clear();
+  });
+  // A note changed on disk: a cached preview can be old.
+  void onVaultChanged(() => hover.clear());
+}
+
+/**
  * Opens the note of a link, at its heading or block. A link to a note that
  * does not exist creates it, as a click in the preview does.
  */
@@ -181,4 +266,5 @@ const editorLinks: EditorLinks = {
   notes: () => (vaultNote() ? activeNotes() : []),
   anchors,
   follow: (target) => void follow(target),
+  peek: (target, x, y) => hover.point(vaultNote() ? target : null, x, y),
 };

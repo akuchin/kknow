@@ -3698,3 +3698,50 @@ body[data-palette="open"] #app {
   margin: 2px 6px 0;
   font-size: 12px;
 }
+
+/* Hover preview (⌘ and the pointer on a link): the linked note or its section
+   in a float next to the pointer. It is a small copy of the preview. */
+.hover-preview {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(360px, calc(100vh - 24px));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+  overflow: hidden;
+}
+
+.hover-preview[hidden] {
+  display: none;
+}
+
+.hover-preview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hover-preview-head .link {
+  font-weight: 600;
+}
+
+.hover-preview-head p {
+  margin: 0;
+}
+
+.hover-preview-body.preview {
+  min-height: 0;
+  padding: 4px 16px 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.hover-preview-body h1 {
+  font-size: 1.35em;
+}
