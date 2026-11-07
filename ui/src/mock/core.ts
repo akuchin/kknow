@@ -29,6 +29,7 @@ import type {
   TargetKind,
   TaskView,
   LinkTargetView,
+  BacklinkLineView,
   ThemeSet,
   TrashEntryView,
   UpdateStatus,
@@ -793,6 +794,33 @@ function linkTarget(from: string, link: string): LinkTargetView | null {
   return { id: note.id, line, headings, blocks: blocks.map((each) => each.id) };
 }
 
+/**
+ * Links to note `id` with their lines. The mock finds `[[name]]` and
+ * `[[path]]` wikilinks by text; the core also knows Markdown links.
+ */
+function noteBacklinks(id: string): BacklinkLineView[] {
+  const names = [id, id.split("/").pop() ?? id].map((each) => each.toLowerCase());
+  const lines: BacklinkLineView[] = [];
+  for (const note of [...activeVault.notes].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (note.id === id) continue;
+    note.content.split("\n").forEach((text, index) => {
+      for (const found of text.matchAll(/!?\[\[([^\]|#]+)[^\]]*\]\]/g)) {
+        if (!names.includes(found[1].trim().toLowerCase())) continue;
+        const at = found.index ?? 0;
+        lines.push({
+          id: note.id,
+          title: note.title,
+          line: index + 1,
+          before: text.slice(0, at).trimStart(),
+          text: found[0],
+          after: text.slice(at + found[0].length).trimEnd(),
+        });
+      }
+    });
+  }
+  return lines;
+}
+
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
   if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
@@ -1330,6 +1358,9 @@ export async function invoke<T>(
 
     case "link_target":
       return linkTarget(args?.from as string, args?.target as string) as T;
+
+    case "note_backlinks":
+      return noteBacklinks(args?.id as string) as T;
 
     case "create_note": {
       const name = args?.name as string;

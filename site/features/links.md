@@ -45,7 +45,7 @@ The note header shows the number of notes that link to the open note. Its menu
 opens each of them. In the terminal:
 
 ```bash
-kknow backlinks "Project plan"
+kknow backlinks "Project plan"   # each link as note:line and its line
 kknow links "Project plan"     # outgoing links
 kknow broken                   # links to notes that do not exist
 kknow orphans                  # notes with no incoming links

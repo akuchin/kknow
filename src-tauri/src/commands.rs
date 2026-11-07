@@ -139,6 +139,22 @@ pub struct LinkTargetView {
     blocks: Vec<String>,
 }
 
+/// A link to the open note, where it stands in the source note.
+#[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct BacklinkLineView {
+    /// The source note.
+    id: String,
+    title: String,
+    /// 1-based line in the source note.
+    line: usize,
+    /// The line text before the link, cut to a few words.
+    before: String,
+    /// The link as written.
+    text: String,
+    after: String,
+}
+
 /// A heading of a note.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -641,6 +657,31 @@ pub fn link_target(
                     .collect(),
                 blocks: found.blocks.iter().map(|block| block.id.clone()).collect(),
             }))
+    })
+}
+
+/// The links to note `id` with their lines. The window asks for them when it
+/// shows the lines: the core reads each source note for this.
+#[tauri::command(async)]
+pub fn note_backlinks(
+    state: State<'_, AppState>,
+    id: String,
+    vault: Option<String>,
+) -> Result<Vec<BacklinkLineView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        let id = note_id(workspace, &id)?;
+        Ok(workspace
+            .backlink_lines(&id)
+            .into_iter()
+            .map(|link| BacklinkLineView {
+                id: link.edge.from.as_str().to_string(),
+                title: title_of(workspace, &link.edge.from),
+                line: link.context.line,
+                before: link.context.before,
+                text: link.context.text,
+                after: link.context.after,
+            })
+            .collect())
     })
 }
 
@@ -1508,6 +1549,19 @@ mod tests {
             fs::read_to_string(dir.path().join("Index.md")).unwrap(),
             "# Оглавление\n\n[[Projects/kknow|мой проект]]\n"
         );
+    }
+
+    #[test]
+    fn note_backlinks_give_the_line_of_each_link() {
+        let dir = vault();
+        let app = app(&[dir.path()]);
+
+        let lines = note_backlinks(app.state(), "Projects/kknow".into(), None).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].id, "Index");
+        assert_eq!(lines[0].title, "Оглавление");
+        assert_eq!(lines[0].line, 3);
+        assert_eq!(lines[0].text, "[[Projects/kknow|мой проект]]");
     }
 
     #[test]

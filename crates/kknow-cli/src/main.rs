@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kknow_app::Workspace;
 use kknow_app::bookmarks::clean_name;
-use kknow_app::text::{describe, plain_snippet, task_row};
+use kknow_app::text::{backlink_row, describe, plain_snippet, task_row};
 use kknow_app::theme::{self, Base, Source};
 use kknow_app::vaults::VaultRegistry;
 use kknow_core::NoteId;
@@ -914,15 +914,15 @@ fn links(workspace: &Workspace, note: &str) -> Result<(), String> {
 fn backlinks(workspace: &Workspace, note: &str) -> Result<(), String> {
     let id = find(workspace, note)?;
 
-    let edges = workspace.backlinks(id);
-    if edges.is_empty() {
+    let lines = workspace.backlink_lines(id);
+    if lines.is_empty() {
         println!("{id}: на эту заметку никто не ссылается");
         return Ok(());
     }
 
     println!("на {id} ссылаются:");
-    for edge in edges {
-        println!("  {}", describe(edge, &edge.from));
+    for line in &lines {
+        println!("  {}", backlink_row(line));
     }
     Ok(())
 }

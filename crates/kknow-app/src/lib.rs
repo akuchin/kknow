@@ -7,6 +7,7 @@ pub mod bookmarks;
 pub mod commands;
 pub mod files;
 pub mod keymap;
+pub mod lines;
 pub mod mcp;
 pub mod merge;
 pub mod meta;
@@ -33,6 +34,7 @@ use kknow_sync::{
 };
 
 use crate::bookmarks::{Bookmark, Bookmarks, Mark};
+use crate::lines::LineContext;
 use crate::theme::ThemeSet;
 use crate::watch::{VaultEvent, VaultWatcher};
 
@@ -177,6 +179,13 @@ pub struct LinkTarget<'a> {
     pub line: Option<usize>,
     pub headings: &'a [Heading],
     pub blocks: &'a [Block],
+}
+
+/// A link to a note, with the line where it stands in the source note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BacklinkLine<'a> {
+    pub edge: &'a Edge,
+    pub context: LineContext,
 }
 
 /// Vault summary: number of notes, folders and bytes.
@@ -927,6 +936,32 @@ impl Workspace {
 
     pub fn backlinks(&self, id: &NoteId) -> &[Edge] {
         self.graph.backlinks(id)
+    }
+
+    /// The links to note `id` with their lines: by source note, then in text
+    /// order.
+    ///
+    /// It reads each source note one time, so the window asks for it only
+    /// when it shows the lines, not on each save. A note that the parse no
+    /// longer matches (it changed on disk a moment ago) gives no lines; the
+    /// watcher brings the new parse soon.
+    pub fn backlink_lines(&self, id: &NoteId) -> Vec<BacklinkLine<'_>> {
+        let mut edges: Vec<&Edge> = self.backlinks(id).iter().collect();
+        edges.sort_by(|a, b| a.from.cmp(&b.from).then(a.span.start.cmp(&b.span.start)));
+
+        let mut lines = Vec::with_capacity(edges.len());
+        let mut source: Option<(&NoteId, String)> = None;
+        for edge in edges {
+            if source.as_ref().is_none_or(|(from, _)| *from != &edge.from) {
+                // A note that cannot be read now has no lines to show.
+                source = Some((&edge.from, self.read(&edge.from).unwrap_or_default()));
+            }
+            let Some((_, text)) = &source else { continue };
+            if let Some(context) = LineContext::around(text, &edge.span) {
+                lines.push(BacklinkLine { edge, context });
+            }
+        }
+        lines
     }
 
     pub fn outgoing(&self, id: &NoteId) -> &[Edge] {
@@ -1751,6 +1786,42 @@ mod tests {
         assert_eq!(changes.updated, std::slice::from_ref(&id));
         assert!(workspace.contains(&id));
         assert_eq!(found(&workspace, "появилась"), ["Извне"]);
+    }
+
+    #[test]
+    fn backlinks_come_with_their_lines_in_note_and_text_order() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Plan.md"), "# Plan\n").unwrap();
+        fs::write(
+            dir.path().join("Zeta.md"),
+            "# Zeta\n\nsee [Plan](Plan.md) and\n- [[Plan|the plan]] here\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("Alpha.md"), "intro\n![[Plan]]\n").unwrap();
+        let workspace = Workspace::open(dir.path()).unwrap();
+
+        let lines = workspace.backlink_lines(&NoteId::parse("Plan").unwrap());
+        let rows: Vec<(&str, usize, &str, &str, &str)> = lines
+            .iter()
+            .map(|each| {
+                let context = &each.context;
+                (
+                    each.edge.from.as_str(),
+                    context.line,
+                    context.before.as_str(),
+                    context.text.as_str(),
+                    context.after.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("Alpha", 2, "", "![[Plan]]", ""),
+                ("Zeta", 3, "see ", "[Plan](Plan.md)", " and"),
+                ("Zeta", 4, "- ", "[[Plan|the plan]]", " here"),
+            ]
+        );
     }
 
     #[test]

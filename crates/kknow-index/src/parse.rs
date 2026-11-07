@@ -62,6 +62,69 @@ impl Frontmatter {
 
         fields
     }
+
+    /// Values of a list field: an inline list `key: [a, "b"]`, a block list
+    /// of `- item` lines under `key:`, or one scalar `key: a`.
+    ///
+    /// This is for one known key, such as `aliases`, not a YAML parser. A
+    /// value with a comma inside quotes stays whole; nested lists are not
+    /// read. Empty items are dropped.
+    pub fn list(&self, key: &str) -> Vec<String> {
+        let mut lines = self.raw.lines();
+        let value = loop {
+            let Some(line) = lines.next() else {
+                return Vec::new();
+            };
+            if line.starts_with([' ', '\t', '#', '-']) {
+                continue;
+            }
+            if let Some((name, value)) = line.split_once(':')
+                && name.trim() == key
+            {
+                break value.trim();
+            }
+        };
+
+        let items: Vec<&str> = if let Some(inner) =
+            value.strip_prefix('[').and_then(|v| v.strip_suffix(']'))
+        {
+            split_inline_list(inner)
+        } else if value.is_empty() {
+            lines
+                .map(str::trim_start)
+                .take_while(|line| line.starts_with('-') || line.is_empty())
+                .filter_map(|line| line.strip_prefix('-'))
+                .collect()
+        } else {
+            vec![value]
+        };
+
+        items
+            .into_iter()
+            .map(|item| unquote(item.trim()).trim().to_string())
+            .filter(|item| !item.is_empty())
+            .collect()
+    }
+}
+
+/// `a, "b, c", 'd'` → the three items, with their quotes.
+fn split_inline_list(inner: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut quote = None;
+    let mut start = 0;
+    for (at, c) in inner.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(open), _) if c == open => quote = None,
+            (None, ',') => {
+                items.push(&inner[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    items.push(&inner[start..]);
+    items
 }
 
 /// Metadata as a comment: `<!-- page: 987654321 -->`.
@@ -188,6 +251,9 @@ pub struct ParsedNote {
     /// `<!-- key: value -->` comments. A note uses them to pass parameters to
     /// its commands, for example an export page id.
     pub fields: BTreeMap<String, String>,
+    /// Other names of the note from the frontmatter: `aliases`, or the
+    /// older `alias`.
+    pub aliases: Vec<String>,
     /// Text without markup, for the full-text index.
     pub text: String,
 }
@@ -352,6 +418,17 @@ pub fn parse(source: &str) -> ParsedNote {
 
     take_comment_fields(&raw_html, &mut fields);
 
+    let aliases = frontmatter
+        .as_ref()
+        .map(|frontmatter| {
+            let mut aliases = frontmatter.list("aliases");
+            if aliases.is_empty() {
+                aliases = frontmatter.list("alias");
+            }
+            aliases
+        })
+        .unwrap_or_default();
+
     let wiki_links = wikilink::scan(source, &skip);
     let blocks = scan_blocks(source, &skip);
 
@@ -371,6 +448,7 @@ pub fn parse(source: &str) -> ParsedNote {
         tasks,
         agent_comments,
         fields,
+        aliases,
         text: unwrap_wiki_links(&text),
     }
 }
@@ -715,6 +793,28 @@ mod tests {
         assert_eq!(fields["список"], "");
         assert!(!fields.contains_key("имя"), "вложенное не всплывает наверх");
         assert!(!fields.contains_key("# комментарий"));
+    }
+
+    #[test]
+    fn aliases_come_from_an_inline_or_a_block_list() {
+        let inline = parse("---\naliases: [Plan, \"Q3, draft\", '']\n---\n# Body\n");
+        assert_eq!(inline.aliases, ["Plan", "Q3, draft"]);
+
+        let block = parse("---\naliases:\n  - Plan\n  - \"The plan\"\ntags: [a]\n---\n");
+        assert_eq!(block.aliases, ["Plan", "The plan"]);
+
+        let scalar = parse("---\nalias: Plan\n---\n");
+        assert_eq!(scalar.aliases, ["Plan"]);
+    }
+
+    #[test]
+    fn a_list_field_ends_at_the_next_key() {
+        let source = "---\naliases:\n- One\n\n- Two\nnext:\n- Not an alias\n---\n";
+        let frontmatter = parse(source).frontmatter.unwrap();
+
+        assert_eq!(frontmatter.list("aliases"), ["One", "Two"]);
+        assert!(frontmatter.list("missing").is_empty());
+        assert!(parse("# No frontmatter\n").aliases.is_empty());
     }
 
     #[test]

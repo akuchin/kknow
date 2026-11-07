@@ -61,6 +61,7 @@ fn generate() -> String {
     collect.visit::<crate::commands::BookmarkView>();
     collect.visit::<crate::commands::TaskView>();
     collect.visit::<crate::commands::LinkTargetView>();
+    collect.visit::<crate::commands::BacklinkLineView>();
     collect.visit::<crate::commands::TrashEntryView>();
     collect.visit::<crate::commands::RenamedNote>();
     collect.visit::<crate::commands::SaveOutcome>();

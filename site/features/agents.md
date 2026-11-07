@@ -61,7 +61,7 @@ claude mcp add kknow-work -- kknow mcp --label work --label study
 | `search` | full-text search, the same syntax as ⌘K |
 | `list_notes` | notes with their titles, all or in one folder |
 | `read_note` | the Markdown of a note and the path to its file |
-| `backlinks`, `links` | incoming and outgoing links of a note |
+| `backlinks`, `links` | incoming links with their lines, and outgoing links of a note |
 | `tasks`, `set_task` | open tasks; mark a task as done or open |
 | `agent_comments` | the comments for the agent, with their threads |
 | `claim_comment` | take a task, so that a second agent does not do it too |

@@ -6,6 +6,8 @@
 use kknow_core::NoteId;
 use kknow_index::{Edge, EdgeKind, Subpath, Task};
 
+use crate::BacklinkLine;
+
 /// `note:line  text`. With `all`, the box shows which tasks are done.
 pub fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
     let place = format!("{id}:{}", task.line);
@@ -35,6 +37,16 @@ pub fn describe(edge: &Edge, other: &NoteId) -> String {
     }
 
     line
+}
+
+/// `note:line  text of the line`: a link to a note, where it stands. The line
+/// already shows the label and the kind of the link.
+pub fn backlink_row(link: &BacklinkLine) -> String {
+    let context = &link.context;
+    format!(
+        "{}:{}  {}{}{}",
+        link.edge.from, context.line, context.before, context.text, context.after
+    )
 }
 
 /// A search snippet for text output, on one line.

@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::proposals::Status as ProposalStatus;
-use crate::text::{describe, plain_snippet, task_row};
+use crate::text::{backlink_row, describe, plain_snippet, task_row};
 use crate::threads::{CommentRef, ME, Status as ThreadStatus, Thread};
 use crate::{Error, Result as AppResult, Workspace};
 
@@ -188,7 +188,7 @@ fn tools() -> Value {
         },
         {
             "name": "backlinks",
-            "description": "Notes that link to a note.",
+            "description": "Links to a note as `note:line  text of the line`.",
             "inputSchema": { "type": "object", "properties": { "note": note }, "required": ["note"] },
         },
         {
@@ -588,9 +588,9 @@ fn backlinks(host: &impl Host, args: &Args) -> Outcome {
     let (index, id) = args.note(host)?;
     let texts = host.read(index, |workspace| {
         workspace
-            .backlinks(&id)
+            .backlink_lines(&id)
             .iter()
-            .map(|edge| describe(edge, &edge.from))
+            .map(backlink_row)
             .collect::<Vec<_>>()
     })?;
     let rows = texts
@@ -1226,7 +1226,7 @@ mod tests {
         );
 
         let (backlinks, _) = tool(&mut host, "backlinks", json!({ "note": "Идеи" }));
-        assert_eq!(backlinks, "План");
+        assert_eq!(backlinks, "План:3  синхронизация и [[Идеи]]");
         let (links, _) = tool(&mut host, "links", json!({ "note": "План" }));
         assert_eq!(links, "Идеи");
     }

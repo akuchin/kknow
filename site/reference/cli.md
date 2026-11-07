@@ -26,7 +26,7 @@ Without `--vault`, kknow uses the current directory.
 | `new <name>` | make an empty note |
 | `search <query> [--limit N]` | full-text search, the same syntax as ⌘K |
 | `links <note>` | outgoing links |
-| `backlinks <note>` | notes that link to the note |
+| `backlinks <note>` | links to the note, as `note:line` and the text of the line |
 | `tags` | tags and their counts |
 | `broken` | links to notes that do not exist |
 | `orphans` | notes with no incoming links |

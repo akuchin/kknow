@@ -44,6 +44,27 @@ autoUpdate: boolean,
 gitPath?: string | null, };
 
 /**
+ * A link to the open note, where it stands in the source note.
+ */
+export type BacklinkLineView = { 
+/**
+ * The source note.
+ */
+id: string, title: string, 
+/**
+ * 1-based line in the source note.
+ */
+line: number, 
+/**
+ * The line text before the link, cut to a few words.
+ */
+before: string, 
+/**
+ * The link as written.
+ */
+text: string, after: string, };
+
+/**
  * Built-in theme that the manifest goes on top of.
  *
  * A theme can set only a few variables, and the rest must come from somewhere:

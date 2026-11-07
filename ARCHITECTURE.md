@@ -129,8 +129,22 @@ External edit:
   a caret in code, math or frontmatter is text.
 - `Workspace::link_target` follows a link from a note: the note, the line of
   its heading or block, and all anchors of the note for completion.
+- Frontmatter gives scalar fields (`Frontmatter::fields`) and, for one known
+  key, a list (`Frontmatter::list`): `[a, "b"]` or `- item` lines. This is
+  not a YAML parser. `ParsedNote.aliases` comes from `aliases`, or from the
+  older `alias`.
 - A link graph with wikilink resolution rules (full path, then file name, and
-  so on) and backlinks.
+  so on) and backlinks. Each edge keeps the span of its link in the source
+  note.
+  - `Workspace::backlink_lines` gives each backlink with its line, in three
+    parts: the text before the link, the link and the text after it
+    (`lines::LineContext`, a few words on each side).
+  - The graph does not keep the line text. `backlink_lines` reads each
+    source note one time. Thus the lines are not in `NoteView`, which comes
+    back after each save. The window asks for them (`note_backlinks`) when
+    it shows them.
+  - `kknow backlinks` and the MCP tool `backlinks` print the same rows:
+    `note:line  text of the line` (`text::backlink_row`).
 - A rename or a move rewrites the links that point to the moved notes
   (`Relink` in `kknow-index`, `Workspace::relink` in `kknow-app`).
   - The rule: a link must find the same note after the move. A link that still

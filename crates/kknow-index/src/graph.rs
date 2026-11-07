@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::ops::Range;
 
 use kknow_core::{NoteId, is_markdown_extension};
 
@@ -24,6 +25,9 @@ pub struct Edge {
     /// Alias or link text, if it differs from the target.
     pub label: Option<String>,
     pub subpath: Option<Subpath>,
+    /// Range of the link in the source text of `from`. The window shows the
+    /// line of a backlink from it.
+    pub span: Range<usize>,
 }
 
 /// A link with no matching note. The UI usually shows it grey, and a click
@@ -33,6 +37,15 @@ pub struct BrokenLink {
     pub from: NoteId,
     pub target: String,
     pub kind: EdgeKind,
+}
+
+/// A link as the parse found it, before the graph resolves its target.
+struct Found<'a> {
+    from: &'a NoteId,
+    kind: EdgeKind,
+    label: Option<String>,
+    subpath: Option<Subpath>,
+    span: Range<usize>,
 }
 
 /// Link graph of the whole vault.
@@ -67,11 +80,14 @@ impl LinkGraph {
                 };
                 graph.add(
                     &resolver,
-                    from,
                     &link.target,
-                    kind,
-                    link.alias.clone(),
-                    link.subpath.clone(),
+                    Found {
+                        from,
+                        kind,
+                        label: link.alias.clone(),
+                        subpath: link.subpath.clone(),
+                        span: link.span.clone(),
+                    },
                 );
             }
 
@@ -79,11 +95,14 @@ impl LinkGraph {
                 let label = (!link.label.is_empty()).then(|| link.label.clone());
                 graph.add(
                     &resolver,
-                    from,
                     &link.target,
-                    EdgeKind::Markdown,
-                    label,
-                    None,
+                    Found {
+                        from,
+                        kind: EdgeKind::Markdown,
+                        label,
+                        subpath: None,
+                        span: link.span.clone(),
+                    },
                 );
             }
         }
@@ -91,15 +110,14 @@ impl LinkGraph {
         graph
     }
 
-    fn add(
-        &mut self,
-        resolver: &Resolver,
-        from: &NoteId,
-        target: &str,
-        kind: EdgeKind,
-        label: Option<String>,
-        subpath: Option<Subpath>,
-    ) {
+    fn add(&mut self, resolver: &Resolver, target: &str, found: Found) {
+        let Found {
+            from,
+            kind,
+            label,
+            subpath,
+            span,
+        } = found;
         match resolver.resolve(target, from) {
             Some(to) => {
                 let edge = Edge {
@@ -108,6 +126,7 @@ impl LinkGraph {
                     kind,
                     label,
                     subpath,
+                    span,
                 };
                 self.outgoing
                     .entry(from.clone())
@@ -319,6 +338,18 @@ mod tests {
         let edge = &graph.outgoing(&id("A"))[0];
         assert_eq!(edge.label.as_deref(), Some("как ставить"));
         assert_eq!(edge.subpath, Some(Subpath::Heading("Установка".into())));
+    }
+
+    #[test]
+    fn an_edge_keeps_the_place_of_the_link() {
+        let graph = graph(&[("A", "first\nsee [[B]] and [B](B.md)"), ("B", "# B")]);
+
+        let spans: Vec<Range<usize>> = graph
+            .outgoing(&id("A"))
+            .iter()
+            .map(|edge| edge.span.clone())
+            .collect();
+        assert_eq!(spans, [10..15, 20..29]);
     }
 
     #[test]

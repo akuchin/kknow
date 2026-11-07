@@ -46,6 +46,7 @@ import type {
   TargetKind,
   TaskView,
   LinkTargetView,
+  BacklinkLineView,
   HeadingView,
   Theme,
   ThemeSet,
@@ -104,6 +105,7 @@ export type {
   TargetKind,
   TaskView,
   LinkTargetView,
+  BacklinkLineView,
   HeadingView,
   Theme,
   ThemeSet,
@@ -286,6 +288,8 @@ export const api = {
    */
   linkTarget: (from: string, target: string) =>
     invoke<LinkTargetView | null>("link_target", { from, target }),
+  /** Links to the note with their lines, by source note, then in text order. */
+  noteBacklinks: (id: string) => invoke<BacklinkLineView[]>("note_backlinks", { id }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
   /** Trash entries of the vault, the newest first. */
