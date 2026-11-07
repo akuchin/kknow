@@ -21,6 +21,23 @@ async function typeAtEnd(page: Page, text: string): Promise<void> {
 const completion = (page: Page) => page.locator(".cm-tooltip-autocomplete");
 
 /**
+ * CodeMirror ignores Enter for `interactionDelay` (75 ms) after the list
+ * opens or changes: a user who types Enter at that moment wants a new line,
+ * not an option they did not see. Then Enter is a line break. A test sees
+ * the list at once and is faster than that, so it waits out the delay, with
+ * a margin for a slow runner.
+ */
+const PICK_DELAY = 150;
+
+/** Takes the selected option of the completion list that shows `text`. */
+async function pick(page: Page, text: string): Promise<void> {
+  await expect(completion(page)).toContainText(text);
+  await page.waitForTimeout(PICK_DELAY);
+  await page.keyboard.press("Enter");
+  await expect(completion(page)).toBeHidden();
+}
+
+/**
  * A drawn link by its text. The Markdown grammar also sees `[x]` inside
  * `[[x]]`, so a wikilink has two nested link marks; the inner one is last.
  */
@@ -34,8 +51,7 @@ async function lines(page: Page): Promise<string[]> {
 
 test("[[ offers notes, and the pick closes the link", async ({ page }) => {
   await typeAtEnd(page, "See [[kkn");
-  await expect(completion(page)).toContainText("kknow");
-  await page.keyboard.press("Enter");
+  await pick(page, "kknow");
   await page.keyboard.type(" done");
 
   // The cursor left the link, so it shows as a link: no brackets.
@@ -45,8 +61,7 @@ test("[[ offers notes, and the pick closes the link", async ({ page }) => {
 
 test("[[note# offers the headings of that note", async ({ page }) => {
   await typeAtEnd(page, "[[kknow#Пл");
-  await expect(completion(page)).toContainText("Планы");
-  await page.keyboard.press("Enter");
+  await pick(page, "Планы");
   await expect(editorText(page)).toContainText("kknow#Планы");
   // The pick closed the link: the next word goes after it.
   await page.keyboard.type(" next");
