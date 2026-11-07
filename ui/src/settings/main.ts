@@ -22,6 +22,7 @@ import { renderGeneral, repaintUpdate, setUpdate } from "./general";
 import { initKeys, loadKeymap, renderKeys, takeKeymap } from "./keys";
 import "./settings.css";
 import { state, view } from "./state";
+import { initEncryption } from "./encryption";
 import { initSyncForm } from "./sync-form";
 import { renderVaults, repaintVaults } from "./vaults";
 
@@ -52,6 +53,7 @@ view.body = el.body;
 view.section = section;
 view.render = render;
 initSyncForm(renderVaults);
+initEncryption(renderVaults);
 
 function section(): string {
   const wanted = location.hash.replace("#", "");

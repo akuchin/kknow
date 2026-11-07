@@ -23,6 +23,7 @@ import type {
   NoteView,
   SearchResult,
   SyncReport,
+  EncryptionOn,
   SyncSettings,
   SyncSettingsForm,
   SyncStatus,
@@ -604,14 +605,67 @@ function configureSync(settings: SyncSettingsForm, secret: boolean): SyncSetting
     autoSyncMinutes: settings.autoSyncMinutes,
   });
 
+  // As in the core: the flag stays for the same address and resets for a
+  // new one.
+  const same = remote?.location === location;
   remote = {
     ...settings,
     location,
     // A folder never has secrets; the core answers the same way.
     needsSecret,
     hasSecret: needsSecret && (secret || (remote?.hasSecret ?? false)),
+    encrypted: same && remote?.encrypted === true,
+    hasKey: same && remote?.hasKey === true,
   };
   return remote;
+}
+
+/**
+ * The encryption of the mock storage: its passphrase and its recovery code.
+ * A smoke test can start with a storage that another device encrypted.
+ */
+const MOCK_CODE = "K7QF-2MXA-PL4D-WN6E-ZR3T-YB5H-JC";
+let storage: { passphrase: string; code: string } | null =
+  sessionStorage.getItem("kknow:mock:encrypted") === "1"
+    ? { passphrase: "correct horse", code: MOCK_CODE }
+    : null;
+
+/** The passphrase or the code, as `KeyFile::unlock` takes them. */
+function opens(secret: string): boolean {
+  const plain = (text: string) => text.replace(/[\s-]/g, "").toUpperCase();
+  return storage !== null && (secret === storage.passphrase || plain(secret) === plain(storage.code));
+}
+
+function checkPassphrase(passphrase: string): void {
+  if ([...passphrase].length < 8) {
+    throw coded("passphraseTooShort", "the passphrase must have at least 8 characters", {
+      value: "8",
+    });
+  }
+}
+
+function syncEncrypt(passphrase: string): EncryptionOn {
+  if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+  if (storage) throw coded("alreadyEncrypted", "the storage is already encrypted");
+  checkPassphrase(passphrase);
+  storage = { passphrase, code: MOCK_CODE };
+  remote = { ...remote, encrypted: true, hasKey: true };
+  return { recoveryCode: MOCK_CODE, settings: remote };
+}
+
+function syncUnlock(secret: string): SyncSettings {
+  if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+  if (!storage) throw coded("notEncrypted", "the storage is not encrypted");
+  if (!opens(secret)) throw coded("wrongPassphrase", "wrong passphrase or recovery code");
+  remote = { ...remote, encrypted: true, hasKey: true };
+  return remote;
+}
+
+function syncChangePassphrase(current: string, next: string): void {
+  if (!storage) throw coded("notEncrypted", "the storage is not encrypted");
+  if (!opens(current)) throw coded("wrongPassphrase", "wrong passphrase or recovery code");
+  checkPassphrase(next);
+  storage.passphrase = next;
 }
 
 /**
@@ -1871,6 +1925,16 @@ export async function invoke<T>(
     case "save_sync_settings":
       return configureSync(args?.settings as SyncSettingsForm, Boolean(args?.secret)) as T;
 
+    case "sync_encrypt":
+      return syncEncrypt(String(args?.passphrase ?? "")) as T;
+
+    case "sync_unlock":
+      return syncUnlock(String(args?.secret ?? "")) as T;
+
+    case "sync_change_passphrase":
+      syncChangePassphrase(String(args?.current ?? ""), String(args?.new ?? ""));
+      return undefined as T;
+
     case "forget_sync_settings":
       remote = null;
       statuses.delete(activeVault.id);
@@ -1918,6 +1982,16 @@ export async function invoke<T>(
 
     case "sync_now": {
       if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+      // A device without the key: the error stays in the status, as in the
+      // core, so the settings page shows the unlock form.
+      if (storage && !(remote.encrypted && remote.hasKey)) {
+        const error = coded(
+          "storageLocked",
+          "the storage is encrypted: enter the passphrase or the recovery code",
+        );
+        statuses.set(activeVault.id, { ...statusOf(activeVault.id), state: "error", message: error });
+        throw error;
+      }
       if (remote.provider.kind === "git") {
         const pushed = gitState.ahead;
         const downloaded = gitState.behind;
@@ -1944,6 +2018,7 @@ export async function invoke<T>(
         total: 2,
         at: Date.now(),
         conflicts: 1,
+        message: null,
       });
       // The mock always reports a conflict: there is no other place to see it.
       return {

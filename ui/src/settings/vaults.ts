@@ -13,6 +13,7 @@ import { formatKey, vaultKey } from "../actions";
 import { describeError, locale, t } from "../i18n";
 import { iconMarkup } from "../icons";
 import { heading, row, select } from "./controls";
+import { encryptionSection } from "./encryption";
 import { state, view } from "./state";
 import { draftsGit, gitForm, pickFolder, s3Form, saveSync, switchProvider } from "./sync-form";
 
@@ -335,7 +336,10 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
     page.append(s3Form(vault, remote));
   }
 
-  if (remote.provider.kind !== "git") renderSyncRules(page, vault, remote);
+  if (remote.provider.kind !== "git") {
+    renderSyncRules(page, vault, remote);
+    page.append(...encryptionSection(vault, remote, state.statuses.get(vault.id)));
+  }
 
   const sync = document.createElement("button");
   sync.className = "primary";

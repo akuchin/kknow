@@ -519,6 +519,28 @@
   font-size: 12px;
 }
 
+/* The recovery code: shown one time, so it must be easy to read and copy. */
+.settings-recovery-code {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.settings-s3 .settings-recovery-confirm span {
+  width: auto;
+  color: var(--text);
+}
+
+.settings-s3 .settings-recovery-confirm input {
+  flex: none;
+}
+
 /* A field and its button on one line: the path to git and "Find". */
 .settings-inline {
   display: flex;

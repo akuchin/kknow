@@ -1,6 +1,6 @@
 # Plan: E2E encryption for sync
 
-**Status: in progress.** Steps 1–3 are in `main`.
+**Status: in progress.** Steps 1–4 are in `main`.
 
 This plan covers the first item of "Larger tasks" in [TODO.md](../TODO.md)
 and Phase 2 of [launch-checklist.md](launch-checklist.md). Do the steps in
@@ -180,13 +180,18 @@ encrypted storage. Three checks prevent it.
 
 ### Step 4. UI
 
-- The sync settings get an "Encryption" section: on, the passphrase two times,
-  then a screen with the recovery code and the check "I saved the code".
-- Connecting to an encrypted storage asks for the passphrase or the code.
-- The status shows a lock for an encrypted vault. The errors above have their
-  own texts.
-- All strings go to `locales/ru.json` and `locales/en.json`. Stubs in
-  `ui/src/mock`, an e2e test for the "turn on" path.
+- The vault page has an "Encryption" row for a folder and for S3
+  (`ui/src/settings/encryption.ts`): turn on with the passphrase two times,
+  then the recovery code with "copy" and the check "The code is written
+  down" before "done".
+- A storage without the key on this device (`encrypted` without `hasKey`, or
+  the last sync failed with `storageLocked` or `wrongStorageKey`) shows the
+  unlock form. After an unlock, the page syncs at once.
+- "Change passphrase" takes the old passphrase or the code.
+- Typed secrets are drafts in memory, so a sync status event does not erase
+  them. The status bar shows the error text of the core; it has no lock icon.
+- Stubs in `ui/src/mock/core.ts` (`kknow:mock:encrypted` starts with a
+  storage that another device encrypted), e2e in `e2e/encryption.spec.ts`.
 
 ### Step 5. Documentation
 

@@ -38,6 +38,7 @@ import type {
   RunOutcome,
   S3Settings,
   SearchResult,
+  EncryptionOn,
   SyncConflict,
   SyncReport,
   SyncSettings,
@@ -99,6 +100,7 @@ export type {
   RunOutcome,
   S3Settings,
   SearchResult,
+  EncryptionOn,
   SyncConflict,
   SyncReport,
   SyncSettings,
@@ -425,6 +427,15 @@ export const api = {
     invoke<SyncSettings>("save_sync_settings", { settings, secret, vault: vault ?? null }),
   forgetSyncSettings: (vault?: string) =>
     invoke<void>("forget_sync_settings", { vault: vault ?? null }),
+  /** Encrypts the storage. The recovery code comes only in this answer. */
+  syncEncrypt: (passphrase: string, vault?: string) =>
+    invoke<EncryptionOn>("sync_encrypt", { passphrase, vault: vault ?? null }),
+  /** Opens an encrypted storage with the passphrase or the recovery code. */
+  syncUnlock: (secret: string, vault?: string) =>
+    invoke<SyncSettings>("sync_unlock", { secret, vault: vault ?? null }),
+  /** `current` is the old passphrase or the recovery code. */
+  syncChangePassphrase: (current: string, next: string, vault?: string) =>
+    invoke<void>("sync_change_passphrase", { current, new: next, vault: vault ?? null }),
   /** Standalone files. The core also forgets files that are gone from disk. */
   listFiles: () => invoke<FileEntry[]>("list_files"),
   /** Opens a file picked in the dialog or dropped on the window. */
