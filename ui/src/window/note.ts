@@ -1,5 +1,6 @@
 // The open note: open, show, save and close it; the preview, the heading,
-// reading positions, the font size, backlinks, the mode and back and forward.
+// reading positions, the font size, the backlink count, the mode and back and
+// forward.
 //
 // This zone is low: almost every other zone opens or reads the note. A few
 // steps reach higher zones (the trash view, the tree, the file list, the
@@ -8,7 +9,7 @@
 //
 // The module does not touch the DOM on import.
 
-import { api, type NoteView, type ViewMode } from "../api";
+import { api, type LinkRef, type NoteView, type ViewMode } from "../api";
 import type { EditorPosition } from "../editor";
 import { renderDiagrams } from "../diagram";
 import { paintCodeBlocks } from "../highlight";
@@ -331,7 +332,6 @@ export function closeNote(): void {
   // Bypass showPreview: it skips a hidden pane, but the pane must be empty
   // when it opens again.
   el.preview.innerHTML = "";
-  el.backlinks.replaceChildren();
   status.setWords(0);
   applyScale();
   renderNoteTools();
@@ -379,7 +379,6 @@ export function applyNote(
     el.preview.scrollTop = position?.preview ?? 0;
   }
   applyScale();
-  renderBacklinks(view);
   // The tree, the note commands and the run button follow the "note" event.
   // The toolbar is drawn here: it counts the bookmarks, and the editor gets
   // them above.
@@ -430,33 +429,14 @@ export function changeCurrentScale(steps: number): void {
   if (state.note) changeScale(positionKey(state.note), steps);
 }
 
-function renderBacklinks(view: NoteView): void {
-  el.backlinks.replaceChildren();
-
-  if (view.backlinks.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "empty";
-    empty.textContent = t("panel.backlinks.empty");
-    el.backlinks.append(empty);
-    return;
-  }
-
-  for (const link of view.backlinks) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.className = "link";
-    button.textContent = link.title;
-    button.onclick = () => void openNote(link.id);
-
-    item.append(button);
-    if (link.label) {
-      const label = document.createElement("span");
-      label.className = "muted";
-      label.textContent = `«${link.label}»`;
-      item.append(label);
-    }
-    el.backlinks.append(item);
-  }
+/**
+ * The backlinks of the open note changed without a save of it: a mention in
+ * another note became a link. The toolbar count and the side panel follow.
+ */
+export function setBacklinks(backlinks: LinkRef[]): void {
+  if (!state.note) return;
+  state.setNote({ ...state.note, backlinks });
+  renderNoteTools();
 }
 
 /**

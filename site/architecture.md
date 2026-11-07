@@ -100,6 +100,16 @@ sequenceDiagram
 kknow identifies its own writes by the content hash. Without this, the window
 would load a note again while you type in it.
 
+### The note panel asks for links
+
+The save answer has the backlink count, not the lines of the links. The lines
+need a read of each source note, and a save comes after each pause in typing.
+So the [note panel](/features/side-panel) asks for them on its own:
+
+- `note_backlinks` when a different note opens, or after `vault-changed`;
+- `unlinked_mentions` only while its section is open. The search index gives
+  the notes that can have the name, and a text check finds the exact places.
+
 ## Parsing and links
 
 - A `NoteId` is a path from the vault root without `.md`. It refuses `..` and

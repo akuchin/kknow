@@ -44,6 +44,7 @@ export default defineConfig({
           { text: "Overview", link: "/features/" },
           { text: "Editor", link: "/features/editor" },
           { text: "Links and Markdown", link: "/features/links" },
+          { text: "Note panel", link: "/features/side-panel" },
           { text: "Vaults and the sidebar", link: "/features/vaults" },
           { text: "Search", link: "/features/search" },
           { text: "Sync", link: "/features/sync" },

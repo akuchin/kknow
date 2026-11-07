@@ -339,6 +339,8 @@ export class Editor {
   private live = true;
   /** Line numbers in the gutter: a window setting, like `live`. */
   private lineNumbers = false;
+  /** Zones that follow edits besides `onChange`: the side panel outline. */
+  private textListeners: (() => void)[] = [];
 
   constructor(parent: HTMLElement, options: EditorOptions) {
     this.options = options;
@@ -386,6 +388,7 @@ export class Editor {
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             options.onChange(update.state.doc.toString());
+            for (const listener of this.textListeners) listener();
           }
           const changed = bookmarkChanged(update);
           if (changed) options.onBookmark?.(bookmarkMarks(update.state), changed.change);
@@ -442,7 +445,7 @@ export class Editor {
     return addNoteInCell(this.view, cell, words, index, total, text);
   }
 
-  /** The scrolling element: a popup over the text follows its scroll. */
+  /** The scrolling element: a popup over the text and the side panel follow its scroll. */
   get scroller(): HTMLElement {
     return this.view.scrollDOM;
   }
@@ -499,10 +502,35 @@ export class Editor {
     toggleBookmarkAt(this.view, line);
   }
 
-  /** Puts the cursor at the line start and the line in the middle of the view. */
-  goToLine(line: number): void {
-    goToLine(this.view, line);
+  /**
+   * Puts the cursor at the line start and the line in the middle of the view,
+   * or at its top (`start`): a heading from the outline starts its section.
+   */
+  goToLine(line: number, at: "center" | "start" = "center"): void {
+    goToLine(this.view, line, at);
     this.view.focus();
+  }
+
+  /** Calls `listener` after each edit of the text. */
+  onText(listener: () => void): void {
+    this.textListeners.push(listener);
+  }
+
+  /** The 1-based line at the top of the visible part of the text. */
+  topLine(): number {
+    return this.lineAtHeight(this.view.scrollDOM.scrollTop);
+  }
+
+  /** The 1-based line at the bottom of the visible part of the text. */
+  bottomLine(): number {
+    const scroller = this.view.scrollDOM;
+    return this.lineAtHeight(scroller.scrollTop + scroller.clientHeight - 1);
+  }
+
+  private lineAtHeight(scrolled: number): number {
+    const view = this.view;
+    const height = Math.max(0, scrolled - view.documentPadding.top);
+    return view.state.doc.lineAt(view.lineBlockAtHeight(height).from).number;
   }
 
   /** The headings of the current text, also with unsaved edits. */

@@ -13,12 +13,12 @@ import {
   lastCommand,
   runCommand,
 } from "./commands";
+import { showAside } from "./aside";
 import { el } from "./dom";
 import { openCommandMenu } from "./edits";
 import { editor } from "./editor";
 import { openFileMenu } from "./files";
 import { openBookmark, toggleCurrentBookmark } from "./marks";
-import { openNote } from "./note";
 import { palette } from "./palette";
 import { state } from "./state";
 
@@ -34,7 +34,7 @@ export function initToolbar(): void {
     else void openRunMenu();
   };
   el.runMenu.onclick = () => void openRunMenu();
-  el.noteBacklinks.onclick = () => openBacklinksMenu();
+  el.noteBacklinks.onclick = () => showAside("backlinks");
 }
 
 /**
@@ -118,19 +118,3 @@ async function openRunMenu(): Promise<void> {
   openMenu(el.runMenu, [{ title: t("commands.title"), items }, editCommandsSection()]);
 }
 
-/** Notes that link to the open one. The panel under the preview lists them too. */
-function openBacklinksMenu(): void {
-  if (!state.note) return;
-  openMenu(el.noteBacklinks, [
-    {
-      title: t("panel.backlinks.title"),
-      items: state.note.backlinks.map((link, index) => ({
-        label: link.title,
-        detail: link.label ? `«${link.label}»` : undefined,
-        glyph: "note",
-        key: index < 9 ? String(index + 1) : undefined,
-        run: () => void openNote(link.id),
-      })),
-    },
-  ]);
-}

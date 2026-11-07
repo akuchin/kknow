@@ -86,6 +86,17 @@ export function topLine(root: HTMLElement): number | null {
   return null;
 }
 
+/** The line of the last mark still visible at the bottom of the preview. */
+export function bottomLine(root: HTMLElement): number | null {
+  const pane = root.getBoundingClientRect();
+  let found: number | null = null;
+  for (const mark of root.querySelectorAll<HTMLElement>(MARK)) {
+    if (mark.getBoundingClientRect().top >= pane.bottom) break;
+    found = Number(mark.dataset.line);
+  }
+  return found;
+}
+
 /**
  * Scrolls the block of `line` to the top of the preview. Without a mark for
  * the line, it takes the nearest mark above. Without marks, it does nothing.

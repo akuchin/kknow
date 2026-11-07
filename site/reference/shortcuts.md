@@ -45,6 +45,7 @@ same in any keyboard layout, for example in Russian.
 | Keys | Action |
 |---|---|
 | <kbd>⌘\\</kbd> | hide or show the sidebar |
+| <kbd>⌘⌥P</kbd> | hide or show the note panel |
 | <kbd>⌘1</kbd>…<kbd>⌘9</kbd> | switch to a vault by its position in the list |
 | <kbd>⌘⇧S</kbd> | sync the active vault |
 | <kbd>⌘,</kbd> | settings |

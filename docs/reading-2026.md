@@ -55,12 +55,13 @@ run `pnpm ui:test` and `pnpm ui:e2e`.
   when their section is open.
 - The section on the screen:
   - "Live preview" and "Side by side": the top visible line of the editor;
-  - "Read": the `data-line` marks of the preview, through an
-    `IntersectionObserver`.
+  - "Read": the `data-line` marks of the preview (`topLine`), once a frame
+    on scroll.
 
   A click on a heading scrolls to it in the same view.
-- The action `aside.toggle` in the keymap, default `Mod-Alt-\`. Check that the
-  window does not use this key yet. The state is in `localStorage`, one key
+- The action `aside.toggle` in the keymap, default `Mod-Alt-p`. (`Mod-Alt-\`
+  was the first idea, but CodeMirror uses it for "indent the selection".) The
+  state is in `localStorage`, one key
   for the window, not one for each note.
 - A standalone file shows only the outline.
 - Remove the backlinks section under the preview and `renderBacklinks` in
@@ -126,6 +127,5 @@ run `pnpm ui:test` and `pnpm ui:e2e`.
 
 ## Open questions
 
-- Is `Mod-Alt-\` a good key for the panel?
-- Mentions: a "Link" button on each line only, or also "Link all"?
+- Mentions: a "Link" button on each line only. "Link all" can come later.
 - Obsidian also resolves `[[alias]]` to the note. This plan does not do that.

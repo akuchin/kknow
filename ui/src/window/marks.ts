@@ -108,10 +108,11 @@ export async function openTask(id: string, line: number): Promise<void> {
 /**
  * Goes to a heading from the outline. The editor cursor moves in each mode,
  * and an open preview scrolls to the heading too. "Read" keeps its mode: the
- * user reads there.
+ * user reads there. The heading goes to the top of the view: it starts the
+ * section that the user wants to read.
  */
 export function goToHeading(heading: Heading): void {
-  editor.goToLine(heading.line);
+  editor.goToLine(heading.line, "start");
   if (state.mode !== "edit") scrollToLine(el.preview, heading.line);
 }
 

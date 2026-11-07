@@ -209,11 +209,11 @@ export function toggleBookmark(view: EditorView): void {
 }
 
 /** Puts the cursor at the line start and scrolls the line to the middle. */
-export function goToLine(view: EditorView, line: number): void {
+export function goToLine(view: EditorView, line: number, at: "center" | "start" = "center"): void {
   const target = Math.min(Math.max(line, 1), view.state.doc.lines);
   const pos = view.state.doc.line(target).from;
   view.dispatch({
     selection: { anchor: pos },
-    effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    effects: EditorView.scrollIntoView(pos, { y: at }),
   });
 }

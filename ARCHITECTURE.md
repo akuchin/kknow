@@ -913,10 +913,10 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - ▶ repeats the last command (`kknow:command:last`), from any menu. Usually
     you run one command many times, for example a publish. If the open note
     does not have that command, ▶ opens the list.
-  - Backlinks are also in the panel under the preview. The button is for the
-    "Edit" mode, which hides the preview. With zero links the button stays
-    disabled and does not disappear: a toolbar that changes its width from
-    note to note moves the buttons away from the cursor.
+  - The backlinks button shows the number of notes that link here. A click
+    shows the note panel with the backlinks open. With zero links the button
+    stays disabled and does not disappear: a toolbar that changes its width
+    from note to note moves the buttons away from the cursor.
   - A standalone file has no bookmarks and no backlinks, so only ▶ is visible.
 - The sidebar header has the tree toolbar: new note, new folder, collapse all
   vaults, add a vault. "New note" moved here from the header: the field for the
@@ -1001,6 +1001,26 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   The default is `viewMode` in the core settings. An old file
   before modes knew only `previewVisible`. On read, a disabled preview becomes
   "Edit".
+- The note panel (`ui/src/window/aside.ts`, `#note-aside`) is the last grid
+  column, `--aside`, in all three modes. It has the outline, the backlinks
+  and the unlinked mentions, each in a `<details>`.
+  - It is a window state, as the sidebar is: ⌘⌥P (`aside.toggle`) or the
+    header button sets `data-aside`, and `localStorage` keeps it. A hidden
+    panel sets `--aside` to zero. Without an open note the panel hides too.
+    The key is not ⌘⌥\\: CodeMirror uses it for "indent the selection".
+  - The outline is `headingsOf` from the editor, so it follows unsaved edits
+    (`Editor.onText`). The current section is the last heading at or above
+    the top line: the editor top line, or the top line mark of the preview
+    in "Read". At the end of a scrolled note the last visible heading wins
+    (`currentHeading`). A click puts the heading at the top of the view.
+  - Backlinks with their lines and the mentions come from the core, which
+    reads the source notes for them. Thus the panel asks only for a new note,
+    after `vault-changed` (`refreshAsideLinks`) or after "Link"; not on each
+    save. A closed section asks nothing; mentions load when their section
+    opens. A source note shows three lines, then "more".
+  - "Link" calls `link_mention`. The answer is the new backlink list, and
+    `setBacklinks` in `note.ts` puts it into the store: the toolbar count
+    and the panel follow the store event.
 - The sidebar collapses (⌘\\, `data-sidebar`). The column stays in the grid,
   but `--sidebar` becomes zero. The header uses the same variable for its
   alignment. The window keeps this selection in `localStorage`.
@@ -1270,9 +1290,10 @@ The modules make layers. A module imports only from lower layers:
 | 1 | `rows.ts` | the row parts that the tree, the trash and the file list share; the mark of the open note |
 | 2 | `util.ts` | small shared actions: open the settings, copy text, read a list |
 | 2 | `notes-float.ts` | the agent notes float and the two selection popups |
-| 3 | `note.ts` | open, show, save and close a note; the preview, the heading, positions, the font size, backlinks, the mode, back and forward |
+| 3 | `note.ts` | open, show, save and close a note; the preview, the heading, positions, the font size, the backlink count, the mode, back and forward |
 | 4 | `commands.ts` | command items, runs, the run output, the commands of the open note |
 | 4 | `marks.ts` | bookmarks, tasks, headings, recent notes |
+| 4 | `aside.ts` | the note panel: the outline, backlinks with lines, unlinked mentions |
 | 4 | `sync.ts` | the sync panel, the status bar segment, the chip, the sync statuses |
 | 4 | `trash.ts` | the trash nodes and the read-only trash view |
 | 5 | `tree.ts` | the sidebar tree, collapsed and expanded branches, `reveal` |

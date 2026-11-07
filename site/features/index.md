@@ -20,7 +20,9 @@ details.
 
 - **Wiki links:** `[[note]]`, `[[note|alias]]`, `[[note#Heading]]`, embeds and
   tags. → [Links and Markdown](/features/links)
-- **Backlinks** in the header of each note.
+- **A note panel** on the right: the outline with the section on the screen,
+  backlinks with the line of each link, and unlinked mentions that become
+  links with one click. → [Note panel](/features/side-panel)
 - **Safe renames.** A rename or a move updates the links in the other notes.
 
 ## Organize

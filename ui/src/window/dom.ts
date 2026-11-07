@@ -37,7 +37,16 @@ function query() {
     fileList: document.querySelector<HTMLUListElement>("#file-list")!,
     editor: document.querySelector<HTMLElement>("#editor")!,
     preview: document.querySelector<HTMLElement>("#preview")!,
-    backlinks: document.querySelector<HTMLUListElement>("#backlink-list")!,
+    toggleAside: document.querySelector<HTMLButtonElement>("#toggle-aside")!,
+    asideOutline: document.querySelector<HTMLDetailsElement>("#aside-outline")!,
+    asideOutlineList: document.querySelector<HTMLOListElement>("#aside-outline-list")!,
+    asideOutlineCount: document.querySelector<HTMLSpanElement>("#aside-outline-count")!,
+    asideBacklinks: document.querySelector<HTMLDetailsElement>("#aside-backlinks")!,
+    asideBacklinksList: document.querySelector<HTMLUListElement>("#aside-backlinks-list")!,
+    asideBacklinksCount: document.querySelector<HTMLSpanElement>("#aside-backlinks-count")!,
+    asideMentions: document.querySelector<HTMLDetailsElement>("#aside-mentions")!,
+    asideMentionsList: document.querySelector<HTMLUListElement>("#aside-mentions-list")!,
+    asideMentionsCount: document.querySelector<HTMLSpanElement>("#aside-mentions-count")!,
     syncPanel: document.querySelector<HTMLElement>("#sync-panel")!,
     syncSummary: document.querySelector<HTMLParagraphElement>("#sync-summary")!,
     syncList: document.querySelector<HTMLUListElement>("#sync-list")!,
@@ -170,6 +179,11 @@ export function initDom(): void {
         <span>${t("topbar.search")}</span>
         <kbd>${shortcut("palette.open")}</kbd>
       </button>
+      <button id="toggle-aside" class="ghost bare" aria-expanded="true" aria-controls="note-aside"
+              title="${withShortcut(t("topbar.aside"), "aside.toggle")}"
+              aria-label="${t("topbar.aside")}" hidden>
+        ${iconMarkup("aside")}
+      </button>
     </div>
   </header>
 
@@ -237,11 +251,24 @@ export function initDom(): void {
       <p id="sync-summary" class="muted"></p>
       <ul id="sync-list"></ul>
     </section>
-    <section class="backlinks">
-      <h2>${t("panel.backlinks.title")}</h2>
-      <ul id="backlink-list"></ul>
-    </section>
   </section>
+
+  <!-- The side panel of the note, in all three modes: the outline, the
+       backlinks and the mentions without a link. -->
+  <aside id="note-aside" class="note-aside" aria-label="${t("aside.title")}">
+    <details id="aside-outline" class="aside-section">
+      <summary>${t("aside.outline")}<span id="aside-outline-count" class="aside-count"></span></summary>
+      <ol id="aside-outline-list" class="aside-outline"></ol>
+    </details>
+    <details id="aside-backlinks" class="aside-section">
+      <summary>${t("aside.backlinks")}<span id="aside-backlinks-count" class="aside-count"></span></summary>
+      <ul id="aside-backlinks-list" class="aside-sources"></ul>
+    </details>
+    <details id="aside-mentions" class="aside-section">
+      <summary>${t("aside.mentions")}<span id="aside-mentions-count" class="aside-count"></span></summary>
+      <ul id="aside-mentions-list" class="aside-sources"></ul>
+    </details>
+  </aside>
 
   <!-- The changes of a git vault. Like the trash view, it covers the editor
        and the preview: a narrow list of files on the left (staged, changed,

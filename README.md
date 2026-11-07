@@ -437,7 +437,8 @@ The header shows what is open:
     shows all bookmarks (⌘⌥B);
   - ▶ runs the last command again. The arrow next to it opens the list of the
     note commands;
-  - backlinks with their count. The menu opens a note that links here.
+  - backlinks with their count. A click shows the note panel with the
+    backlinks open.
 
   After the toolbar are the note mode and search (⌘K).
 
@@ -458,6 +459,18 @@ A note has three modes. Press ⌘E to go to the next mode:
 kknow keeps the mode for each note. For example, you read a reference and edit a
 draft. A note without its own mode opens in the default mode from the settings
 ("Edit").
+
+The note panel on the right works in all three modes. ⌘⌥P or the button at
+the right end of the header hides it. It has three sections that fold:
+
+- **Outline** — the headings of the note, with unsaved edits. The heading of
+  the section at the top of the screen has a color. A click moves the heading
+  to the top.
+- **Backlinks** — the notes that link here, with the line of each link. A
+  click on a line opens the note at that line.
+- **Unlinked mentions** — lines where the file name or an alias of the note
+  (`aliases:` in the frontmatter) is plain text. **Link** makes it a
+  `[[link]]`.
 
 Links and lists in the editor:
 
@@ -1342,6 +1355,7 @@ event, and both windows apply it immediately.
 | Esc in note search | close the search panel |
 | ⌘E | next note mode: Edit, Side by side, Read |
 | ⌘\\ | hide or show the sidebar |
+| ⌘⌥P | hide or show the note panel |
 | ⌘⌥←, ⌘⌥→ | back and forward through opened notes |
 | ⌘⇧B | set or remove a bookmark on the cursor line |
 | ⌘⌥B | palette with the bookmark list |

@@ -5,6 +5,7 @@
 
 import { matches, matchesKey, useKeymap, vaultKey, type Action, type Keymap } from "../actions";
 import { api } from "../api";
+import { toggleAside } from "./aside";
 import { nextMode } from "../note-mode";
 import { showRunOutput } from "./commands";
 import { el } from "./dom";
@@ -40,6 +41,7 @@ const windowActions: [Action, () => boolean | void][] = [
   ["bookmark.list", () => palette.open("", "bookmarks")],
   ["task.list", () => palette.open("", "tasks")],
   ["sidebar.toggle", () => toggleSidebar()],
+  ["aside.toggle", () => toggleAside()],
   // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
   ["history.back", () => void travel(-1)],
   ["history.forward", () => void travel(1)],

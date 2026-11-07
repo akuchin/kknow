@@ -68,3 +68,25 @@ export function headingsOf(state: EditorState): Heading[] {
   });
   return headings;
 }
+
+/**
+ * The index of the heading whose section is at the top of the view: the last
+ * heading at or above line `top`. `-1` means the view is above the first
+ * heading.
+ *
+ * At the end of the note the last sections cannot scroll to the top. Then
+ * `bottom` is the last visible line, and the last heading on the screen wins.
+ */
+export function currentHeading(
+  headings: readonly Heading[],
+  top: number,
+  bottom: number | null = null,
+): number {
+  const limit = bottom ?? top;
+  let found = -1;
+  for (const [index, heading] of headings.entries()) {
+    if (heading.line > limit) break;
+    found = index;
+  }
+  return found;
+}

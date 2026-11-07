@@ -12,6 +12,7 @@ import { api, type VaultInfo, type VaultView } from "../api";
 import { describeError, t } from "../i18n";
 import { openMenu, type MenuItem } from "../menu";
 import { refreshThemes } from "./appearance";
+import { refreshAsideLinks } from "./aside";
 import { el } from "./dom";
 import { openCommandMenu, openNewNoteForm, renameInTree } from "./edits";
 import { editor } from "./editor";
@@ -383,6 +384,8 @@ export async function onExternalChange(
   // in another vault must show in its branch.
   await refreshTree(changedVault);
   if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
+  // Other notes can link to the open one now, or stop.
+  refreshAsideLinks();
 
   if (removed.includes(state.note.id)) {
     setStatus(t("status.noteRemoved"), "error");

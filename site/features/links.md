@@ -41,8 +41,9 @@ also use the slug: `[plan](Plan.md#next-steps)` finds `## Next steps`.
 
 ## Backlinks
 
-The note header shows the number of notes that link to the open note. Its menu
-opens each of them. In the terminal:
+The note header shows the number of notes that link to the open note. The
+[note panel](/features/side-panel) lists them with the line of each link, and
+also the places where the note name is plain text. In the terminal:
 
 ```bash
 kknow backlinks "Project plan"   # each link as note:line and its line

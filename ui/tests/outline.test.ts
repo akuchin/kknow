@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 
-import { headingsOf } from "../src/outline.ts";
+import { currentHeading, headingsOf } from "../src/outline.ts";
 
 /** The same parser as in the editor: GFM. */
 function outline(text: string) {
@@ -60,4 +60,19 @@ test("закрывающая черта frontmatter — не заголовок"
 test("заметка без заголовков", () => {
   assert.deepEqual(outline("Просто текст.\n\n- пункт"), []);
   assert.deepEqual(outline(""), []);
+});
+
+test("the current heading is the last one at or above the top line", () => {
+  const headings = [
+    { level: 1, text: "Plan", line: 3 },
+    { level: 2, text: "Goals", line: 10 },
+    { level: 2, text: "Risks", line: 20 },
+  ];
+  assert.equal(currentHeading(headings, 1), -1);
+  assert.equal(currentHeading(headings, 3), 0);
+  assert.equal(currentHeading(headings, 15), 1);
+  assert.equal(currentHeading(headings, 99), 2);
+  assert.equal(currentHeading([], 5), -1);
+  // At the end of the note the last heading on the screen wins.
+  assert.equal(currentHeading(headings, 15, 25), 2);
 });

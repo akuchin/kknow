@@ -29,6 +29,8 @@
      aligns to it, so the note name sits above the work area, not above the
      tree. Themes do not set it: it is layout, not color. */
   --sidebar: 260px;
+  /* Width of the note panel on the right: outline, backlinks, mentions. */
+  --aside: 240px;
   --ok: #3f8f4f;
   --warning: #a2701c;
   /* Vault labels. The set is fixed because the color sits next to text, and
@@ -97,22 +99,23 @@ body {
    state, and the work area between them. */
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar) minmax(320px, 1fr) minmax(320px, 1fr);
+  grid-template-columns: var(--sidebar) minmax(260px, 1fr) minmax(260px, 1fr) var(--aside);
   grid-template-rows: 44px 1fr 26px;
   grid-template-areas:
-    "top top top"
-    "side editor preview"
-    "status status status";
+    "top top top top"
+    "side editor preview aside"
+    "status status status status";
 }
 
 /* Note mode. "Live preview": markup renders in the text itself, no preview
-   needed. "Read": the preview takes the editor's place. "Side by side": the grid above. */
+   needed. "Read": the preview takes the editor's place. "Side by side": the grid above.
+   The note panel is the last column in each mode. */
 #app[data-mode="edit"] {
-  grid-template-columns: var(--sidebar) 1fr;
+  grid-template-columns: var(--sidebar) 1fr var(--aside);
   grid-template-areas:
-    "top top"
-    "side editor"
-    "status status";
+    "top top top"
+    "side editor aside"
+    "status status status";
 }
 
 #app[data-mode="edit"] .preview-pane {
@@ -120,11 +123,11 @@ body {
 }
 
 #app[data-mode="read"] {
-  grid-template-columns: var(--sidebar) 1fr;
+  grid-template-columns: var(--sidebar) 1fr var(--aside);
   grid-template-areas:
-    "top top"
-    "side preview"
-    "status status";
+    "top top top"
+    "side preview aside"
+    "status status status";
 }
 
 #app[data-mode="read"] .editor {
@@ -143,7 +146,6 @@ body {
   line-height: 1.7;
 }
 
-#app[data-mode="read"] .backlinks,
 #app[data-mode="read"] .panel {
   font-size: 13px;
   padding-inline: max(14px, calc((100% - 720px) / 2));
@@ -156,6 +158,15 @@ body {
 }
 
 #app[data-sidebar="hidden"] .sidebar {
+  display: none;
+}
+
+/* The note panel collapses the same way, and it has no place without a note. */
+#app[data-aside="hidden"] {
+  --aside: 0px;
+}
+
+#app[data-aside="hidden"] .note-aside {
   display: none;
 }
 
@@ -2230,7 +2241,6 @@ pre.mermaid[data-error]::after {
   white-space: nowrap;
 }
 
-.backlinks,
 .panel {
   border-top: 1px solid var(--border);
   background: var(--bg-soft);
@@ -3103,7 +3113,6 @@ button.primary:active {
   filter: brightness(0.94);
 }
 
-.backlinks h2,
 .panel h2 {
   margin: 0 0 6px;
   font-size: 11px;
@@ -3111,22 +3120,6 @@ button.primary:active {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.backlinks ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.backlinks li {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 13px;
 }
 
 button.link {
@@ -3570,4 +3563,138 @@ body[data-palette="open"] #app {
 
 .mcp-state[data-tone="off"] {
   color: var(--text-muted);
+}
+
+/* The note panel: three sections that fold, each with a count. The outline
+   indents by heading level and marks the section at the top of the view. */
+.note-aside {
+  grid-area: aside;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-soft);
+  padding: 6px 0 14px;
+  font-size: 13px;
+}
+
+.aside-section + .aside-section {
+  border-top: 1px solid var(--border);
+}
+
+.aside-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.aside-count {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.aside-section ol,
+.aside-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 6px;
+}
+
+.aside-section .empty {
+  padding: 2px 6px 6px;
+}
+
+.aside-outline li {
+  padding-left: calc(var(--depth, 0) * 12px);
+}
+
+.aside-heading,
+.aside-line {
+  display: block;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aside-heading {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.aside-heading:hover,
+.aside-line:hover {
+  background: color-mix(in oklab, var(--text) 7%, transparent);
+}
+
+.aside-outline .is-current .aside-heading {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent-soft) 80%, transparent);
+}
+
+.aside-source {
+  padding: 4px 0 2px;
+}
+
+.aside-source > .link {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.aside-source ul {
+  padding: 2px 0 0;
+}
+
+.aside-line-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.aside-line-text mark {
+  color: var(--text);
+  background: color-mix(in oklab, var(--accent-soft) 70%, transparent);
+  border-radius: 3px;
+}
+
+.aside-mention {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.aside-mention .aside-line {
+  flex: 1;
+  min-width: 0;
+}
+
+.aside-link {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.aside-more {
+  margin: 2px 6px 0;
+  font-size: 12px;
 }

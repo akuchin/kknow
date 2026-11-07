@@ -56,7 +56,7 @@ test("back and forward walk the opened notes", async ({ page }) => {
 test("a link in the preview opens its note", async ({ page }) => {
   await page.locator("#preview a", { hasText: "Rust" }).click();
   await expect(page.locator("#note-title")).toHaveText("Rust");
-  await expect(page.locator("#backlink-list")).toContainText("Оглавление");
+  await expect(page.locator("#aside-backlinks-list")).toContainText("Оглавление");
 });
 
 test("the mode switch shows the editor, both panes or the preview", async ({ page }) => {

@@ -38,6 +38,8 @@ const DEFAULTS = {
   "bookmark.list": ["Mod-Alt-b"],
   "task.list": ["Mod-Alt-t"],
   "sidebar.toggle": ["Mod-\\"],
+  // Not ⌘⌥\: CodeMirror takes it for "indent the selection".
+  "aside.toggle": ["Mod-Alt-p"],
   "history.back": ["Mod-Alt-ArrowLeft"],
   "history.forward": ["Mod-Alt-ArrowRight"],
   // ⌘= and ⌘+ are one key (plus needs Shift), so Shift is not required.

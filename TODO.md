@@ -26,8 +26,6 @@ The plan for the redesign is closed. Its archive copy is
   Revisit if real vaults are much larger: memory grows with the note count.
   A vault with auto-sync must stay open for its scheduler, so closing needs
   more than a timer.
-- **Backlinks are not visible in "Edit".** They are below the preview. The
-  side panel below (item 4) solves this.
 - **Conflict resolution is only a list of files.** "Resolve" opens the copies
   in the palette. Add a side-by-side comparison of the two versions. Put the
   "accept" and "delete copy" buttons next to it.
@@ -81,19 +79,8 @@ The plan for the redesign is closed. Its archive copy is
 
 These follow the link completion and the list keys. Do them in this order.
 
-4. **A side panel of the note: outline and backlinks.** A panel on the right
-   with two sections.
-   - The outline shows the headings and marks the section on the screen.
-     A click goes to the heading. The editor outline (`headingsOf`) already
-     gives the headings with unsaved edits.
-   - The backlinks list the notes that link here, with the line of each link.
-     `NoteView.backlinks` has them.
-   - Unlinked mentions: lines where the note name stands as plain text.
-     A button changes the text into `[[link]]`. The core needs a search by
-     the name and the aliases from the frontmatter.
-   - The panel works in all three modes. Hide it with a key and remember the
-     state per window, not per note.
-5. **Hover preview, then real embeds.**
+5. **Hover preview, then real embeds.** The plan is in
+   [docs/reading-2026.md](docs/reading-2026.md).
    - ⌘ plus hover on a link shows a popup with the note, or with the section
      of `#Heading`. The core needs a render of one section:
      `Workspace::render_section(id, subpath)`, by the heading line from

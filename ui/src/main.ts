@@ -20,6 +20,7 @@ import {
 import { locale, t } from "./i18n";
 import "./styles.css";
 import { applySettings, loadSettings, openMoreMenu, pickTheme, toggleLineNumbers } from "./window/appearance";
+import { initAside } from "./window/aside";
 import { initCommands, showRunOutput } from "./window/commands";
 import { el, initDom } from "./window/dom";
 import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
@@ -106,6 +107,7 @@ async function boot(): Promise<void> {
   // A note the user opens replaces the trash note and the changes view.
   const closeViews = () => (closeTrashView(), hideGit());
   initNote({ closeViews, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
+  initAside();
   initToolbar();
   initSync({ resolve: resolveConflicts });
   initGit({ sync: runSync, closeTrashView, refreshTree });
@@ -153,11 +155,9 @@ async function boot(): Promise<void> {
   // Settings are shared with the settings window: language, theme and editor
   // behavior change there and arrive here as events.
   void onSettingsChanged(applySettings);
-  // The core already added and activated a folder opened from outside
-  // (`open -a kknow ~/notes`); the window only switches to it.
+  // The core already opened a folder from outside (`open -a kknow ~/notes`).
   void onVaultOpened((id) => void switchVault(id));
-  // The core already stored a file opened from outside (a double click on
-  // `.md`); the window takes the request and shows it.
+  // The core already stored a file opened from outside (a double click on `.md`).
   void onFileOpened(() => void takeOpened());
   // Folders and files dropped on the window; see `takeDrop`.
   void onDragDrop(takeDrop);

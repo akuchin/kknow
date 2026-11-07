@@ -272,6 +272,23 @@ const notes: MockNote[] = [
       "# Картинки\n\nШирокая:\n\n![панорама](img/wide.svg)\n\nВысокая, по имени файла:\n\n![[tall.svg]]\n\nС размером: ![[wide.svg|200]] и дальше текст.\n\nПропавшая: ![нет](img/missing.png)\n\nИз сети: ![](https://example.com/a.png)\n",
     html: `<h1>Картинки</h1>\n<p>Широкая:</p>\n<p><img class="note-image" data-src="img/wide.svg" alt="панорама"></p>\n<p>Высокая, по имени файла:</p>\n<p><img class="note-image" data-src="tall.svg" alt=""></p>\n<p>С размером: <img class="note-image" data-src="wide.svg" alt="" style="width:200px"> и дальше текст.</p>\n<p>Пропавшая: <img class="note-image" data-src="img/missing.png" alt="нет"></p>\n<p>Из сети: <img class="note-image" data-src="https://example.com/a.png" alt=""></p>\n`,
   },
+  {
+    // Plain-text names of other notes: the note panel lists them as mentions
+    // without a link. Sections and a long body give the outline a section to
+    // follow on scroll.
+    id: "Reading",
+    title: "Reading",
+    folder: null,
+    tags: [],
+    content:
+      "# Reading\n\n## Books\n\nThe Rust book first, then the kknow docs.\n\n" +
+      Array.from({ length: 60 }, (_, i) => `Note ${i + 1} about books.\n`).join("\n") +
+      "\n## Articles\n\nNothing yet.\n",
+    html:
+      `<h1>${line(1)}Reading</h1><h2>${line(3)}Books</h2><p>${line(5)}The Rust book first, then the kknow docs.</p>` +
+      Array.from({ length: 60 }, (_, i) => `<p>${line(7 + 2 * i)}Note ${i + 1} about books.</p>`).join("") +
+      `<h2>${line(127)}Articles</h2><p>${line(129)}Nothing yet.</p>`,
+  },
 ];
 
 /** Mock image: an SVG of the needed size with a caption. */
@@ -281,11 +298,6 @@ function mockImage(target: string): ArrayBuffer {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#7aa2f7"/><circle cx="50%" cy="50%" r="${height / 4}" fill="#e0af68"/><text x="24" y="80" font-size="64" fill="#1a1b26">${target}</text></svg>`;
   return new TextEncoder().encode(svg).buffer as ArrayBuffer;
 }
-
-const backlinks: Record<string, { id: string; title: string; label: string | null }[]> = {
-  Rust: [{ id: "Index", title: "Оглавление", label: null }],
-  "Projects/kknow": [{ id: "Rust", title: "Rust", label: null }],
-};
 
 /** A mock vault: the list entry plus its notes. */
 interface MockVault {
@@ -710,7 +722,10 @@ function view(note: MockNote): NoteView {
     title: note.title,
     content: note.content,
     html: note.html,
-    backlinks: backlinks[note.id] ?? [],
+    // The same scan as `note_backlinks`, so the toolbar count and the panel agree.
+    backlinks: [...new Map(noteBacklinks(note.id).map((row) => [row.id, row])).values()].map(
+      (row) => ({ id: row.id, title: row.title, label: null }),
+    ),
     outgoing: [],
     tags: note.tags,
     bookmarks: note.bookmarks ?? [],
@@ -878,9 +893,7 @@ function linkMention(from: string, start: number, end: number, text: string, tar
   const name = target.split("/").pop() ?? target;
   const link = name === text ? `[[${name}]]` : `[[${name}|${text}]]`;
   note.content = note.content.slice(0, start) + link + note.content.slice(end);
-  const known = (backlinks[target] ??= []);
-  if (!known.some((each) => each.id === from)) known.push({ id: from, title: note.title, label: null });
-  return known;
+  return view(find(target)).backlinks;
 }
 
 function find(id: string): MockNote {
