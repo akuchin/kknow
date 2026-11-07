@@ -28,7 +28,7 @@ A new user must open the app with no errors and no terminal commands.
 - [ ] Open a real Obsidian vault as it is. Check links, embeds, attachments
       and the `.obsidian` folder. Write down what does not work (see
       TODO.md, "Before the launch").
-- [ ] Check that the app shows a clear message, not a crash, for common
+- [x] Check that the app shows a clear message, not a crash, for common
       problems: no access to a folder, a wrong S3 key, a git repository with
       no remote (see TODO.md, "Before the launch").
 

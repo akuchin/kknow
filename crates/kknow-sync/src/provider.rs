@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -30,15 +31,43 @@ impl fmt::Display for Operation {
     }
 }
 
+/// What went wrong, for the common problems that a person can fix.
+///
+/// A new user meets these first: a wrong key, a typo in the bucket name, no
+/// network, a cloud folder of a disk that is not connected. The text of the
+/// library says nothing to them ("PermissionDenied (permanent) at list,
+/// context: …"), so a backend names the cause, and the CLI and the window
+/// give their own words for it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Cause {
+    /// Anything else: the text of the backend.
+    #[default]
+    Other,
+    /// The storage refused the access keys. The code of the storage, for
+    /// example `InvalidAccessKeyId` or `SignatureDoesNotMatch`.
+    KeysRefused(String),
+    /// The bucket does not exist.
+    NoBucket(String),
+    /// Nothing answers at the address: no network, a wrong host or port.
+    Unreachable(String),
+    /// The app cannot read or write the folder.
+    FolderDenied(PathBuf),
+    /// The folder and its parent do not exist: a disk that is not
+    /// connected, or a cloud drive that is not installed.
+    FolderMissing(PathBuf),
+}
+
 /// Storage error.
 ///
-/// The cause is behind `dyn Error`: `SyncProvider` must not expose the error
-/// types of a specific backend, or the abstraction leaks.
+/// The source is behind `dyn Error`: `SyncProvider` must not expose the error
+/// types of a specific backend, or the abstraction leaks. The [`Cause`] says
+/// what it means for a person.
 #[derive(Debug, thiserror::Error)]
-#[error("{operation} «{key}» не удалось: {source}")]
+#[error("{}", self.text())]
 pub struct Error {
     pub operation: Operation,
     pub key: String,
+    pub cause: Cause,
     #[source]
     pub source: Box<dyn std::error::Error + Send + Sync>,
 }
@@ -52,7 +81,39 @@ impl Error {
         Error {
             operation,
             key: key.into(),
+            cause: Cause::Other,
             source: source.into(),
+        }
+    }
+
+    pub fn because(mut self, cause: Cause) -> Self {
+        self.cause = cause;
+        self
+    }
+
+    fn text(&self) -> String {
+        match &self.cause {
+            Cause::Other => format!(
+                "{} «{}» не удалось: {}",
+                self.operation, self.key, self.source
+            ),
+            Cause::KeysRefused(code) => format!(
+                "the storage refused the access keys ({code}). Check the access key and the secret key"
+            ),
+            Cause::NoBucket(bucket) => {
+                format!("the bucket {bucket} does not exist. Check its name and the region")
+            }
+            Cause::Unreachable(address) => {
+                format!("{address} does not answer. Check the address and the network connection")
+            }
+            Cause::FolderDenied(path) => format!(
+                "no access to the folder {}. Check its permissions; on macOS, also System Settings → Privacy & Security → Files and Folders",
+                path.display()
+            ),
+            Cause::FolderMissing(path) => format!(
+                "the folder {} does not exist. Connect its disk or pick another folder",
+                path.display()
+            ),
         }
     }
 }

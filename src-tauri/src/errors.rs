@@ -44,7 +44,20 @@ fn detail(code: &'static str, detail: impl ToString) -> Coded {
     (code, vec![("detail", detail.to_string())])
 }
 
+/// An input or output error. The common kinds have their own codes, as in
+/// `kknow_core::io_text`: "os error 13" says nothing to a person.
 fn io(path: &std::path::Path, source: &std::io::Error) -> Coded {
+    use std::io::ErrorKind;
+    let code = match source.kind() {
+        ErrorKind::PermissionDenied => "noAccess",
+        ErrorKind::NotFound => "pathMissing",
+        ErrorKind::ReadOnlyFilesystem => "readOnly",
+        ErrorKind::StorageFull => "diskFull",
+        _ => "io",
+    };
+    if code != "io" {
+        return (code, vec![("path", path.display().to_string())]);
+    }
     (
         "io",
         vec![
@@ -161,6 +174,19 @@ fn sync(error: &kknow_sync::Error) -> Coded {
     match error {
         E::Vault(error) => core(error),
         E::Provider(error) => {
+            use kknow_sync::provider::Cause;
+            match &error.cause {
+                Cause::KeysRefused(code) => return value("storageKeys", code),
+                Cause::NoBucket(bucket) => return value("noSuchBucket", bucket),
+                Cause::Unreachable(address) => return value("storageUnreachable", address),
+                Cause::FolderDenied(path) => {
+                    return ("folderDenied", vec![("path", path.display().to_string())]);
+                }
+                Cause::FolderMissing(path) => {
+                    return ("folderMissing", vec![("path", path.display().to_string())]);
+                }
+                Cause::Other => {}
+            }
             let code = match error.operation {
                 Operation::Get => "storageGet",
                 Operation::Put => "storagePut",
@@ -200,6 +226,9 @@ fn sync(error: &kknow_sync::Error) -> Coded {
         E::GitNotEmpty => ("gitNotEmpty", vec![]),
         E::GitNotRoot(top) => value("gitNotRoot", top.display()),
         E::GitNoOrigin => ("gitNoOrigin", vec![]),
+        E::GitUnreachable(why) => detail("gitUnreachable", why),
+        E::GitDenied(why) => detail("gitDenied", why),
+        E::GitRepoMissing(why) => detail("gitRepoMissing", why),
         E::GitUrlCredentials => ("gitUrlCredentials", vec![]),
         E::GitDetached => ("gitDetached", vec![]),
         E::GitEmptyMessage => ("gitEmptyMessage", vec![]),
@@ -283,5 +312,47 @@ mod tests {
         assert_eq!(view.params["value"], "план");
         assert_eq!(view.params["line"], "3");
         assert_eq!(view.message, error.to_string());
+    }
+
+    /// The problems of a first start get their own codes, not "io" or
+    /// "storageList" with the text of a library.
+    #[test]
+    fn common_problems_have_their_own_codes() {
+        use kknow_sync::provider::{Cause, Error as StorageError, Operation};
+        use std::io::{Error as IoError, ErrorKind};
+
+        let io = |kind| {
+            Error::Sync(kknow_sync::Error::Vault(kknow_core::Error::Io {
+                path: "/notes".into(),
+                source: IoError::from(kind),
+            }))
+        };
+        let view = ErrorView::from(&io(ErrorKind::PermissionDenied));
+        assert_eq!(view.code, "noAccess");
+        assert_eq!(view.params["path"], "/notes");
+        assert_eq!(ErrorView::from(&io(ErrorKind::NotFound)).code, "pathMissing");
+        assert_eq!(ErrorView::from(&io(ErrorKind::Interrupted)).code, "io");
+
+        let storage = |cause| {
+            Error::Sync(kknow_sync::Error::Provider(
+                StorageError::new(Operation::List, "", "library text").because(cause),
+            ))
+        };
+        let cases = [
+            (Cause::KeysRefused("InvalidAccessKeyId".into()), "storageKeys"),
+            (Cause::NoBucket("notes".into()), "noSuchBucket"),
+            (Cause::Unreachable("http://localhost:9000".into()), "storageUnreachable"),
+            (Cause::FolderDenied("/x".into()), "folderDenied"),
+            (Cause::FolderMissing("/x".into()), "folderMissing"),
+            (Cause::Other, "storageList"),
+        ];
+        for (cause, code) in cases {
+            assert_eq!(ErrorView::from(&storage(cause)).code, code);
+        }
+
+        let git = Error::Sync(kknow_sync::Error::GitDenied("Authentication failed".into()));
+        let view = ErrorView::from(&git);
+        assert_eq!(view.code, "gitDenied");
+        assert_eq!(view.params["detail"], "Authentication failed");
     }
 }

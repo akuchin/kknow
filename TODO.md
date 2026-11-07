@@ -8,6 +8,8 @@ in [docs/launch-checklist.md](docs/launch-checklist.md).
 These parts are complete:
 
 - the core and the CLI (command-line interface);
+- clear errors for a first start: refused S3 keys, no bucket, no answer, no
+  access to a folder, a missing folder, git sign-in and address problems;
 - the window, search, sync, themes and live preview;
 - the UI (user interface) redesign;
 - multiple vaults: the sidebar as a workspace, and opening a folder from Finder
@@ -29,15 +31,10 @@ The plan for the redesign is closed. Its archive copy is
 Do these tasks in this order. They come from Phase 1 of the launch
 checklist: a new user must open the app with no errors.
 
-1. **Clear errors for common problems.** Check what the window and the CLI
-   show when there is no access to a folder, the S3 key is wrong, or a git
-   repository has no remote. Each case must give a clear message in the
-   language of the window, not a crash or a raw error of a library. Add a
-   test for each case.
-2. **A real Obsidian vault as it is.** Open one and check links, embeds,
+1. **A real Obsidian vault as it is.** Open one and check links, embeds,
    attachments and the `.obsidian` folder. Write down what does not work, and
    fix what a new user meets first.
-3. **A diff view: one component for two places.**
+2. **A diff view: one component for two places.**
    - Conflicts: "Resolve" opens the copies in the palette now. Show the two
      versions side by side, with the "accept" and "delete copy" buttons next
      to them.

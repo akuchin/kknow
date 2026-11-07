@@ -148,6 +148,25 @@ iCloud can replace a file that it did not download with a `.name.icloud`
 placeholder. kknow shows such a file with its real name, but it does not read
 it. Otherwise sync would think that the note was deleted.
 
+## When sync fails
+
+The status bar shows the error until the next successful sync. The common
+problems have their own messages:
+
+| Message | What to do |
+|---|---|
+| The storage refused the access keys (`InvalidAccessKeyId`, `SignatureDoesNotMatch`) | Type the access key and the secret key again. |
+| The bucket does not exist | Check the bucket name and the region. kknow does not create buckets. |
+| The address does not answer | Check the endpoint (for MinIO, also the port) and the network. |
+| No access to the folder | Check the permissions of the folder. On macOS, also allow kknow in System Settings → Privacy & Security → Files and Folders. |
+| The folder does not exist | Connect the disk, or install the cloud drive. kknow creates the last folder of the path only, not its parents: otherwise it would sync into a folder that nothing syncs. |
+| The git server does not answer, refused the sign-in, or the repository is not found | Check the address, the token or the SSH key, and the network. |
+| The repository has no `origin` | Add the address in the git form of the vault. |
+
+A vault with a folder that kknow cannot read does not open at all, and the
+message names the folder. kknow does not skip such a folder: a sync would
+then see its notes as deleted and delete them in the storage too.
+
 ## Git
 
 A git vault works differently from S3 and a folder. Git has commits, branches

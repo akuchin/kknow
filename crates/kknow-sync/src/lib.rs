@@ -165,6 +165,15 @@ pub enum Error {
     #[error("в репозитории нет remote origin: укажите адрес")]
     GitNoOrigin,
 
+    #[error("the git server does not answer ({0}). Check the address and the network connection")]
+    GitUnreachable(String),
+
+    #[error("the git server refused the sign-in ({0}). Check the token or the SSH key")]
+    GitDenied(String),
+
+    #[error("the repository is not found ({0}). Check its address")]
+    GitRepoMissing(String),
+
     #[error(
         "в адресе репозитория есть логин или токен. Уберите его из адреса и укажите токен отдельно"
     )]
@@ -227,7 +236,7 @@ pub enum Error {
     #[error("git storage cannot be encrypted")]
     GitEncrypted,
 
-    #[error("ошибка ввода-вывода в {path}: {source}")]
+    #[error("{}", kknow_core::io_text(path, source))]
     Io {
         path: PathBuf,
         #[source]

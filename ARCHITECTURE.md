@@ -269,6 +269,24 @@ External edit:
   folder. The provider refuses `..`, empty segments and absolute paths. iCloud
   can keep a file in the cloud only (`.name.icloud`). The provider lists such a
   file under its real name, and a read of it gives a clear error.
+
+  `open` creates the last folder of the path only. A missing parent is a disk
+  that is not connected or a cloud drive that is not installed: a new folder
+  there would sync with nothing, without a word.
+- **Errors of a first start have a cause.** `provider::Error` has a `Cause`:
+  refused keys, no bucket, no answer, no access to a folder, no folder. S3
+  finds it in the opendal error (its kind, the S3 code in the text, a
+  temporary error of the HTTP client); the folder finds it in the
+  `io::ErrorKind`. Git has no codes, so `git::classify` reads the stable lines
+  of its stderr (`Could not resolve host`, `Authentication failed`,
+  `Repository not found`, `'origin' does not appear…`). The CLI prints the
+  English text of the cause, and the window maps each cause to its own code
+  (`src-tauri/src/errors.rs`). Other errors keep a short text of the library,
+  without the HTTP headers. A test serves S3 errors from a local fake server,
+  so it needs no network and no MinIO.
+- A vault with a folder that it cannot read does not open: `io_text` names
+  the folder. Skipping it is not safe: the manifest would lose its notes, and
+  the next sync would delete them in the storage.
 - The sync has three parts:
   1. `stage` makes the plan and reads the content to send. It holds the vault
      lock.

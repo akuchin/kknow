@@ -215,7 +215,7 @@ impl Git {
     pub fn origin(&self) -> Result<Option<String>> {
         match self.text(&["remote", "get-url", REMOTE]) {
             Ok(url) => Ok(Some(url.trim().to_string())),
-            Err(Error::Git(_)) => Ok(None),
+            Err(Error::Git(_) | Error::GitNoOrigin) => Ok(None),
             Err(error) => Err(error),
         }
     }
@@ -676,7 +676,7 @@ impl Git {
         if output.status.success() {
             Ok(output.stdout)
         } else {
-            Err(Error::Git(failure_text(&output.stderr)))
+            Err(classify(failure_text(&output.stderr)))
         }
     }
 
@@ -792,6 +792,65 @@ fn failure_text(stderr: &[u8]) -> String {
     } else {
         lines.join("\n")
     }
+}
+
+/// A git failure with its cause, when it is a common one.
+///
+/// git has no error codes, only text. These lines are stable for years, and
+/// a text that matches none of them stays `Error::Git` with the text of git.
+/// The checks look at the remote part of the message only: a local failure
+/// (a merge, a commit) has none of these words.
+fn classify(message: String) -> Error {
+    let has = |needles: &[&str]| needles.iter().any(|needle| message.contains(needle));
+    if has(&[
+        &format!("'{REMOTE}' does not appear to be a git repository"),
+        &format!("No such remote '{REMOTE}'"),
+    ]) {
+        Error::GitNoOrigin
+    } else if has(&[
+        "Could not resolve host",
+        "Could not resolve hostname",
+        "Failed to connect to",
+        "Connection refused",
+        "Connection timed out",
+        "Operation timed out",
+        "Network is unreachable",
+        "ssh: connect to host",
+    ]) {
+        Error::GitUnreachable(first_line(&message))
+    } else if has(&[
+        "could not read Username",
+        "could not read Password",
+        "Authentication failed",
+        "Permission denied (publickey",
+        "Invalid username or password",
+        "The requested URL returned error: 403",
+        "Host key verification failed",
+    ]) {
+        Error::GitDenied(first_line(&message))
+    } else if has(&[
+        "Repository not found",
+        "does not appear to be a git repository",
+        "The requested URL returned error: 404",
+    ]) || (message.contains("repository '") && message.contains("' not found"))
+    {
+        Error::GitRepoMissing(first_line(&message))
+    } else {
+        Error::Git(message)
+    }
+}
+
+/// The line of a git message that says what failed, without `fatal:`.
+fn first_line(message: &str) -> String {
+    let line = message
+        .lines()
+        .find(|line| line.starts_with("fatal:") || line.starts_with("ERROR:"))
+        .or_else(|| message.lines().next())
+        .unwrap_or_default();
+    line.trim_start_matches("fatal:")
+        .trim_start_matches("ERROR:")
+        .trim()
+        .to_string()
 }
 
 /// A merge that did not start: uncommitted edits are in files that the merge
@@ -1250,8 +1309,89 @@ mod tests {
         let git = git(&root, &world.home);
 
         let missing = world.base.join("нет-такого.git");
-        assert!(git.attach(Some(&missing.to_string_lossy())).is_err());
+        assert!(matches!(
+            git.attach(Some(&missing.to_string_lossy())),
+            Err(Error::GitRepoMissing(_))
+        ));
         assert!(!root.join(".git").exists());
+    }
+
+    #[test]
+    fn a_sync_without_origin_says_so() {
+        let world = World::new();
+        let laptop = world.machine("laptop");
+        laptop.run(&["remote", "remove", REMOTE]).unwrap();
+
+        assert!(matches!(laptop.sync(), Err(Error::GitNoOrigin)));
+        assert_eq!(laptop.origin().unwrap(), None);
+    }
+
+    #[test]
+    fn a_remote_that_is_gone_is_named() {
+        let world = World::new();
+        let laptop = world.machine("laptop");
+        fs::remove_dir_all(&world.remote).unwrap();
+
+        let error = laptop.sync().unwrap_err();
+        assert!(matches!(error, Error::GitRepoMissing(_)), "{error:?}");
+        assert!(error.to_string().contains("not found"), "{error}");
+    }
+
+    /// The texts are from real git runs: an HTTPS address with no network, a
+    /// private repository with no token, a wrong SSH key, GitHub with no
+    /// such repository.
+    #[test]
+    fn network_and_sign_in_failures_are_named() {
+        let cases = [
+            (
+                "fatal: unable to access 'https://no-such-host.invalid/r.git/': Could not resolve host: no-such-host.invalid",
+                "unreachable",
+            ),
+            (
+                "ssh: connect to host example.com port 22: Operation timed out\nfatal: Could not read from remote repository.",
+                "unreachable",
+            ),
+            (
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+                "denied",
+            ),
+            (
+                "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+                "denied",
+            ),
+            (
+                "remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/me/notes.git/'",
+                "denied",
+            ),
+            (
+                "ERROR: Repository not found.\nfatal: Could not read from remote repository.",
+                "missing",
+            ),
+            (
+                "remote: Repository not found.\nfatal: repository 'https://github.com/me/nope.git/' not found",
+                "missing",
+            ),
+            (
+                "fatal: 'origin' does not appear to be a git repository\nfatal: Could not read from remote repository.",
+                "origin",
+            ),
+            ("CONFLICT (content): Merge conflict in a.md", "other"),
+        ];
+        for (text, expected) in cases {
+            let found = match classify(text.to_string()) {
+                Error::GitUnreachable(_) => "unreachable",
+                Error::GitDenied(_) => "denied",
+                Error::GitRepoMissing(_) => "missing",
+                Error::GitNoOrigin => "origin",
+                Error::Git(_) => "other",
+                other => panic!("{other:?}"),
+            };
+            assert_eq!(found, expected, "{text}");
+        }
+        assert_eq!(
+            first_line("remote: x\nfatal: Authentication failed for 'u'"),
+            "Authentication failed for 'u'"
+        );
     }
 
     /// The helper is shell text inside a `-c` value: a wrong quote would give

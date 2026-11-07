@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 use opendal::services::S3;
 use opendal::{ErrorKind, Operator, blocking, options::ListOptions};
 
-use crate::provider::{Error, Operation, Result, SyncProvider};
+use crate::provider::{Cause, Error, Operation, Result, SyncProvider};
 
 /// One runtime per process, not per provider.
 ///
@@ -71,6 +71,9 @@ impl S3Config {
 
 pub struct S3Provider {
     operator: blocking::Operator,
+    bucket: String,
+    /// The address for "does not answer": the endpoint, or AWS.
+    address: String,
 }
 
 impl S3Provider {
@@ -104,7 +107,56 @@ impl S3Provider {
                 .map_err(|source| Error::new(Operation::Get, &config.bucket, source))?
         };
 
-        Ok(S3Provider { operator })
+        Ok(S3Provider {
+            operator,
+            bucket: config.bucket.clone(),
+            address: config
+                .endpoint
+                .clone()
+                .unwrap_or_else(|| "AWS S3".to_string()),
+        })
+    }
+
+    /// An opendal error as a storage error, with the cause when it is a
+    /// common one.
+    ///
+    /// opendal gives a kind and a long text with the HTTP headers. The S3
+    /// code is in the text (`code: "NoSuchBucket"`), and a failed connection
+    /// is a temporary error from the HTTP client.
+    fn failure(&self, operation: Operation, key: &str, error: opendal::Error) -> Error {
+        let text = error.to_string();
+        let code = s3_code(&text);
+        let cause = match (error.kind(), code.as_deref()) {
+            (_, Some("NoSuchBucket")) => Cause::NoBucket(self.bucket.clone()),
+            (ErrorKind::PermissionDenied, Some(code)) => Cause::KeysRefused(code.to_string()),
+            (ErrorKind::PermissionDenied, None) => Cause::KeysRefused("403".to_string()),
+            (ErrorKind::Unexpected, None)
+                if error.is_temporary() && text.contains("send http request") =>
+            {
+                Cause::Unreachable(self.address.clone())
+            }
+            _ => Cause::Other,
+        };
+        Error::new(operation, key, short(&text)).because(cause)
+    }
+}
+
+/// The S3 error code in the text of an opendal error.
+fn s3_code(text: &str) -> Option<String> {
+    let start = text.find("code: \"")? + "code: \"".len();
+    let end = text[start..].find('"')?;
+    Some(text[start..start + end].to_string())
+}
+
+/// The text of an opendal error without its context: the context has the
+/// HTTP headers, and the person needs the kind and the message.
+fn short(text: &str) -> String {
+    let Some(start) = text.find(", context: {") else {
+        return text.to_string();
+    };
+    match text[start..].find("} =>") {
+        Some(end) => format!("{}{}", &text[..start], &text[start + end + 1..]),
+        None => text[..start].to_string(),
     }
 }
 
@@ -131,19 +183,19 @@ impl SyncProvider for S3Provider {
         match blocking(|| self.operator.read(key)) {
             Ok(buffer) => Ok(Some(buffer.to_vec())),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(source) => Err(Error::new(Operation::Get, key, source)),
+            Err(source) => Err(self.failure(Operation::Get, key, source)),
         }
     }
 
     fn put(&self, key: &str, bytes: &[u8]) -> Result<()> {
         blocking(|| self.operator.write(key, bytes.to_vec()))
             .map(|_| ())
-            .map_err(|source| Error::new(Operation::Put, key, source))
+            .map_err(|source| self.failure(Operation::Put, key, source))
     }
 
     fn delete(&self, key: &str) -> Result<()> {
         blocking(|| self.operator.delete(key))
-            .map_err(|source| Error::new(Operation::Delete, key, source))
+            .map_err(|source| self.failure(Operation::Delete, key, source))
     }
 
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
@@ -160,7 +212,7 @@ impl SyncProvider for S3Provider {
                 .filter(|path| !path.ends_with('/'))
                 .collect()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Vec::new()),
-            Err(source) => Err(Error::new(Operation::List, prefix, source)),
+            Err(source) => Err(self.failure(Operation::List, prefix, source)),
         }
     }
 }

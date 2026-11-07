@@ -124,7 +124,7 @@ pub enum Error {
     #[error("хранилища не могут лежать одно в другом: {0} внутри {1}")]
     NestedVault(PathBuf, PathBuf),
 
-    #[error("ошибка ввода-вывода в {path}: {source}")]
+    #[error("{}", kknow_core::io_text(path, source))]
     Io {
         path: PathBuf,
         #[source]

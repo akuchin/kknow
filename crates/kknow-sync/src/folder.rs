@@ -10,10 +10,23 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::provider::{Error, Operation, Result, SyncProvider};
+use crate::provider::{Cause, Error, Operation, Result, SyncProvider};
 
 /// Suffix that macOS adds to a cloud file that is not downloaded yet.
 const ICLOUD_SUFFIX: &str = ".icloud";
+
+/// An input or output error in the folder, with the cause for the common
+/// ones: no permission, or a read-only disk.
+fn folder_error(root: &Path, operation: Operation, key: &str, source: std::io::Error) -> Error {
+    use std::io::ErrorKind;
+    let cause = match source.kind() {
+        ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+            Cause::FolderDenied(root.to_path_buf())
+        }
+        _ => Cause::Other,
+    };
+    Error::new(operation, key, source).because(cause)
+}
 
 pub struct FolderProvider {
     root: PathBuf,
@@ -21,18 +34,37 @@ pub struct FolderProvider {
 
 impl FolderProvider {
     /// Opens the folder and creates it if necessary.
+    ///
+    /// Only the folder itself is created, not its parents. A parent that is
+    /// missing is a disk that is not connected or a cloud drive that is not
+    /// installed: a new folder there would sync with nothing, without a word.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref();
-        fs::create_dir_all(root)
-            .map_err(|source| Error::new(Operation::Put, root.to_string_lossy(), source))?;
+        if !root.exists()
+            && root
+                .parent()
+                .is_some_and(|parent| !parent.as_os_str().is_empty() && !parent.exists())
+        {
+            return Err(
+                Error::new(Operation::Get, root.to_string_lossy(), "no folder")
+                    .because(Cause::FolderMissing(root.to_path_buf())),
+            );
+        }
+        fs::create_dir_all(root).map_err(|source| {
+            folder_error(root, Operation::Put, &root.to_string_lossy(), source)
+        })?;
 
         // Canonicalize because later checks use this path to make sure a key
         // does not write outside the folder.
-        let root = root
-            .canonicalize()
-            .map_err(|source| Error::new(Operation::Get, root.to_string_lossy(), source))?;
+        let root = root.canonicalize().map_err(|source| {
+            folder_error(root, Operation::Get, &root.to_string_lossy(), source)
+        })?;
 
         Ok(FolderProvider { root })
+    }
+
+    fn failure(&self, operation: Operation, key: &str, source: std::io::Error) -> Error {
+        folder_error(&self.root, operation, key, source)
     }
 
     pub fn location(&self) -> String {
@@ -91,21 +123,22 @@ impl SyncProvider for FolderProvider {
                 }
                 Ok(None)
             }
-            Err(source) => Err(Error::new(Operation::Get, key, source)),
+            Err(source) => Err(self.failure(Operation::Get, key, source)),
         }
     }
 
     fn put(&self, key: &str, bytes: &[u8]) -> Result<()> {
         let path = self.path_for(key, Operation::Put)?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| Error::new(Operation::Put, key, source))?;
+            fs::create_dir_all(parent)
+                .map_err(|source| self.failure(Operation::Put, key, source))?;
         }
 
         // Write through a temporary file and `rename`, as the core does for
         // notes. Otherwise the cloud could pick up half a file.
         let temp = path.with_extension("kknow-tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::new(Operation::Put, key, source))?;
-        fs::rename(&temp, &path).map_err(|source| Error::new(Operation::Put, key, source))
+        fs::write(&temp, bytes).map_err(|source| self.failure(Operation::Put, key, source))?;
+        fs::rename(&temp, &path).map_err(|source| self.failure(Operation::Put, key, source))
     }
 
     fn delete(&self, key: &str) -> Result<()> {
@@ -115,7 +148,7 @@ impl SyncProvider for FolderProvider {
             // A delete of a missing file is a success: sync can stop and
             // start again, and the second run must not fail.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(source) => Err(Error::new(Operation::Delete, key, source)),
+            Err(source) => Err(self.failure(Operation::Delete, key, source)),
         }
     }
 
@@ -130,11 +163,12 @@ impl SyncProvider for FolderProvider {
         while let Some(dir) = stack.pop() {
             let entries = match fs::read_dir(&dir) {
                 Ok(entries) => entries,
-                Err(source) => return Err(Error::new(Operation::List, prefix, source)),
+                Err(source) => return Err(self.failure(Operation::List, prefix, source)),
             };
 
             for entry in entries {
-                let entry = entry.map_err(|source| Error::new(Operation::List, prefix, source))?;
+                let entry =
+                    entry.map_err(|source| self.failure(Operation::List, prefix, source))?;
                 let path = entry.path();
 
                 if path.is_dir() {
@@ -276,5 +310,43 @@ mod tests {
             .filter(|name| name.to_string_lossy().contains("tmp"))
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn a_folder_on_a_missing_disk_is_not_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("NoDisk/kknow");
+
+        let error = FolderProvider::open(&target).err().unwrap();
+        assert_eq!(error.cause, Cause::FolderMissing(target.clone()));
+        assert!(error.to_string().contains("does not exist"), "{error}");
+        assert!(!dir.path().join("NoDisk").exists());
+    }
+
+    #[test]
+    fn the_last_level_of_the_folder_is_still_created() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(FolderProvider::open(dir.path().join("kknow")).is_ok());
+        assert!(dir.path().join("kknow").is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_without_write_access_is_named() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (dir, provider) = provider();
+        let root = provider.root.clone();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let error = provider.put("a.md", b"# A").unwrap_err();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(error.cause, Cause::FolderDenied(root));
+        assert!(
+            error.to_string().starts_with("no access to the folder"),
+            "{error}"
+        );
+        drop(dir);
     }
 }
