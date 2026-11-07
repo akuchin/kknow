@@ -227,6 +227,15 @@ export type ConflictPolicy = "keepBoth" | "preferLocal" | "preferRemote";
  */
 export type EditState = "pending" | "accepted" | "rejected";
 
+/**
+ * The result of turning encryption on.
+ */
+export type EncryptionOn = { 
+/**
+ * The person must write it down: it is shown only this one time.
+ */
+recoveryCode: string, settings: SyncSettings, };
+
 export type ErrorView = { code: string, params: { [key in string]: string }, message: string, };
 
 /**
@@ -662,7 +671,12 @@ hasSecret: boolean,
  * Whether a secret is needed at all. A folder has none, so the form hides
  * the key fields for it.
  */
-needsSecret: boolean, provider: Provider, policy: ConflictPolicy, 
+needsSecret: boolean, 
+/**
+ * The data key of an encrypted storage is in the keyring. Without it,
+ * the window asks for the passphrase.
+ */
+hasKey: boolean, provider: Provider, policy: ConflictPolicy, 
 /**
  * Auto sync interval in minutes. `0` turns auto sync off.
  *

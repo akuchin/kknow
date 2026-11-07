@@ -36,6 +36,8 @@ aes-siv = "0.7"
 argon2 = "0.5"
 getrandom = "0.3"
 zeroize = { version = "1", features = ["derive"] }
+# The CLI reads a passphrase without an echo.
+rpassword = "7"
 # TypeScript types for the window (`ui/src/bindings.ts`). Only tests use it:
 # the crates have a `ts` feature, and only the dev-dependencies of src-tauri
 # turn it on.

@@ -10,7 +10,9 @@
 //! waits for the write step. The UI indicator exists for this reason.
 
 use kknow_app::Workspace;
-use kknow_sync::{GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider};
+use kknow_sync::{
+    DataKey, GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -38,6 +40,19 @@ pub struct SyncSettings {
     /// Whether a secret is needed at all. A folder has none, so the form hides
     /// the key fields for it.
     needs_secret: bool,
+    /// The data key of an encrypted storage is in the keyring. Without it,
+    /// the window asks for the passphrase.
+    has_key: bool,
+}
+
+/// The result of turning encryption on.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct EncryptionOn {
+    /// The person must write it down: it is shown only this one time.
+    recovery_code: String,
+    settings: SyncSettings,
 }
 
 /// A conflict: both sides edited the same note.
@@ -99,9 +114,101 @@ pub(crate) fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
         // A folder has no secret, so there is no need to ask the keyring.
         has_secret: needs_secret && secrets::load(&location)?.is_some(),
         needs_secret,
+        has_key: config.encrypted && secrets::load(&key_entry(&location))?.is_some(),
         location,
         config,
     })
+}
+
+/// The keyring entry of the data key of an encrypted storage.
+///
+/// Next to the secret access key and under the same address: the key belongs
+/// to the storage, and two vaults in one storage share it.
+fn key_entry(location: &str) -> String {
+    format!("{location} encryption key")
+}
+
+/// The data key from the keyring. `None` if the storage is not encrypted or
+/// the key is not there yet: then `connect` says "locked".
+fn data_key(config: &RemoteConfig) -> Result<Option<DataKey>> {
+    if !config.encrypted {
+        return Ok(None);
+    }
+    match secrets::load(&key_entry(&config.location()))? {
+        Some(text) => Ok(Some(DataKey::import(&text)?)),
+        None => Ok(None),
+    }
+}
+
+/// The secret access key, if this storage needs one.
+fn secret(config: &RemoteConfig) -> Result<Option<String>> {
+    if config.needs_secret() {
+        secrets::load(&config.location())
+    } else {
+        Ok(None)
+    }
+}
+
+/// The storage under the encryption, for the encryption commands.
+fn storage(config: &RemoteConfig) -> Result<Box<dyn SyncProvider>> {
+    Ok(kknow_sync::storage(config, secret(config)?)?)
+}
+
+/// Turns encryption on: a new key, then the storage goes under encryption.
+///
+/// The work is in the storage, not in the vault, so the vault stays free.
+/// An auto sync that starts at the same time meets the key file and stops
+/// with "locked"; the next one uses the key.
+#[tauri::command(async)]
+pub fn sync_encrypt(
+    state: State<'_, AppState>,
+    passphrase: String,
+    vault: Option<String>,
+) -> Result<EncryptionOn> {
+    let slot = state.slot(vault.as_deref())?;
+    let mut config = slot.read(config_of)?.ok_or(Error::NotConfigured)?;
+    let (key, code) = kknow_sync::encrypted::init(&*storage(&config)?, &passphrase)?;
+    secrets::store(&key_entry(&config.location()), &key.export())?;
+
+    config.encrypted = true;
+    slot.read(|workspace| Ok(config.save(&RemoteConfig::path(workspace.root()))?))?;
+    Ok(EncryptionOn {
+        recovery_code: code.display().to_string(),
+        settings: settings_of(config)?,
+    })
+}
+
+/// Opens an encrypted storage with the passphrase or the recovery code: on a
+/// new device, or after the key changed in the storage.
+#[tauri::command(async)]
+pub fn sync_unlock(
+    state: State<'_, AppState>,
+    secret: String,
+    vault: Option<String>,
+) -> Result<SyncSettings> {
+    let slot = state.slot(vault.as_deref())?;
+    let mut config = slot.read(config_of)?.ok_or(Error::NotConfigured)?;
+    let key = kknow_sync::encrypted::unlock(&*storage(&config)?, &secret)?;
+    secrets::store(&key_entry(&config.location()), &key.export())?;
+
+    config.encrypted = true;
+    slot.read(|workspace| Ok(config.save(&RemoteConfig::path(workspace.root()))?))?;
+    settings_of(config)
+}
+
+/// A new passphrase. `current` is the old passphrase or the recovery code.
+/// The notes stay as they are; other devices keep their key.
+#[tauri::command(async)]
+pub fn sync_change_passphrase(
+    state: State<'_, AppState>,
+    current: String,
+    new: String,
+    vault: Option<String>,
+) -> Result<()> {
+    let slot = state.slot(vault.as_deref())?;
+    let config = slot.read(config_of)?.ok_or(Error::NotConfigured)?;
+    let key = kknow_sync::encrypted::change_passphrase(&*storage(&config)?, &current, &new)?;
+    secrets::store(&key_entry(&config.location()), &key.export())
 }
 
 /// Connects to remote storage with the saved settings.
@@ -109,13 +216,12 @@ pub(crate) fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
 /// The core builds the provider: the window and the CLI must read the settings
 /// in the same way. The secret comes from the keyring, and only when needed.
 fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
-    let secret = if config.needs_secret() {
-        secrets::load(&config.location())?
-    } else {
-        None
-    };
-
-    Ok(kknow_app::merge::sync_engine(config, secret, None)?)
+    let key = data_key(config)?;
+    Ok(kknow_app::merge::sync_engine(
+        config,
+        secret(config)?,
+        key.as_ref(),
+    )?)
 }
 
 /// Sync settings of the vault, if sync is configured.
@@ -145,13 +251,18 @@ pub fn save_sync_settings(
     let old = slot.read(config_of)?;
 
     // Encryption is not a field of the form: it is turned on by its own
-    // command, which also changes the storage.
-    let config = RemoteConfig {
+    // command, which also changes the storage. A new address is a new
+    // storage: if it is encrypted, the sync says "locked" and the window
+    // asks for its passphrase.
+    let mut config = RemoteConfig {
         provider: tidy_provider(settings.provider),
         policy: settings.policy,
         auto_sync_minutes: settings.auto_sync_minutes,
-        encrypted: old.as_ref().is_some_and(|old| old.encrypted),
+        encrypted: false,
     };
+    config.encrypted = old
+        .as_ref()
+        .is_some_and(|old| old.encrypted && old.location() == config.location());
 
     // Settings first: if the bucket settings are not saved, there is no address
     // to store the key under.
@@ -220,6 +331,9 @@ pub fn forget_sync_settings(state: State<'_, AppState>, vault: Option<String>) -
 
     if config.needs_secret() {
         secrets::forget(&config.location())?;
+    }
+    if config.encrypted {
+        secrets::forget(&key_entry(&config.location()))?;
     }
     slot.read(|workspace| Ok(RemoteConfig::forget(&RemoteConfig::path(workspace.root()))?))
 }
@@ -877,5 +991,67 @@ mod tests {
 
         assert!(save_sync_settings(app.state(), settings, None, None).is_err());
         assert!(!dir.path().join(".kknow/remote.json").exists());
+    }
+
+    /// Encryption from the window: on, sync, a second device that unlocks
+    /// with the recovery code, a new passphrase.
+    #[test]
+    fn an_encrypted_folder_from_turn_on_to_a_second_device() {
+        let cloud = tempfile::tempdir().unwrap();
+        let laptop_dir = vault();
+        let laptop = app(laptop_dir.path());
+        save_sync_settings(laptop.state(), folder_form(cloud.path()), None, None).unwrap();
+
+        let on = sync_encrypt(laptop.state(), "correct horse".into(), None).unwrap();
+        assert!(on.settings.config.encrypted && on.settings.has_key);
+        sync_now(laptop.handle().clone(), laptop.state(), None).unwrap();
+        assert!(!cloud.path().join("Index.md").exists());
+        assert!(cloud.path().join(".kknow/key.json").is_file());
+
+        // The second device connects the same folder and does not know yet
+        // that it is encrypted.
+        let desktop_dir = tempfile::tempdir().unwrap();
+        let desktop = app(desktop_dir.path());
+        save_sync_settings(desktop.state(), folder_form(cloud.path()), None, None).unwrap();
+        let error = sync_now(desktop.handle().clone(), desktop.state(), None).unwrap_err();
+        assert_eq!(crate::errors::ErrorView::from(&error).code, "storageLocked");
+
+        let error = sync_unlock(desktop.state(), "wrong horse".into(), None).unwrap_err();
+        assert_eq!(
+            crate::errors::ErrorView::from(&error).code,
+            "wrongPassphrase"
+        );
+        let unlocked = sync_unlock(desktop.state(), on.recovery_code.clone(), None).unwrap();
+        assert!(unlocked.config.encrypted);
+        let report = sync_now(desktop.handle().clone(), desktop.state(), None).unwrap();
+        assert_eq!(report.downloaded, 1);
+        assert!(desktop_dir.path().join("Index.md").is_file());
+
+        sync_change_passphrase(
+            desktop.state(),
+            "correct horse".into(),
+            "battery staple".into(),
+            None,
+        )
+        .unwrap();
+        assert!(sync_unlock(laptop.state(), "battery staple".into(), None).is_ok());
+        // The laptop keeps its key: a new passphrase does not change it.
+        sync_now(laptop.handle().clone(), laptop.state(), None).unwrap();
+    }
+
+    /// A new address is a new storage: the flag does not move to it.
+    #[test]
+    fn a_new_address_is_not_encrypted_by_inheritance() {
+        let cloud = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let dir = vault();
+        let app = app(dir.path());
+        save_sync_settings(app.state(), folder_form(cloud.path()), None, None).unwrap();
+        sync_encrypt(app.state(), "correct horse".into(), None).unwrap();
+
+        let same = save_sync_settings(app.state(), folder_form(cloud.path()), None, None).unwrap();
+        assert!(same.config.encrypted);
+        let moved = save_sync_settings(app.state(), folder_form(other.path()), None, None).unwrap();
+        assert!(!moved.config.encrypted);
     }
 }

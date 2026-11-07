@@ -4,6 +4,7 @@
 
 use kknow_app::proposals::{EditState, Review, Status as ProposalStatus};
 use std::collections::BTreeMap;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
@@ -167,7 +168,23 @@ enum Command {
         folder: Option<PathBuf>,
         #[command(flatten)]
         s3: S3Args,
+        /// Encryption of the storage. Without a subcommand, sync. An
+        /// encrypted storage needs the passphrase: `KKNOW_SYNC_PASSPHRASE`
+        /// or a prompt.
+        #[command(subcommand)]
+        action: Option<SyncAction>,
     },
+}
+
+#[derive(Subcommand)]
+enum SyncAction {
+    /// Turn on encryption: a new key, then all notes in the storage are
+    /// encrypted. Prints the recovery code one time.
+    Encrypt,
+    /// Set a new passphrase. The notes and the recovery code stay as they
+    /// are. The new passphrase comes from `KKNOW_SYNC_NEW_PASSPHRASE` or a
+    /// prompt.
+    Passphrase,
 }
 
 #[derive(Subcommand)]
@@ -454,13 +471,18 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             on_conflict,
             folder,
             s3,
+            action,
         } => {
             let mut config = destination(&workspace, folder, s3)?;
             // The flag overrides the directory setting, but it is not set by default.
             if let Some(choice) = on_conflict {
                 config.policy = choice.into();
             }
-            sync(&mut workspace, config, dry_run)?
+            match action {
+                None => sync(&mut workspace, config, dry_run)?,
+                Some(SyncAction::Encrypt) => encrypt(&workspace, config)?,
+                Some(SyncAction::Passphrase) => change_passphrase(&config)?,
+            }
         }
     }
 
@@ -1196,23 +1218,36 @@ fn report(outcome: &Outcome) -> Result<ExitCode, String> {
     }
 }
 
-fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Result<(), String> {
+fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> Result<(), String> {
     println!("хранилище: {}", config.location());
 
     if let Provider::Git(settings) = &config.provider {
         return sync_git(workspace, settings, dry_run);
     }
 
-    // The app keeps the secret key in the OS keychain, but the terminal cannot
-    // get it from there: here it comes from an environment variable. A folder
-    // needs no secret.
-    let secret = match &config.provider {
-        Provider::S3(_) => std::env::var("KKNOW_S3_SECRET_KEY").ok(),
-        Provider::Folder { .. } | Provider::Git(_) => None,
+    let secret = s3_secret(&config);
+
+    // The terminal has no keychain, so it opens the key with the passphrase
+    // on each run. It also finds an encrypted storage that the settings do
+    // not mark: a storage connected with flags, or encrypted by the window
+    // of another vault.
+    let storage =
+        kknow_sync::storage(&config, secret.clone()).map_err(|error| error.to_string())?;
+    let encrypted = config.encrypted
+        || kknow_sync::encrypted::is_encrypted(&*storage).map_err(|error| error.to_string())?;
+    let key = if encrypted {
+        let passphrase = passphrase("KKNOW_SYNC_PASSPHRASE", "Passphrase or recovery code: ")?;
+        config.encrypted = true;
+        Some(
+            kknow_sync::encrypted::unlock(&*storage, &passphrase)
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
     };
 
-    let engine =
-        kknow_app::merge::sync_engine(&config, secret, None).map_err(|error| error.to_string())?;
+    let engine = kknow_app::merge::sync_engine(&config, secret, key.as_ref())
+        .map_err(|error| error.to_string())?;
 
     if dry_run {
         let plan = workspace
@@ -1249,6 +1284,89 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
         );
     }
 
+    Ok(())
+}
+
+/// The app keeps the secret key in the OS keychain, but the terminal cannot
+/// get it from there: here it comes from an environment variable. A folder
+/// needs no secret.
+fn s3_secret(config: &RemoteConfig) -> Option<String> {
+    match &config.provider {
+        Provider::S3(_) => std::env::var("KKNOW_S3_SECRET_KEY").ok(),
+        Provider::Folder { .. } | Provider::Git(_) => None,
+    }
+}
+
+/// A secret from the variable, or from a prompt without an echo.
+///
+/// There is no flag on purpose, as for the S3 keys: `ps` shows the command
+/// line, and the shell history keeps it.
+fn passphrase(variable: &str, prompt: &str) -> Result<String, String> {
+    if let Ok(value) = std::env::var(variable) {
+        return Ok(value);
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(format!(
+            "the storage is encrypted: set {variable} or run the command in a terminal"
+        ));
+    }
+    rpassword::prompt_password(prompt).map_err(|error| error.to_string())
+}
+
+/// A new passphrase: from the variable, or typed two times.
+fn new_passphrase(variable: &str) -> Result<String, String> {
+    if let Ok(value) = std::env::var(variable) {
+        return Ok(value);
+    }
+    let first = passphrase(variable, "New passphrase: ")?;
+    let second = passphrase(variable, "The same passphrase again: ")?;
+    if first != second {
+        return Err("the two passphrases are different".to_string());
+    }
+    Ok(first)
+}
+
+/// `kknow sync encrypt`.
+fn encrypt(workspace: &Workspace, mut config: RemoteConfig) -> Result<(), String> {
+    println!("storage: {}", config.location());
+    let storage =
+        kknow_sync::storage(&config, s3_secret(&config)).map_err(|error| error.to_string())?;
+    let passphrase = new_passphrase("KKNOW_SYNC_PASSPHRASE")?;
+    let (_, code) =
+        kknow_sync::encrypted::init(&*storage, &passphrase).map_err(|error| error.to_string())?;
+
+    // Mark the directory settings, if they are for this storage. A storage
+    // from flags has no settings: the next sync finds the key file anyway.
+    let path = RemoteConfig::path(workspace.root());
+    let saved = RemoteConfig::load(&path).map_err(|error| error.to_string())?;
+    if saved.is_some_and(|saved| saved.location() == config.location()) {
+        config.encrypted = true;
+        config.save(&path).map_err(|error| error.to_string())?;
+    }
+
+    println!("The storage is encrypted.");
+    println!();
+    println!("Recovery code: {}", code.display().as_str());
+    println!();
+    println!("Write it down and keep it in a safe place. It opens the storage if you");
+    println!("lose the passphrase. kknow shows it only now. Without the passphrase and");
+    println!("the code, nobody can read the notes, and neither can kknow.");
+    Ok(())
+}
+
+/// `kknow sync passphrase`.
+fn change_passphrase(config: &RemoteConfig) -> Result<(), String> {
+    println!("storage: {}", config.location());
+    let storage =
+        kknow_sync::storage(config, s3_secret(config)).map_err(|error| error.to_string())?;
+    let current = passphrase(
+        "KKNOW_SYNC_PASSPHRASE",
+        "Current passphrase or recovery code: ",
+    )?;
+    let new = new_passphrase("KKNOW_SYNC_NEW_PASSPHRASE")?;
+    kknow_sync::encrypted::change_passphrase(&*storage, &current, &new)
+        .map_err(|error| error.to_string())?;
+    println!("The passphrase is changed. Other devices keep working.");
     Ok(())
 }
 

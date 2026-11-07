@@ -69,6 +69,7 @@ fn generate() -> String {
     collect.visit::<crate::commands::SaveOutcome>();
     collect.visit::<crate::sync::SyncSettings>();
     collect.visit::<crate::sync::SyncReport>();
+    collect.visit::<crate::sync::EncryptionOn>();
     collect.visit::<crate::sync_status::SyncStatus>();
     collect.visit::<kknow_sync::GitStatus>();
     collect.visit::<kknow_sync::GitAuth>();

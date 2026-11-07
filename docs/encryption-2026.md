@@ -1,6 +1,6 @@
 # Plan: E2E encryption for sync
 
-**Status: in progress.** Steps 1 and 2 are in `main`.
+**Status: in progress.** Steps 1–3 are in `main`.
 
 This plan covers the first item of "Larger tasks" in [TODO.md](../TODO.md)
 and Phase 2 of [launch-checklist.md](launch-checklist.md). Do the steps in
@@ -165,13 +165,18 @@ encrypted storage. Three checks prevent it.
 
 ### Step 3. App and CLI
 
-- `kknow-app`: the data key for a vault (from the keychain through the window,
-  from the variable in the CLI) and the errors for the UI.
-- `src-tauri`: the keychain entry next to the S3 secret, commands
-  `sync_encrypt`, `sync_unlock`, `sync_change_passphrase`.
-- CLI: `kknow sync encrypt`, `kknow sync unlock`, `kknow sync passphrase`.
-  The passphrase comes from `KKNOW_SYNC_PASSPHRASE` or from a prompt without
-  echo.
+- `kknow_sync::storage` gives the storage under the encryption; the
+  encryption operations work on it. `kknow-app` needs nothing new: the key
+  goes through `merge::sync_engine` as one more argument.
+- `src-tauri`: the data key in the keychain, next to the S3 secret
+  (`<address> encryption key`). Commands `sync_encrypt` (gives the recovery
+  code one time), `sync_unlock`, `sync_change_passphrase`. `SyncSettings`
+  has `hasKey`. A new storage address resets the `encrypted` flag.
+- CLI: `kknow sync encrypt` and `kknow sync passphrase`. There is no
+  `unlock`: the terminal has no keychain, so each `kknow sync` opens the key
+  with `KKNOW_SYNC_PASSPHRASE` or a prompt without echo. It also finds an
+  encrypted storage that the settings do not mark (for example, a storage
+  from `--folder`).
 
 ### Step 4. UI
 
