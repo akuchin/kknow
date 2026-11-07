@@ -5,6 +5,7 @@
 
 pub mod agent_note;
 pub mod graph;
+pub mod mention;
 pub mod parse;
 pub mod relink;
 pub mod render;

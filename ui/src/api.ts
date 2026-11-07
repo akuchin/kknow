@@ -47,6 +47,7 @@ import type {
   TaskView,
   LinkTargetView,
   BacklinkLineView,
+  MentionView,
   HeadingView,
   Theme,
   ThemeSet,
@@ -106,6 +107,7 @@ export type {
   TaskView,
   LinkTargetView,
   BacklinkLineView,
+  MentionView,
   HeadingView,
   Theme,
   ThemeSet,
@@ -290,6 +292,20 @@ export const api = {
     invoke<LinkTargetView | null>("link_target", { from, target }),
   /** Links to the note with their lines, by source note, then in text order. */
   noteBacklinks: (id: string) => invoke<BacklinkLineView[]>("note_backlinks", { id }),
+  /** Places where the name or an alias of the note stands as plain text. */
+  unlinkedMentions: (id: string) => invoke<MentionView[]>("unlinked_mentions", { id }),
+  /**
+   * Makes a mention a link to `target`. The answer is the new backlink list of
+   * the target.
+   */
+  linkMention: (mention: MentionView, target: string) =>
+    invoke<LinkRef[]>("link_mention", {
+      from: mention.id,
+      start: mention.start,
+      end: mention.end,
+      text: mention.text,
+      target,
+    }),
   deleteNote: (id: string, vault?: string) =>
     invoke<void>("delete_note", { id, vault: vault ?? null }),
   /** Trash entries of the vault, the newest first. */

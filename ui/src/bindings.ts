@@ -395,6 +395,23 @@ error: string | null,
 token: string, };
 
 /**
+ * A place where the name of the open note stands as plain text.
+ */
+export type MentionView = { 
+/**
+ * The note with the mention.
+ */
+id: string, title: string, line: number, before: string, 
+/**
+ * The name as written.
+ */
+text: string, after: string, 
+/**
+ * Byte range of the name in the source; `link_mention` takes it back.
+ */
+start: number, end: number, };
+
+/**
  * What the note tree shows for a note.
  */
 export type NoteLabel = "title" | "file";

@@ -615,6 +615,7 @@
   "error.invalidName": "invalid note name: {{value}}",
   "error.noteExists": "the note already exists: {{value}}",
   "error.notATask": "{{value}} has no task on line {{line}}: the note changed",
+  "error.notAMention": "{{value}} has no mention on line {{line}}: the note changed",
   "error.notAnAgentComment": "{{value}} has no comment «{{other}}» on line {{line}}: the note changed",
   "error.unknownVault": "vault not found: {{value}}",
   "error.unknownTarget": "not a note or a folder of this vault: {{value}}",

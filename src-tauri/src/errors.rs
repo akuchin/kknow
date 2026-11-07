@@ -93,6 +93,10 @@ fn app(error: &kknow_app::Error) -> Coded {
             "notATask",
             vec![("value", id.to_string()), ("line", line.to_string())],
         ),
+        E::NotAMention(id, line) => (
+            "notAMention",
+            vec![("value", id.to_string()), ("line", line.to_string())],
+        ),
         E::NotAnAgentComment(id, line, text) => (
             "notAnAgentComment",
             vec![

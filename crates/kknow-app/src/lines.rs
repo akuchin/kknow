@@ -91,12 +91,19 @@ mod tests {
         let source = format!("{}[[План]]", "ж".repeat(SIDE));
         let context = around(&source, "[[План]]");
 
-        assert_eq!(context.before, "ж".repeat(SIDE), "exactly SIDE characters is not cut");
+        assert_eq!(
+            context.before,
+            "ж".repeat(SIDE),
+            "exactly SIDE characters is not cut"
+        );
     }
 
     #[test]
     fn a_span_outside_the_text_gives_nothing() {
         assert!(LineContext::around("short", &(3..40)).is_none());
-        assert!(LineContext::around("жук", &(1..2)).is_none(), "not a char boundary");
+        assert!(
+            LineContext::around("жук", &(1..2)).is_none(),
+            "not a char boundary"
+        );
     }
 }

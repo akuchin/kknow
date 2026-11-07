@@ -145,6 +145,32 @@ impl SearchIndex {
         self.run(query, limit)
     }
 
+    /// Notes whose text has `phrase`, at most `limit`. The analyzer stems the
+    /// words, so this is a superset: the caller checks the exact text. A
+    /// phrase with no words finds nothing.
+    pub fn containing(&self, phrase: &str, limit: usize) -> Result<Vec<NoteId>> {
+        let words = phrase.replace(['"', '\\'], " ");
+        if words.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let parser = QueryParser::for_index(&self.index, vec![self.fields.title, self.fields.body]);
+        let query = parser.parse_query(&format!("\"{}\"", words.trim()))?;
+
+        let searcher = self.reader.searcher();
+        let found = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let mut ids = Vec::with_capacity(found.len());
+        for (_, address) in found {
+            let document: TantivyDocument = searcher.doc(address)?;
+            if let Some(id) = text(&document, self.fields.id)
+                .as_deref()
+                .and_then(NoteId::parse)
+            {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
+    }
+
     fn parser(&self) -> QueryParser {
         let mut parser = QueryParser::for_index(&self.index, self.searchable().to_vec());
         parser.set_conjunction_by_default();
@@ -319,6 +345,21 @@ mod tests {
         hits.iter().map(|hit| hit.id.as_str()).collect()
     }
 
+    #[test]
+    fn containing_finds_notes_with_the_phrase() {
+        let index = index(&[
+            ("A", "A", "the release plan is ready", &[]),
+            ("B", "B", "plan the release later", &[]),
+            ("C", "Release plan", "nothing here", &[]),
+        ]);
+
+        let mut found = index.containing("Release plan", 10).unwrap();
+        found.sort();
+        let found: Vec<&str> = found.iter().map(NoteId::as_str).collect();
+        assert_eq!(found, ["A", "C"]);
+        assert!(index.containing("\"  \\", 10).unwrap().is_empty());
+    }
+
     fn sample() -> SearchIndex {
         index(&[
             (
@@ -407,8 +448,14 @@ mod tests {
         let index = sample();
 
         // The «Tags» chip of the palette sends the text in this form.
-        assert_eq!(ids(&index.search("tag:(ru)", 10).unwrap()), ["Projects/kknow"]);
-        assert_eq!(ids(&index.search("tag:дне", 10).unwrap()), ["Daily/2026-07-26"]);
+        assert_eq!(
+            ids(&index.search("tag:(ru)", 10).unwrap()),
+            ["Projects/kknow"]
+        );
+        assert_eq!(
+            ids(&index.search("tag:дне", 10).unwrap()),
+            ["Daily/2026-07-26"]
+        );
         // The prefix stays in the field: «Rust» has the word in the title only.
         assert!(index.search("tag:(язы проекты)", 10).unwrap().is_empty());
         assert_eq!(

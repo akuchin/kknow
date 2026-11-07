@@ -145,6 +145,20 @@ External edit:
     it shows them.
   - `kknow backlinks` and the MCP tool `backlinks` print the same rows:
     `note:line  text of the line` (`text::backlink_row`).
+- Unlinked mentions (`crates/kknow-app/src/mentions.rs`): places where the
+  file name or an alias of a note stands as plain text.
+  - The search index gives the candidate notes (`SearchIndex::containing`,
+    a phrase query). The analyzer stems words, so this is a superset.
+    `kknow_index::mention::find` then checks the source text: any case, word
+    boundaries, the longer name first.
+  - Not a mention: code, HTML blocks, frontmatter, links, tags, the note
+    itself. Text between inline tags (`<b>Plan</b>`) counts: a person reads
+    it.
+  - `link_mention` reads the source again and checks that the span is still
+    the same mention; else `NotAMention`. It writes `[[name]]` or
+    `[[name|text]]`, with the shortest link that finds the note from the
+    source. It uses the plain save, as `set_task` does: the text was read a
+    moment ago, and a conflict copy for one link would be noise.
 - A rename or a move rewrites the links that point to the moved notes
   (`Relink` in `kknow-index`, `Workspace::relink` in `kknow-app`).
   - The rule: a link must find the same note after the move. A link that still

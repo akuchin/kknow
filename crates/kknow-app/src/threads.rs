@@ -255,8 +255,8 @@ impl Workspace {
                 while self.thread(&id)?.is_some() || threads.iter().any(|t: &Thread| t.id == id) {
                     id = fresh_id();
                 }
-                let marked = with_id(&text[comment.span.clone()], &id)
-                    .expect("the span holds the comment");
+                let marked =
+                    with_id(&text[comment.span.clone()], &id).expect("the span holds the comment");
                 text.replace_range(comment.span.clone(), &marked);
                 comment.id = Some(id);
             }
@@ -588,7 +588,10 @@ mod tests {
         assert_eq!(thread.messages[1].text, "VARIANTS: 1) a 2) b");
         assert_eq!(
             workspace.read(&note).unwrap(),
-            format!("Demo zero<!-- @agent#{} «zero»: start for one -->\nDemo one\n", thread.id)
+            format!(
+                "Demo zero<!-- @agent#{} «zero»: start for one -->\nDemo one\n",
+                thread.id
+            )
         );
 
         // The person answers, and the next answer of the agent joins the thread.

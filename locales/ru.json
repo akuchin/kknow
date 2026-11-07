@@ -630,6 +630,7 @@
   "error.invalidName": "некорректное имя заметки: {{value}}",
   "error.noteExists": "заметка уже существует: {{value}}",
   "error.notATask": "в {{value}} на строке {{line}} нет задачи: заметка изменилась",
+  "error.notAMention": "в {{value}} на строке {{line}} нет упоминания: заметка изменилась",
   "error.notAnAgentComment": "в {{value}} на строке {{line}} нет комментария «{{other}}»: заметка изменилась",
   "error.unknownVault": "хранилище не найдено: {{value}}",
   "error.unknownTarget": "не заметка и не папка этого хранилища: {{value}}",

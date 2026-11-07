@@ -225,7 +225,11 @@ pub fn git_discard<R: Runtime>(
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
     slot.write(|workspace| Ok(workspace.git_discard(&git, &path, from.as_deref(), staged)?))?;
-    announce(&app, &slot, &[from, Some(path)].into_iter().flatten().collect::<Vec<_>>());
+    announce(
+        &app,
+        &slot,
+        &[from, Some(path)].into_iter().flatten().collect::<Vec<_>>(),
+    );
     slot.read(|_| Ok(git.status()?))
 }
 

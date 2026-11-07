@@ -85,19 +85,18 @@ impl Frontmatter {
             }
         };
 
-        let items: Vec<&str> = if let Some(inner) =
-            value.strip_prefix('[').and_then(|v| v.strip_suffix(']'))
-        {
-            split_inline_list(inner)
-        } else if value.is_empty() {
-            lines
-                .map(str::trim_start)
-                .take_while(|line| line.starts_with('-') || line.is_empty())
-                .filter_map(|line| line.strip_prefix('-'))
-                .collect()
-        } else {
-            vec![value]
-        };
+        let items: Vec<&str> =
+            if let Some(inner) = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
+                split_inline_list(inner)
+            } else if value.is_empty() {
+                lines
+                    .map(str::trim_start)
+                    .take_while(|line| line.starts_with('-') || line.is_empty())
+                    .filter_map(|line| line.strip_prefix('-'))
+                    .collect()
+            } else {
+                vec![value]
+            };
 
         items
             .into_iter()
@@ -315,7 +314,12 @@ pub fn parse(source: &str) -> ParsedNote {
 
         match event {
             Event::Start(MdTag::Heading { level, .. }) => {
-                heading = Some((level as u8, lines.line_at(range.start), range, String::new()));
+                heading = Some((
+                    level as u8,
+                    lines.line_at(range.start),
+                    range,
+                    String::new(),
+                ));
             }
             Event::End(TagEnd::Heading(_)) => {
                 if let Some((level, line, span, heading_text)) = heading.take() {
@@ -566,7 +570,11 @@ fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
     let comment = rest[gap..].strip_prefix("<!--")?;
     let close = comment.find("-->")?;
     let body = comment[..close].trim().strip_prefix(AGENT_ANSWER)?;
-    if body.chars().next().is_some_and(|ch| !ch.is_whitespace() && ch != ':') {
+    if body
+        .chars()
+        .next()
+        .is_some_and(|ch| !ch.is_whitespace() && ch != ':')
+    {
         return None;
     }
     let text = body.trim_start().strip_prefix(':').unwrap_or(body).trim();
@@ -574,7 +582,8 @@ fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
     // A note alone on its line takes its line break with it.
     let tail = &source[end..];
     let spaces = tail.len() - tail.trim_start_matches([' ', '\t']).len();
-    if rest[..gap].contains('\n') && (tail[spaces..].starts_with('\n') || tail[spaces..].is_empty()) {
+    if rest[..gap].contains('\n') && (tail[spaces..].starts_with('\n') || tail[spaces..].is_empty())
+    {
         end += spaces;
     }
     Some((text.to_string(), end))
@@ -1123,7 +1132,10 @@ mod tests {
         assert_eq!(answers[0].text, "VARIANTS: 1) a 2) b");
         let mut cut = source.to_string();
         cut.replace_range(answers[0].span.clone(), "");
-        assert_eq!(cut, "demo zero<!-- @agent «zero»: start for one -->\ndemo one\n");
+        assert_eq!(
+            cut,
+            "demo zero<!-- @agent «zero»: start for one -->\ndemo one\n"
+        );
     }
 
     #[test]
@@ -1139,7 +1151,9 @@ mod tests {
 
     #[test]
     fn a_note_after_an_empty_line_or_alone_is_not_an_answer() {
-        assert!(agent_answers("x<!-- @agent: do it -->\n\n<!-- @agent-note: other -->\n").is_empty());
+        assert!(
+            agent_answers("x<!-- @agent: do it -->\n\n<!-- @agent-note: other -->\n").is_empty()
+        );
         assert!(agent_answers("text\n<!-- @agent-note: cannot do it -->\n").is_empty());
         assert!(agent_answers("x<!-- @agent: do it -->\n<!-- @agent-notes: no -->\n").is_empty());
     }
@@ -1148,7 +1162,11 @@ mod tests {
     fn headings_know_their_lines_with_frontmatter() {
         let note = parse("---\ntitle: x\n---\n# Top\n\ntext\n\n## Below\n");
 
-        let lines: Vec<_> = note.headings.iter().map(|h| (h.text.as_str(), h.line)).collect();
+        let lines: Vec<_> = note
+            .headings
+            .iter()
+            .map(|h| (h.text.as_str(), h.line))
+            .collect();
         assert_eq!(lines, [("Top", 4), ("Below", 8)]);
     }
 
@@ -1156,7 +1174,11 @@ mod tests {
     fn block_ids_end_a_line_after_a_space() {
         let note = parse("A paragraph ^intro\n\n- item ^item-2\n\nx^2 is math\nonly^tail\n");
 
-        let blocks: Vec<_> = note.blocks.iter().map(|b| (b.id.as_str(), b.line)).collect();
+        let blocks: Vec<_> = note
+            .blocks
+            .iter()
+            .map(|b| (b.id.as_str(), b.line))
+            .collect();
         assert_eq!(blocks, [("intro", 1), ("item-2", 3)]);
     }
 

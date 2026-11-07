@@ -243,7 +243,10 @@ impl Reply {
 
     /// A refusal with the reason in words: a person reads it in the agent log.
     fn refuse(status: u16, text: &str) -> Self {
-        Reply::json(status, mcp::failure(Value::Null, mcp::INVALID_REQUEST, text))
+        Reply::json(
+            status,
+            mcp::failure(Value::Null, mcp::INVALID_REQUEST, text),
+        )
     }
 }
 
@@ -305,13 +308,19 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
         .and_then(|value| value.strip_prefix("Bearer "))
         .unwrap_or("");
     if !mcp::same_token(given.trim(), token) {
-        return Reply::refuse(401, "нужен заголовок Authorization: Bearer <токен из kknow>");
+        return Reply::refuse(
+            401,
+            "нужен заголовок Authorization: Bearer <токен из kknow>",
+        );
     }
 
     let message: Value = match serde_json::from_slice(&request.body) {
         Ok(message) => message,
         Err(error) => {
-            return Reply::json(400, mcp::failure(Value::Null, PARSE_ERROR, &error.to_string()));
+            return Reply::json(
+                400,
+                mcp::failure(Value::Null, PARSE_ERROR, &error.to_string()),
+            );
         }
     };
     let mut host = match WindowHost::new(app, query) {
@@ -427,7 +436,11 @@ impl<R: Runtime> Host for WindowHost<'_, R> {
         &self.refs
     }
 
-    fn read<T>(&self, index: usize, action: impl FnOnce(&Workspace) -> T) -> std::result::Result<T, String> {
+    fn read<T>(
+        &self,
+        index: usize,
+        action: impl FnOnce(&Workspace) -> T,
+    ) -> std::result::Result<T, String> {
         self.slots[index]
             .read(|workspace| Ok(action(workspace)))
             .map_err(|error| error.to_string())
@@ -541,7 +554,12 @@ mod tests {
     fn a_tool_call_gets_a_json_reply_over_all_vaults() {
         let (_dirs, app) = app();
 
-        let reply = route(app.handle(), 7377, TOKEN, &post("/mcp", call("tasks", json!({}))));
+        let reply = route(
+            app.handle(),
+            7377,
+            TOKEN,
+            &post("/mcp", call("tasks", json!({}))),
+        );
 
         assert_eq!(reply.status, 200);
         let rows = text(&reply);
@@ -559,7 +577,11 @@ mod tests {
             TOKEN,
             &post("/mcp?label=WORK", call("tasks", json!({}))),
         );
-        assert_eq!(text(&reply), "План:1  отчёт", "одно хранилище: без префикса");
+        assert_eq!(
+            text(&reply),
+            "План:1  отчёт",
+            "одно хранилище: без префикса"
+        );
 
         let id = app.state::<AppState>().entries()[1].id.clone();
         let reply = route(
@@ -584,7 +606,9 @@ mod tests {
         let (dirs, app) = app();
         let heard = Arc::new(Mutex::new(Vec::new()));
         let sink = heard.clone();
-        app.listen(EVENT, move |event| sink.lock().unwrap().push(event.payload().to_string()));
+        app.listen(EVENT, move |event| {
+            sink.lock().unwrap().push(event.payload().to_string())
+        });
 
         let reply = route(
             app.handle(),
@@ -619,7 +643,11 @@ mod tests {
 
         let mut request = post("/mcp", call("tasks", json!({})));
         request.headers[0].1 = "evil.example:7377".to_string();
-        assert_eq!(route(app.handle(), 7377, TOKEN, &request).status, 403, "DNS rebinding");
+        assert_eq!(
+            route(app.handle(), 7377, TOKEN, &request).status,
+            403,
+            "DNS rebinding"
+        );
 
         let mut request = post("/mcp", call("tasks", json!({})));
         request
@@ -640,13 +668,20 @@ mod tests {
 
         let mut request = post("/mcp", json!({}));
         request.method = "GET".to_string();
-        assert_eq!(route(app.handle(), 7377, TOKEN, &request).status, 405, "SSE нет");
+        assert_eq!(
+            route(app.handle(), 7377, TOKEN, &request).status,
+            405,
+            "SSE нет"
+        );
 
         let request = post("/other", json!({}));
         assert_eq!(route(app.handle(), 7377, TOKEN, &request).status, 404);
 
         let note = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
-        assert_eq!(route(app.handle(), 7377, TOKEN, &post("/mcp", note)).status, 202);
+        assert_eq!(
+            route(app.handle(), 7377, TOKEN, &post("/mcp", note)).status,
+            202
+        );
 
         let mut request = post("/mcp", json!({}));
         request.body = b"not json".to_vec();
@@ -682,7 +717,10 @@ mod tests {
         let mut answer = String::new();
         stream.read_to_string(&mut answer).unwrap();
         assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
-        assert!(answer.ends_with(r#"{"id":1,"jsonrpc":"2.0","result":{}}"#), "{answer}");
+        assert!(
+            answer.ends_with(r#"{"id":1,"jsonrpc":"2.0","result":{}}"#),
+            "{answer}"
+        );
 
         // A second server on the same port fails, and the status says why.
         let busy = McpServer::new(
@@ -700,6 +738,9 @@ mod tests {
 
         server.configure(app.handle().clone(), false, port).unwrap();
         assert!(!server.status().running);
-        assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "порт закрыт");
+        assert!(
+            TcpStream::connect(("127.0.0.1", port)).is_err(),
+            "порт закрыт"
+        );
     }
 }

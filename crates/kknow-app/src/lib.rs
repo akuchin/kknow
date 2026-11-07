@@ -9,6 +9,7 @@ pub mod files;
 pub mod keymap;
 pub mod lines;
 pub mod mcp;
+pub mod mentions;
 pub mod merge;
 pub mod meta;
 pub mod proposals;
@@ -79,6 +80,9 @@ pub enum Error {
 
     #[error("в {0} на строке {1} нет задачи: заметка изменилась")]
     NotATask(NoteId, usize),
+
+    #[error("{0} has no mention on line {1}: the note changed")]
+    NotAMention(NoteId, usize),
 
     #[error("в {0} на строке {1} нет комментария «{2}»: заметка изменилась")]
     NotAnAgentComment(NoteId, usize, String),

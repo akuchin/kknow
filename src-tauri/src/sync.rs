@@ -619,8 +619,13 @@ mod tests {
     fn a_new_endpoint_keeps_the_stored_secret() {
         let dir = vault();
         let app = app(dir.path());
-        save_sync_settings(app.state(), form("new-endpoint"), Some("secret".into()), None)
-            .unwrap();
+        save_sync_settings(
+            app.state(),
+            form("new-endpoint"),
+            Some("secret".into()),
+            None,
+        )
+        .unwrap();
 
         let mut moved = form("new-endpoint");
         if let Provider::S3(s3) = &mut moved.provider {
@@ -637,7 +642,9 @@ mod tests {
         );
         // Another vault in the old bucket still finds its key.
         assert_eq!(
-            secrets::load("http://localhost:9000/new-endpoint/").unwrap().as_deref(),
+            secrets::load("http://localhost:9000/new-endpoint/")
+                .unwrap()
+                .as_deref(),
             Some("secret")
         );
     }
@@ -654,7 +661,10 @@ mod tests {
         }
         let saved = save_sync_settings(app.state(), moved, Some("new".into()), None).unwrap();
 
-        assert_eq!(secrets::load(&saved.location).unwrap().as_deref(), Some("new"));
+        assert_eq!(
+            secrets::load(&saved.location).unwrap().as_deref(),
+            Some("new")
+        );
     }
 
     #[test]

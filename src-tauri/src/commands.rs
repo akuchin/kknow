@@ -155,6 +155,23 @@ pub struct BacklinkLineView {
     after: String,
 }
 
+/// A place where the name of the open note stands as plain text.
+#[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+pub struct MentionView {
+    /// The note with the mention.
+    id: String,
+    title: String,
+    line: usize,
+    before: String,
+    /// The name as written.
+    text: String,
+    after: String,
+    /// Byte range of the name in the source; `link_mention` takes it back.
+    start: usize,
+    end: usize,
+}
+
 /// A heading of a note.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -682,6 +699,55 @@ pub fn note_backlinks(
                 after: link.context.after,
             })
             .collect())
+    })
+}
+
+/// Places in other notes where the name or an alias of note `id` stands as
+/// plain text.
+#[tauri::command(async)]
+pub fn unlinked_mentions(
+    state: State<'_, AppState>,
+    id: String,
+    vault: Option<String>,
+) -> Result<Vec<MentionView>> {
+    state.slot(vault.as_deref())?.read(|workspace| {
+        let id = note_id(workspace, &id)?;
+        Ok(workspace
+            .unlinked_mentions(&id)?
+            .into_iter()
+            .map(|mention| MentionView {
+                id: mention.from.as_str().to_string(),
+                title: title_of(workspace, &mention.from),
+                line: mention.context.line,
+                before: mention.context.before,
+                text: mention.context.text,
+                after: mention.context.after,
+                start: mention.span.start,
+                end: mention.span.end,
+            })
+            .collect())
+    })
+}
+
+/// Changes a mention in note `from` into a link to note `target`. The answer
+/// is the new backlink list of the target, for the count in the toolbar.
+#[tauri::command(async)]
+pub fn link_mention(
+    state: State<'_, AppState>,
+    from: String,
+    start: usize,
+    end: usize,
+    text: String,
+    target: String,
+    vault: Option<String>,
+) -> Result<Vec<LinkRef>> {
+    state.slot(vault.as_deref())?.write(|workspace| {
+        let from = note_id(workspace, &from)?;
+        let target = note_id(workspace, &target)?;
+        workspace.link_mention(&from, start..end, &text, &target)?;
+        Ok(dedup(workspace, workspace.backlinks(&target), |edge| {
+            &edge.from
+        }))
     })
 }
 
@@ -1562,6 +1628,37 @@ mod tests {
         assert_eq!(lines[0].title, "Оглавление");
         assert_eq!(lines[0].line, 3);
         assert_eq!(lines[0].text, "[[Projects/kknow|мой проект]]");
+    }
+
+    #[test]
+    fn a_mention_becomes_a_link() {
+        let dir = vault();
+        fs::write(dir.path().join("Notes.md"), "about kknow today\n").unwrap();
+        let app = app(&[dir.path()]);
+
+        let mentions = unlinked_mentions(app.state(), "Projects/kknow".into(), None).unwrap();
+        assert_eq!(mentions.len(), 1);
+        let mention = &mentions[0];
+        assert_eq!(
+            (mention.id.as_str(), mention.text.as_str()),
+            ("Notes", "kknow")
+        );
+
+        let backlinks = link_mention(
+            app.state(),
+            mention.id.clone(),
+            mention.start,
+            mention.end,
+            mention.text.clone(),
+            "Projects/kknow".into(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(backlinks.len(), 2);
+        assert_eq!(
+            fs::read_to_string(dir.path().join("Notes.md")).unwrap(),
+            "about [[kknow]] today\n"
+        );
     }
 
     #[test]

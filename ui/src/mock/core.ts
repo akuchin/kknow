@@ -30,6 +30,8 @@ import type {
   TaskView,
   LinkTargetView,
   BacklinkLineView,
+  MentionView,
+  LinkRef,
   ThemeSet,
   TrashEntryView,
   UpdateStatus,
@@ -821,6 +823,66 @@ function noteBacklinks(id: string): BacklinkLineView[] {
   return lines;
 }
 
+/** Spans of `[[…]]` links: a name inside one is no mention. */
+function linkSpans(text: string): [number, number][] {
+  return [...text.matchAll(/!?\[\[[^\]]*\]\]/g)].map((found) => [
+    found.index ?? 0,
+    (found.index ?? 0) + found[0].length,
+  ]);
+}
+
+/**
+ * Places where the file name of note `id` stands as plain text. The mock
+ * skips wikilinks and fenced code; the core also skips tags, HTML and
+ * inline code.
+ */
+function unlinkedMentions(id: string): MentionView[] {
+  const name = id.split("/").pop() ?? id;
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "giu");
+  const mentions: MentionView[] = [];
+  for (const note of [...activeVault.notes].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (note.id === id) continue;
+    const links = linkSpans(note.content);
+    let lineStart = 0;
+    let code = false;
+    note.content.split("\n").forEach((text, index) => {
+      if (text.startsWith("```")) code = !code;
+      for (const found of code ? [] : text.matchAll(pattern)) {
+        const start = lineStart + (found.index ?? 0);
+        const end = start + found[0].length;
+        if (links.some(([from, to]) => start < to && from < end)) continue;
+        mentions.push({
+          id: note.id,
+          title: note.title,
+          line: index + 1,
+          before: text.slice(0, found.index).trimStart(),
+          text: found[0],
+          after: text.slice((found.index ?? 0) + found[0].length).trimEnd(),
+          start,
+          end,
+        });
+      }
+      lineStart += text.length + 1;
+    });
+  }
+  return mentions;
+}
+
+/** Makes a mention a link, as the core does: `[[name]]` or `[[name|text]]`. */
+function linkMention(from: string, start: number, end: number, text: string, target: string): LinkRef[] {
+  const note = find(from);
+  if (note.content.slice(start, end) !== text) {
+    const line = note.content.slice(0, start).split("\n").length;
+    throw coded("notAMention", `${from} has no mention on line ${line}`, { value: from, line: String(line) });
+  }
+  const name = target.split("/").pop() ?? target;
+  const link = name === text ? `[[${name}]]` : `[[${name}|${text}]]`;
+  note.content = note.content.slice(0, start) + link + note.content.slice(end);
+  const known = (backlinks[target] ??= []);
+  if (!known.some((each) => each.id === from)) known.push({ id: from, title: note.title, label: null });
+  return known;
+}
+
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
   if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
@@ -1361,6 +1423,18 @@ export async function invoke<T>(
 
     case "note_backlinks":
       return noteBacklinks(args?.id as string) as T;
+
+    case "unlinked_mentions":
+      return unlinkedMentions(args?.id as string) as T;
+
+    case "link_mention":
+      return linkMention(
+        args?.from as string,
+        args?.start as number,
+        args?.end as number,
+        args?.text as string,
+        args?.target as string,
+      ) as T;
 
     case "create_note": {
       const name = args?.name as string;
