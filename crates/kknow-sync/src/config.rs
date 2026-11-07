@@ -108,6 +108,10 @@ pub struct RemoteConfig {
     /// every five minutes, and an archive on an external disk never.
     #[serde(default)]
     pub auto_sync_minutes: u32,
+    /// The storage is encrypted. The key is not here: it is in the keychain
+    /// or comes from the passphrase.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub encrypted: bool,
 }
 
 /// The settings as stored in the file: the current format or the format from
@@ -124,6 +128,8 @@ enum Stored {
         policy: ConflictPolicy,
         #[serde(default)]
         auto_sync_minutes: u32,
+        #[serde(default)]
+        encrypted: bool,
     },
     Legacy {
         #[serde(flatten)]
@@ -142,16 +148,19 @@ impl<'de> Deserialize<'de> for RemoteConfig {
                 provider,
                 policy,
                 auto_sync_minutes,
+                encrypted,
             } => RemoteConfig {
                 provider,
                 policy,
                 auto_sync_minutes,
+                encrypted,
             },
             // The old format had no auto sync, so it is off.
             Stored::Legacy { s3, policy } => RemoteConfig {
                 provider: Provider::S3(s3),
                 policy,
                 auto_sync_minutes: 0,
+                encrypted: false,
             },
         })
     }
@@ -163,6 +172,7 @@ impl RemoteConfig {
             provider: Provider::S3(settings),
             policy: ConflictPolicy::default(),
             auto_sync_minutes: 0,
+            encrypted: false,
         }
     }
 
@@ -171,6 +181,7 @@ impl RemoteConfig {
             provider: Provider::Folder { path: path.into() },
             policy: ConflictPolicy::default(),
             auto_sync_minutes: 0,
+            encrypted: false,
         }
     }
 
@@ -179,6 +190,7 @@ impl RemoteConfig {
             provider: Provider::Git(settings),
             policy: ConflictPolicy::default(),
             auto_sync_minutes: 0,
+            encrypted: false,
         }
     }
 
@@ -237,6 +249,7 @@ impl RemoteConfig {
             Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket),
             Provider::Folder { path } if path.as_os_str().is_empty() => Err(Error::NoFolder),
             Provider::Git(git) if git.url.trim().is_empty() => Err(Error::NoGitUrl),
+            Provider::Git(_) if self.encrypted => Err(Error::GitEncrypted),
             _ => Ok(()),
         }
     }

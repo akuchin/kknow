@@ -1212,7 +1212,7 @@ fn sync(workspace: &mut Workspace, config: RemoteConfig, dry_run: bool) -> Resul
     };
 
     let engine =
-        kknow_app::merge::sync_engine(&config, secret).map_err(|error| error.to_string())?;
+        kknow_app::merge::sync_engine(&config, secret, None).map_err(|error| error.to_string())?;
 
     if dry_run {
         let plan = workspace

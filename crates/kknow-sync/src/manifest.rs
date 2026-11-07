@@ -148,6 +148,12 @@ impl Manifest {
     }
 
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
+        // The decoy of an encrypted storage, as a device without the key
+        // reads it. Without this check, the error would be "manifest of
+        // version 2", which says nothing about the passphrase.
+        if crate::encrypted::is_decoy(bytes) {
+            return Err(crate::Error::Locked);
+        }
         Ok(serde_json::from_slice(bytes)?)
     }
 

@@ -74,6 +74,43 @@ pub trait SyncProvider {
 
     /// Keys with the given prefix, including nested "directories".
     fn list(&self, prefix: &str) -> Result<Vec<String>>;
+
+    /// Work before a sync. Gives the keys that it changed: the remote
+    /// manifest can have an old hash for them.
+    ///
+    /// A plain storage only checks that it is not encrypted: a device without
+    /// the key must not write plaintext notes into it. [`crate::Encrypted`]
+    /// also encrypts the plaintext objects that other programs put there.
+    fn prepare(&self) -> crate::Result<Vec<String>> {
+        if self.get(crate::crypto::KEY_FILE)?.is_some() {
+            return Err(crate::Error::Locked);
+        }
+        Ok(Vec::new())
+    }
+}
+
+/// A reference to a provider is also a provider: the encryption operations
+/// wrap a storage that they do not own.
+impl<P: SyncProvider + ?Sized> SyncProvider for &P {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        (**self).get(key)
+    }
+
+    fn put(&self, key: &str, bytes: &[u8]) -> Result<()> {
+        (**self).put(key, bytes)
+    }
+
+    fn delete(&self, key: &str) -> Result<()> {
+        (**self).delete(key)
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        (**self).list(prefix)
+    }
+
+    fn prepare(&self) -> crate::Result<Vec<String>> {
+        (**self).prepare()
+    }
 }
 
 /// A boxed provider is also a provider.
@@ -95,6 +132,10 @@ impl<P: SyncProvider + ?Sized> SyncProvider for Box<P> {
 
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         (**self).list(prefix)
+    }
+
+    fn prepare(&self) -> crate::Result<Vec<String>> {
+        (**self).prepare()
     }
 }
 

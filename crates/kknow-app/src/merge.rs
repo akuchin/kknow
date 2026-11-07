@@ -6,7 +6,7 @@
 //! person: nobody opens a copy of `bookmarks.json`. So each format joins both
 //! sides itself, and the result is a superset of both where possible.
 
-use kknow_sync::{RemoteConfig, SyncEngine, SyncProvider};
+use kknow_sync::{DataKey, RemoteConfig, SyncEngine, SyncProvider};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -20,8 +20,9 @@ use crate::threads::{THREADS_DIR, Thread};
 pub fn sync_engine(
     config: &RemoteConfig,
     secret: Option<String>,
+    key: Option<&DataKey>,
 ) -> kknow_sync::Result<SyncEngine<Box<dyn SyncProvider>>> {
-    Ok(kknow_sync::engine(config, secret)?.with_merge(merge_shared))
+    Ok(kknow_sync::engine(config, secret, key)?.with_merge(merge_shared))
 }
 
 /// [`kknow_sync::shared::Merge`] for the files of this app. `None` for a file

@@ -528,7 +528,12 @@ export type RemoteConfig = { provider: Provider, policy: ConflictPolicy,
  * This is a directory setting, not an app setting: a work vault can sync
  * every five minutes, and an archive on an external disk never.
  */
-autoSyncMinutes: number, };
+autoSyncMinutes: number, 
+/**
+ * The storage is encrypted. The key is not here: it is in the keychain
+ * or comes from the passphrase.
+ */
+encrypted?: boolean, };
 
 /**
  * A moved note: its new ID and the number of notes whose links changed.
@@ -664,7 +669,12 @@ needsSecret: boolean, provider: Provider, policy: ConflictPolicy,
  * This is a directory setting, not an app setting: a work vault can sync
  * every five minutes, and an archive on an external disk never.
  */
-autoSyncMinutes: number, };
+autoSyncMinutes: number, 
+/**
+ * The storage is encrypted. The key is not here: it is in the keychain
+ * or comes from the passphrase.
+ */
+encrypted?: boolean, };
 
 export type SyncState = "off" | "idle" | "syncing" | "conflict" | "error";
 

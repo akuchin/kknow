@@ -181,8 +181,23 @@ impl<P: SyncProvider> SyncEngine<P> {
     }
 
     /// Computes what to do and changes nothing.
+    ///
+    /// This does not run [`SyncProvider::prepare`], which writes: a plaintext
+    /// note in an encrypted storage shows up only in a real sync.
     pub fn plan(&self, vault: &Vault) -> Result<Plan> {
+        self.plan_after(vault, &[])
+    }
+
+    /// The plan after `prepare` changed the given keys in the storage.
+    fn plan_after(&self, vault: &Vault, changed: &[String]) -> Result<Plan> {
         let (mut remote, revision) = self.fetch_manifest()?;
+        // A changed key gets its hash from the contents again in `reconcile`.
+        for key in changed {
+            match note_of_key(key) {
+                Some(id) => remote.remove(&id),
+                None => remote.remove_file(key),
+            }
+        }
         self.reconcile(&mut remote)?;
         let base = Manifest::load(&state_path(vault))?;
         let local = Manifest::of_vault(vault)?;
@@ -201,7 +216,8 @@ impl<P: SyncProvider> SyncEngine<P> {
     /// The vault is read-only here. This is the first of three sync parts, and
     /// the only one that holds the vault during network access (the manifest).
     pub fn stage(&self, vault: &Vault) -> Result<Staged> {
-        let plan = self.plan(vault)?;
+        let changed = self.provider.prepare()?;
+        let plan = self.plan_after(vault, &changed)?;
 
         let mut outgoing = BTreeMap::new();
         for action in plan.actions() {

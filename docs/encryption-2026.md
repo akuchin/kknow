@@ -1,6 +1,6 @@
 # Plan: E2E encryption for sync
 
-**Status: in progress.** Step 1 is in `main`.
+**Status: in progress.** Steps 1 and 2 are in `main`.
 
 This plan covers the first item of "Larger tasks" in [TODO.md](../TODO.md)
 and Phase 2 of [launch-checklist.md](launch-checklist.md). Do the steps in

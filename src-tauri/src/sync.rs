@@ -115,7 +115,7 @@ fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
         None
     };
 
-    Ok(kknow_app::merge::sync_engine(config, secret)?)
+    Ok(kknow_app::merge::sync_engine(config, secret, None)?)
 }
 
 /// Sync settings of the vault, if sync is configured.
@@ -141,14 +141,17 @@ pub fn save_sync_settings(
     secret: Option<String>,
     vault: Option<String>,
 ) -> Result<SyncSettings> {
+    let slot = state.slot(vault.as_deref())?;
+    let old = slot.read(config_of)?;
+
+    // Encryption is not a field of the form: it is turned on by its own
+    // command, which also changes the storage.
     let config = RemoteConfig {
         provider: tidy_provider(settings.provider),
         policy: settings.policy,
         auto_sync_minutes: settings.auto_sync_minutes,
+        encrypted: old.as_ref().is_some_and(|old| old.encrypted),
     };
-
-    let slot = state.slot(vault.as_deref())?;
-    let old = slot.read(config_of)?;
 
     // Settings first: if the bucket settings are not saved, there is no address
     // to store the key under.

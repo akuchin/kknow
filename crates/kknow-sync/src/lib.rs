@@ -27,6 +27,7 @@
 
 pub mod config;
 pub mod crypto;
+pub mod encrypted;
 mod engine;
 pub mod folder;
 pub mod git;
@@ -43,6 +44,8 @@ use std::path::{Path, PathBuf};
 use kknow_core::NoteId;
 
 pub use config::{GitAuth, GitSettings, Provider, RemoteConfig, S3Settings};
+pub use crypto::{DataKey, RecoveryCode};
+pub use encrypted::Encrypted;
 pub use engine::{
     Conflict, Fetched, MANIFEST_KEY, Progress, Report, Staged, SyncEngine, note_key, note_of_key,
 };
@@ -63,16 +66,37 @@ pub use s3::{S3Config, S3Provider};
 pub fn engine(
     config: &RemoteConfig,
     secret: Option<String>,
+    key: Option<&DataKey>,
 ) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
-    Ok(SyncEngine::new(connect(config, secret)?).with_policy(config.policy))
+    Ok(SyncEngine::new(connect(config, secret, key)?).with_policy(config.policy))
 }
 
 /// Connects to storage from the saved settings.
 ///
 /// This is one entry point for both frontends: the window and the terminal
 /// must read the settings the same way. The secret comes as a separate
-/// argument because the settings file never contains it.
-pub fn connect(config: &RemoteConfig, secret: Option<String>) -> Result<Box<dyn SyncProvider>> {
+/// argument because the settings file never contains it. So does the data
+/// key of an encrypted storage: without it, an encrypted storage is
+/// [`Error::Locked`].
+pub fn connect(
+    config: &RemoteConfig,
+    secret: Option<String>,
+    key: Option<&DataKey>,
+) -> Result<Box<dyn SyncProvider>> {
+    let storage = storage(config, secret)?;
+    if !config.encrypted {
+        return Ok(storage);
+    }
+    let key = key.ok_or(Error::Locked)?;
+    Ok(Box::new(Encrypted::new(storage, key)))
+}
+
+/// The storage under the encryption, if there is encryption. The encryption
+/// operations ([`encrypted::init`], [`encrypted::unlock`]) work on it.
+pub fn storage(config: &RemoteConfig, secret: Option<String>) -> Result<Box<dyn SyncProvider>> {
+    if config.encrypted && config.is_git() {
+        return Err(Error::GitEncrypted);
+    }
     match &config.provider {
         Provider::Folder { path } => Ok(Box::new(FolderProvider::open(path)?)),
 
@@ -180,6 +204,28 @@ pub enum Error {
 
     #[error("the path {0} is too long for an encrypted storage")]
     KeyTooLong(String),
+
+    #[error("the storage is encrypted: enter the passphrase or the recovery code")]
+    Locked,
+
+    #[error("the storage is not encrypted")]
+    NotEncrypted,
+
+    #[error("the storage is already encrypted")]
+    AlreadyEncrypted,
+
+    #[error(
+        "the key of this device does not open the storage: encryption in the storage was turned on again. Type the passphrase again"
+    )]
+    WrongKey,
+
+    #[error(
+        "a device without encryption wrote into this encrypted storage. Update kknow on all devices and check the storage"
+    )]
+    MixedStorage,
+
+    #[error("git storage cannot be encrypted")]
+    GitEncrypted,
 
     #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {

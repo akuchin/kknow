@@ -58,6 +58,7 @@ const KEY_FILE_FORMAT: u32 = 1;
 const CONTEXT_CONTENT: &str = "kknow 2026-11-07 sync object contents";
 const CONTEXT_NAMES: &str = "kknow 2026-11-07 sync object names";
 const CONTEXT_RECOVERY: &str = "kknow 2026-11-07 sync recovery code";
+const CONTEXT_CHECK: &str = "kknow 2026-11-07 sync key check";
 const NAME_HEADER: &[u8] = b"kknow name v1";
 const AAD_PASSPHRASE: &[u8] = b"kknow key slot passphrase";
 const AAD_RECOVERY: &[u8] = b"kknow key slot recovery";
@@ -241,6 +242,11 @@ impl Slot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyFile {
     format: u32,
+    /// A hash of the data key. A device with a key from the keychain checks
+    /// it before each sync: after a person turned encryption off and on
+    /// again, the old key must not write next to the new one.
+    #[serde(with = "base32::serde")]
+    check: Vec<u8>,
     kdf: KdfParams,
     passphrase: Slot,
     recovery: Slot,
@@ -267,6 +273,7 @@ impl KeyFile {
 
         let file = KeyFile {
             format: KEY_FILE_FORMAT,
+            check: key_check(&key),
             kdf,
             passphrase,
             recovery,
@@ -299,6 +306,11 @@ impl KeyFile {
         Ok(())
     }
 
+    /// True if this file wraps the key with the given [`key_check`].
+    pub fn matches(&self, check: &[u8]) -> bool {
+        self.check == check
+    }
+
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
         let file: KeyFile = serde_json::from_slice(bytes)
             .map_err(|why| Error::Crypto(format!("the key file is damaged: {why}")))?;
@@ -314,6 +326,11 @@ impl KeyFile {
     pub fn to_json(&self) -> Vec<u8> {
         serde_json::to_vec_pretty(self).expect("the key file is plain data")
     }
+}
+
+/// A hash of the data key that tells nothing about the key itself.
+pub fn key_check(key: &DataKey) -> Vec<u8> {
+    blake3::derive_key(CONTEXT_CHECK, &key.0)[..16].to_vec()
 }
 
 fn passphrase_slot(key: &DataKey, passphrase: &str, kdf: KdfParams) -> Result<Slot> {
@@ -690,6 +707,8 @@ mod tests {
         let file = KeyFile::from_json(&file.to_json()).unwrap();
         assert_eq!(file.unlock("correct horse").unwrap(), key);
         assert_eq!(file.unlock(&code.display()).unwrap(), key);
+        assert!(file.matches(&key_check(&key)));
+        assert!(!file.matches(&key_check(&DataKey::generate().unwrap())));
         // A person types the code in another case and without dashes.
         let typed = code.display().replace('-', " ").to_lowercase();
         assert_eq!(file.unlock(&typed).unwrap(), key);
