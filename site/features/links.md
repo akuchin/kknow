@@ -23,8 +23,10 @@ and `#include` in a code block is not a tag.
 
 ## Embeds
 
-`![[note]]` shows the text of the other note in place, in a frame. The preview
-and Read mode show it. `![[note#Heading]]` shows one section: the heading and
+`![[note]]` shows the text of the other note in place, in a frame. The preview,
+Read mode and live preview show it. In live preview the embed must stand alone
+on its line; inside a line of text it stays a link. Put the cursor on the line,
+or click the `</>` button of the embed, to see the source. `![[note#Heading]]` shows one section: the heading and
 the text up to the next heading of the same or a higher level.
 `![[note#^block]]` shows the paragraph of the block.
 

@@ -37,6 +37,7 @@ import { followLinks, linkAt } from "./editor-links";
 import { linkCompletion, type LinkAnchors, type LinkNote } from "./link-complete";
 import { moveCommand, shiftCommand } from "./list-editing";
 import { t } from "./i18n";
+import { clearEmbeds, embedsChanged } from "./live-embeds";
 import { liveEnabled, livePreview, themeChanged } from "./live-preview";
 import { headingsOf, type Heading } from "./outline";
 import { tableEditing } from "./table-editing";
@@ -631,6 +632,14 @@ export class Editor {
   }
 
   /** Redraws diagrams: mermaid colors come from its config, not from CSS. */
+  /** Embedded notes changed: the embeds of live preview load again. */
+  redrawEmbeds(): void {
+    clearEmbeds();
+    if (this.view.state.doc.toString().includes("![[")) {
+      this.view.dispatch({ effects: embedsChanged.of(undefined) });
+    }
+  }
+
   redrawDiagrams(): void {
     this.view.dispatch({ effects: themeChanged.of(undefined) });
   }

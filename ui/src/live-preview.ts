@@ -35,6 +35,7 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 
 import { addAgentNote, noteAt } from "./agent-notes";
 import { addPageComment } from "./confluence";
+import { addEmbed, embedGeneration, embedsChanged } from "./live-embeds";
 import { addListMark } from "./live-lists";
 import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
 import { paintCode } from "./highlight";
@@ -132,7 +133,7 @@ interface Live {
 const live = StateField.define<Live>({
   create: (state) => build(state),
   update(value, tr) {
-    const redraw = tr.effects.some((effect) => effect.is(themeChanged));
+    const redraw = tr.effects.some((effect) => effect.is(themeChanged) || effect.is(embedsChanged));
     const switched = tr.startState.field(enabled) !== tr.state.field(enabled);
     const tables =
       tr.startState.field(tableStamp) !== tr.state.field(tableStamp) ||
@@ -346,6 +347,14 @@ function touched(state: EditorState, from: number, to: number): boolean {
   return state.selection.ranges.some((range) => range.from <= to && range.to >= from);
 }
 
+/** `touched` for a link that can be the inside of `[[…]]` or `![[…]]`. */
+function wikiTouched(state: EditorState, from: number, to: number): boolean {
+  const wiki = state.doc.sliceString(from - 1, from) === "[" && state.doc.sliceString(to, to + 1) === "]";
+  if (!wiki) return touched(state, from, to);
+  const bang = state.doc.sliceString(from - 2, from - 1) === "!" ? 1 : 0;
+  return touched(state, from - 1 - bang, to + 1);
+}
+
 /**
  * Whether to show a heading or block as is: yes if the cursor or a single-line
  * selection touches its lines.
@@ -481,7 +490,9 @@ function build(state: EditorState): Live {
           // An image has the same marks, but they must not hide:
           // `![caption](file)` would leave a stub `!caption`.
           if (owner?.name !== "Link") break;
-          if (touched(state, owner.from, owner.to)) break;
+          // In `[[note]]` the parser sees a link `[note]` inside brackets: the
+          // cursor at the outer brackets (or the `!` of an embed) touches it too.
+          if (wikiTouched(state, owner.from, owner.to)) break;
           marks.push(hidden.range(node.from, node.to));
           break;
         case "Link":
@@ -823,11 +834,18 @@ function addWikilinks(
     // The parser sees an `Image` without a URL, so `insideMarkup` would reject
     // it; here only code matters.
     const [target, ...caption] = match[1].split("|");
-    if (state.doc.sliceString(from - 1, from) === "!" && isImage(target)) {
+    const embed = state.doc.sliceString(from - 1, from) === "!";
+    if (embed && isImage(target)) {
       if (!insideCode(tree, from)) {
         placeImage(state, from - 1, to, target.trim(), caption.join("|"), marks);
       }
       continue;
+    }
+    // `![[note]]` alone on its line: the note in place, as in the preview.
+    // The cursor on its line shows the source, as for other blocks.
+    if (embed && !insideCode(tree, from)) {
+      const onLine = revealed(state, from - 1, to);
+      if (addEmbed(state, from - 1, to, onLine, marks) || onLine) continue;
     }
     if (touched(state, from, to) || insideMarkup(tree, from)) continue;
 
@@ -864,5 +882,5 @@ export function livePreview(): Extension {
 
   // Order matters: the diagram generation, the toggle and the table state
   // must update before the decorations that read them.
-  return [generation, enabled, tableWidgets(), live];
+  return [generation, embedGeneration, enabled, tableWidgets(), live];
 }

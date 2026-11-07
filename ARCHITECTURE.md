@@ -1483,6 +1483,24 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
 - The Markdown grammar also sees `[x]` inside `[[x]]`, so a wikilink gets two
   nested `cm-live-link` marks. They look like one. Tests take the inner one.
 
+- Embeds (`ui/src/live-embeds.ts`): `![[note]]` and `![[note#Heading]]` alone
+  on a line become a block widget with the same HTML as the hover preview
+  (`link_preview`). The window gives the source (`setEmbedSource`); the editor
+  does not know the vault.
+  - An embed inside a line of text stays a link: a block cannot stand in a
+    line. The cursor on the line shows the source, as for other blocks.
+  - The widget keeps a placeholder height until the answer comes, then asks
+    CodeMirror to measure again. It scrolls after half a screen, so a long
+    section does not push the text away.
+  - The answers are cached by link text. A different note clears the cache;
+    `vault-changed` clears it and dispatches `embedsChanged`, so the widgets
+    load again (`Editor.redrawEmbeds`).
+  - A note that embeds itself whole gets the loop message, as in the preview.
+  - In `[[note]]` the Markdown parser sees a link `[note]` inside brackets.
+    The cursor at the outer brackets or at the `!` touches that link too
+    (`wikiTouched`); before, the line showed `![note]` with the cursor at its
+    start.
+
 ### Links in the editor
 
 - `[[` starts completion (`ui/src/link-complete.ts`, `@codemirror/autocomplete`):

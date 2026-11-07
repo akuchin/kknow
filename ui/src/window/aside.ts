@@ -136,8 +136,18 @@ function edited(): void {
 
 // ---- outline ----
 
+/** The headings the outline shows now, to skip a redraw that changes nothing. */
+let drawn = "";
+
 function renderOutline(): void {
   headings = editor.getHeadings();
+  // A save or a typed letter usually leaves the headings as they are.
+  const key = JSON.stringify(headings);
+  if (key === drawn && el.asideOutlineList.childElementCount > 0) {
+    markCurrent();
+    return;
+  }
+  drawn = key;
   const list = el.asideOutlineList;
   list.replaceChildren();
   el.asideOutlineCount.textContent = headings.length > 0 ? String(headings.length) : "";

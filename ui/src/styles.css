@@ -3783,3 +3783,29 @@ body[data-palette="open"] #app {
   border-style: dashed;
   cursor: help;
 }
+
+/* An embed in live preview: the same frame as in the preview. Its body uses
+   the preview styles, without the scroll and padding of the preview pane. */
+.cm-embed {
+  position: relative;
+  margin: 4px 0;
+  white-space: normal;
+}
+
+/* In the editor a long section must not push the text away: the embed scrolls
+   after about half a screen. The preview shows it in full: there it is read. */
+.cm-embed .embed-body.preview {
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+  padding: 0;
+  flex: none;
+}
+
+.cm-embed.is-loading .embed-body {
+  min-height: 2.5em;
+}
+
+.cm-embed:hover .cm-diagram-edit,
+.cm-embed .cm-diagram-edit:focus-visible {
+  opacity: 1;
+}

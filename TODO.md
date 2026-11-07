@@ -12,6 +12,9 @@ These parts are complete:
   and from the command line;
 - commands on a note, a folder and a vault, with a form for them in the
   settings.
+- reading: the note panel (outline, backlinks, unlinked mentions), the hover
+  preview and embeds. The plan is in
+  [docs/reading-2026.md](docs/reading-2026.md).
 
 The plan for the redesign is closed. Its archive copy is
 [docs/archive/redesign-2026.md](docs/archive/redesign-2026.md).
@@ -74,16 +77,6 @@ The plan for the redesign is closed. Its archive copy is
     the watcher skips `.kknow`. The HTTP server of the window has no such
     problem.
   - A proposal shows edits one by one, not inside the editor text.
-
-## Reading: the next features
-
-These follow the link completion and the list keys. Do them in this order.
-
-5. **Real embeds.** The hover preview is done. The plan is in
-   [docs/reading-2026.md](docs/reading-2026.md).
-   - `![[note]]` and `![[note#Heading]]` show the content in place, in the
-     preview and in live preview. Limit the depth (3) and stop on a loop. An
-     embed is read-only; a click opens the note.
 
 ## Larger tasks
 

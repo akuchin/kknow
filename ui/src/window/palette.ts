@@ -13,6 +13,7 @@ import { renderDiagrams } from "../diagram";
 import type { EditorLinks } from "../editor";
 import { paintCodeBlocks } from "../highlight";
 import { HoverPreview } from "../hover-preview";
+import { clearEmbeds, setEmbedSource } from "../live-embeds";
 import { paintImages } from "../images";
 import type { LinkAnchors } from "../link-complete";
 import { scrollToLine } from "../preview-lines";
@@ -234,16 +235,44 @@ function initHover(): void {
     });
   }
 
-  // Another note: its links resolve from a different place.
+  // Embeds of live preview get the same answers as the popup. A note that
+  // embeds itself whole would show itself inside itself: a loop, as in the
+  // preview.
+  setEmbedSource({
+    load: async (target) => {
+      const from = vaultNote();
+      const preview = from ? await api.linkPreview(from, target) : null;
+      if (preview && preview.id === from && preview.line === null) {
+        const loop = document.createElement("p");
+        loop.className = "muted";
+        loop.textContent = t("embed.loop");
+        return { ...preview, html: loop.outerHTML };
+      }
+      return preview;
+    },
+    paint: (root, done) => {
+      paintCodeBlocks(root);
+      paintImages(root, done);
+      void renderDiagrams(root).then(done);
+    },
+    open: (target) => void follow(target),
+  });
+
+  // Another note: its links resolve from a different place. The editor gets
+  // the new text after this event, so its embeds load fresh.
   let shown: string | null = null;
   state.on("note", (note) => {
     if ((note?.id ?? null) === shown) return;
     shown = note?.id ?? null;
     hover.hide();
     hover.clear();
+    clearEmbeds();
   });
-  // A note changed on disk: a cached preview can be old.
-  void onVaultChanged(() => hover.clear());
+  // A note changed on disk: a cached preview or embed can be old.
+  void onVaultChanged(() => {
+    hover.clear();
+    editor.redrawEmbeds();
+  });
 }
 
 /**

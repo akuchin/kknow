@@ -1,5 +1,8 @@
 # Plan: reading features (TODO items 4 and 5)
 
+**Status: done (2026-11-07).** All six steps are in `main`. The notes below
+keep the plan and the decisions that changed on the way.
+
 This plan covers two items from [TODO.md](../TODO.md), "Reading: the next
 features": the side panel of a note, and then hover previews and real embeds.
 Do the steps in order. Each step is one commit. After each step, run

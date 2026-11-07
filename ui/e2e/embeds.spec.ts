@@ -20,3 +20,22 @@ test("a click on an embed opens its note", async ({ page }) => {
   await page.locator("#preview .embed-body p").click();
   await expect(page.locator("#note-title")).toHaveText("Reading");
 });
+
+test("live preview draws an embed alone on its line", async ({ page }) => {
+  await page.locator('.mode-switch button[data-mode="edit"]').click();
+  const embed = page.locator("#editor .cm-embed").first();
+  await expect(embed).toContainText("The Rust book first");
+  // The note embeds itself: a loop, not a copy of itself.
+  await expect(page.locator("#editor .cm-embed").nth(1)).toContainText(t("embed.loop"));
+
+  // The source button shows the markup on that line.
+  await embed.hover();
+  await embed.locator(".cm-diagram-edit").click();
+  await expect(page.locator("#editor .cm-content")).toContainText("![[Reading#Books]]");
+});
+
+test("a click on a live embed opens its note", async ({ page }) => {
+  await page.locator('.mode-switch button[data-mode="edit"]').click();
+  await page.locator("#editor .cm-embed .embed-body").first().click();
+  await expect(page.locator("#note-title")).toHaveText("Reading");
+});
