@@ -19,6 +19,8 @@ All functions in this document work:
 - search in all vaults at the same time;
 - sync with S3-compatible storage (the Amazon S3 protocol), with a plain folder
   and with a git repository (with a view to stage and commit changes and see their diff);
+- end-to-end encryption of an S3 or folder storage: names and text of notes,
+  a passphrase and a recovery code;
 - themes;
 - settings in a separate window;
 - custom commands for a note, a folder, a vault or a file outside a vault.

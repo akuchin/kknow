@@ -49,6 +49,11 @@ the command line in `ps`, and the shell keeps it in the history. If you do not
 set `KKNOW_S3_*`, kknow uses the usual `AWS_*` variables.
 :::
 
+::: tip Encryption
+An S3 or folder storage can be encrypted: names and text of notes leave the
+device encrypted. See [Encryption](/features/encryption).
+:::
+
 ## The storage is a mirror of the vault
 
 The storage keeps each note at the same path as the vault:

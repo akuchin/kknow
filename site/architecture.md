@@ -188,6 +188,26 @@ edit wins over "waiting". Git uses the same function on a merge conflict.
 feature. The tests run the same algorithm on storage in memory and on a
 folder.
 
+### Encryption
+
+`Encrypted<P>` is a `SyncProvider` on top of another one. The engine sees
+logical keys and plain bytes; the wrapper keeps encrypted names and bytes
+(`kknow_sync::crypto`):
+
+- a random data key, wrapped in `.kknow/key.json` by Argon2id from the
+  passphrase and by the recovery code;
+- objects: `"KKE1" | nonce | XChaCha20-Poly1305(length | data | padding)`,
+  with the logical key as the associated data;
+- names: `e/` + base32 of AES-SIV of the logical key. It is deterministic, so
+  `get` and `put` need no table. Base32 because a folder can be on a file
+  system that does not see the case of letters.
+
+`SyncProvider::prepare` runs before each sync. A plain storage refuses a
+storage with a key file. The wrapper checks that its key matches `key.json`,
+keeps a plain stub manifest of format 2 (an older build stops at it) and
+encrypts the plain `.md` files of other programs. The engine then takes the
+hash of each such file again, so a plain edit in place is a remote change.
+
 ### Git
 
 Git is not a `SyncProvider`. It has commits and its own merge, so it is a

@@ -27,7 +27,21 @@ With git sync, kknow adds `.kknow/remote.json`, `.kknow/sync.json` and the
 trash (`.kknow/trash/`) to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.
 
 `remote.json` has no secret key or token. The window keeps them in the system
-keychain.
+keychain. For an encrypted storage, `remote.json` has `"encrypted": true`, and
+the data key is in the keychain too.
+
+## In an encrypted storage
+
+```text
+<storage>/
+  e/<name>…             encrypted notes, shared files and the manifest
+  .kknow/
+    key.json            the data key, wrapped by the passphrase and by the
+                        recovery code; no secret in plain text
+    manifest.json       a stub that stops older versions of kknow
+```
+
+See [Encryption](/features/encryption).
 
 ## App config directory
 

@@ -47,6 +47,9 @@ details.
 - **Sync** with S3-compatible storage, any folder (iCloud Drive, Dropbox) or
   a git repository with a changes view and a diff. Conflicts keep both versions.
   → [Sync](/features/sync)
+- **End-to-end encryption** of an S3 or folder storage: the names and the
+  text of notes leave the device encrypted. A passphrase and a recovery code.
+  → [Encryption](/features/encryption)
 - **MCP server for AI agents.** Claude Code, Cursor and other clients read your
   vaults, do tasks and resolve your comments. → [Agents](/features/agents)
 - **Custom commands.** Run your own script on a note, a folder or a vault.

@@ -304,6 +304,52 @@ External edit:
   the storage address. The terminal has no keychain. There the key comes from an
   environment variable (`KKNOW_S3_*`, `KKNOW_FOLDER`).
 
+### Encryption
+
+The plan and its decisions are in
+[docs/encryption-2026.md](docs/encryption-2026.md).
+
+- **A wrapper, not a change in the algorithm.** `Encrypted<P>`
+  (`kknow_sync::encrypted`) is a `SyncProvider` on top of S3 or a folder.
+  The engine, the plan and the conflicts see logical keys and plain bytes.
+  The bytes and the names are changed in `kknow_sync::crypto`, which does no
+  input or output.
+- **Names are encrypted too.** A note name such as `Health/Diagnosis` tells
+  too much. AES-SIV is deterministic, so a logical key always gives the same
+  stored key, and `get`/`put` need no table of names. The whole path is one
+  name (the tree is hidden), cut into segments of 200 characters for the
+  255-byte limit of a file name. Base32, not base64: a folder can be on a
+  file system that does not see the case of letters.
+- **An envelope for the key.** A random data key encrypts the storage;
+  `.kknow/key.json` keeps it wrapped by Argon2id from the passphrase and by
+  the recovery code. A new passphrase rewrites only this file. The recovery
+  code has 128 random bits, so it uses a fast hash, not Argon2.
+- **The logical key is the associated data** of each object: a storage owner
+  cannot swap two notes without detection. Padding to 256 bytes hides small
+  edits. Rollback is not detected: see the threat model in the plan.
+- **`SyncProvider::prepare`** runs at the start of `stage`, not in `plan`:
+  it writes, and `--dry-run` must not write. The default implementation
+  refuses a storage that has `key.json`, so a device without the key never
+  writes plain notes there. `Encrypted::prepare` checks `key.json` against its
+  key (`WrongKey` after encryption was turned on again), keeps the plain stub
+  manifest, and encrypts plain notes and shared files of other programs. It
+  gives their keys back, and the engine takes their hashes again: a plain
+  edit in place becomes a remote change. Without encryption such an edit is
+  not seen.
+- **The stub manifest** has format 2 and `"encrypted": true`. An older build
+  stops at the format check; a current build without the key reads the flag
+  and says `Locked`. The real manifest has an encrypted name, so the two do
+  not collide. If `init` stops after `key.json`, the next sync with the key
+  moves the plain manifest under encryption; a plain manifest next to an
+  encrypted one is `MixedStorage` and needs a person.
+- **Where the key is.** The window keeps the data key in the keychain under
+  `<address> encryption key`, next to the S3 secret. The CLI has no keychain:
+  each `kknow sync` opens the key with `KKNOW_SYNC_PASSPHRASE` or a prompt,
+  and finds an encrypted storage that the settings do not mark. A new storage
+  address in the form resets the `encrypted` flag: it is a different storage.
+- Argon2 and `blake2` have `opt-level = 3` in the dev profile. 128 MiB
+  without optimization takes seconds, and a debug window must unlock fast.
+
 ### Git
 
 - **Git is not a `SyncProvider`.** It has commits, branches and its own merge.

@@ -48,6 +48,7 @@ export default defineConfig({
           { text: "Vaults and the sidebar", link: "/features/vaults" },
           { text: "Search", link: "/features/search" },
           { text: "Sync", link: "/features/sync" },
+          { text: "Encryption", link: "/features/encryption" },
           { text: "Agents (MCP)", link: "/features/agents" },
           { text: "Bookmarks, tasks, trash", link: "/features/organize" },
           { text: "Custom commands", link: "/features/commands" },

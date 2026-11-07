@@ -1,6 +1,7 @@
 # Plan: E2E encryption for sync
 
-**Status: in progress.** Steps 1–4 are in `main`.
+**Status: done (2026-11-07).** All five steps are in `main`. The open
+items are in [TODO.md](../TODO.md), "Encryption: what is still open".
 
 This plan covers the first item of "Larger tasks" in [TODO.md](../TODO.md)
 and Phase 2 of [launch-checklist.md](launch-checklist.md). Do the steps in

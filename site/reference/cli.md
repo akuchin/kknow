@@ -54,7 +54,13 @@ kknow sync --dry-run                       # show the plan, change nothing
 kknow sync --folder ~/Dropbox/notes        # sync through a folder
 kknow sync --bucket kknow --endpoint http://localhost:9000 --prefix work
 kknow sync --on-conflict both|local|remote
+kknow sync encrypt                         # encrypt the storage, print the recovery code
+kknow sync passphrase                      # set a new passphrase
 ```
+
+An encrypted storage needs the passphrase or the recovery code on each
+`kknow sync`: from `KKNOW_SYNC_PASSPHRASE` or from a prompt. See
+[Encryption](/features/encryption).
 
 For a vault with git sync, `kknow sync` runs fetch, merge and push, and
 `--dry-run` shows the branch, the unpushed commits and the changes. The command
@@ -67,6 +73,8 @@ does not commit.
 | `KKNOW_FOLDER` | the same as `--folder` |
 | `KKNOW_GIT` | the git program; the default is `git` from `PATH` |
 | `KKNOW_GIT_TOKEN` | the repository token for the "token" sign-in |
+| `KKNOW_SYNC_PASSPHRASE` | the passphrase or the recovery code of an encrypted storage |
+| `KKNOW_SYNC_NEW_PASSPHRASE` | the new passphrase for `kknow sync passphrase` |
 
 ## Custom commands
 

@@ -15,6 +15,9 @@ These parts are complete:
 - reading: the note panel (outline, backlinks, unlinked mentions), the hover
   preview and embeds. The plan is in
   [docs/reading-2026.md](docs/reading-2026.md).
+- E2E (end-to-end) encryption of S3 and folder sync: names and contents, a
+  passphrase and a recovery code. The plan is in
+  [docs/encryption-2026.md](docs/encryption-2026.md).
 
 The plan for the redesign is closed. Its archive copy is
 [docs/archive/redesign-2026.md](docs/archive/redesign-2026.md).
@@ -78,14 +81,22 @@ The plan for the redesign is closed. Its archive copy is
     problem.
   - A proposal shows edits one by one, not inside the editor text.
 
+- **Encryption: what is still open.**
+  - Rollback is not detected: the storage owner can give back an older
+    manifest. A counter in the encrypted manifest and the last seen value in
+    `.kknow/sync.json` would give a warning.
+  - Encryption cannot be turned off, and there are no device keys: a lost
+    device keeps the data key until encryption is turned on again in a new
+    storage.
+  - The status bar shows no lock for an encrypted vault.
+  - `kknow sync --dry-run` does not show plain files that the next sync will
+    encrypt (`prepare` writes, so the plan does not run it).
+
 ## Larger tasks
 
 These are the next large features, in this order:
 
-1. **E2E (end-to-end) encryption for sync.** The notes must not be on S3 as
-   plain text. The design has a place for it: a wrapper around the `get`/`put`
-   of the provider.
-2. **Import CSS themes from other Markdown editors** (for example, Obsidian).
+1. **Import CSS themes from other Markdown editors** (for example, Obsidian).
    Such a theme is a CSS (Cascading Style Sheets) file. The app reads only the
    variable values from it and does not execute the other rules.
 
