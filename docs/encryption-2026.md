@@ -1,6 +1,6 @@
 # Plan: E2E encryption for sync
 
-**Status: plan (2026-11-07).** Nothing is in `main` yet.
+**Status: in progress.** Step 1 is in `main`.
 
 This plan covers the first item of "Larger tasks" in [TODO.md](../TODO.md)
 and Phase 2 of [launch-checklist.md](launch-checklist.md). Do the steps in
@@ -59,8 +59,8 @@ engine ── logical key, plaintext ──▶ Encrypted<P> ── stored key, c
 - `.kknow/key.json` is the only object with a plaintext name and plaintext
   JSON. It holds the format version, the Argon2id parameters, and the data key
   wrapped two times: by the passphrase and by the recovery code.
-- Argon2id: 64 MiB, 3 passes, 1 lane. The parameters are in the file, so a
-  later build can make them stronger.
+- Argon2id: 128 MiB, 4 passes, 1 lane (about 0.2 s). The parameters are in
+  the file, so a later build can make them stronger.
 - The recovery code is 128 random bits in base32, in groups:
   `K7QF-2M9X-…`. No word list, so no new dependency.
 - Subkeys come from the data key through `blake3::derive_key` (`blake3` is

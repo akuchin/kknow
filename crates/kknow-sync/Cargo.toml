@@ -17,6 +17,11 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
+chacha20poly1305.workspace = true
+aes-siv.workspace = true
+argon2.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 opendal = { workspace = true, optional = true }

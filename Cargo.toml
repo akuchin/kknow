@@ -30,6 +30,12 @@ notify-debouncer-full = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 blake3 = "1"
+# Encryption of sync (`kknow_sync::crypto`). All pure Rust.
+chacha20poly1305 = "0.10"
+aes-siv = "0.7"
+argon2 = "0.5"
+getrandom = "0.3"
+zeroize = { version = "1", features = ["derive"] }
 # TypeScript types for the window (`ui/src/bindings.ts`). Only tests use it:
 # the crates have a `ts` feature, and only the dev-dependencies of src-tauri
 # turn it on.
@@ -47,6 +53,14 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# Argon2 with 64 MiB takes seconds without optimization. A debug build of the
+# window must unlock a vault as fast as a release build.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.release]
 lto = "thin"

@@ -26,6 +26,7 @@
 //! ```
 
 pub mod config;
+pub mod crypto;
 mod engine;
 pub mod folder;
 pub mod git;
@@ -162,6 +163,23 @@ pub enum Error {
 
     #[error("хранилище изменилось во время синхронизации — запустите её ещё раз")]
     RemoteChanged,
+
+    #[error("encryption: {0}")]
+    Crypto(String),
+
+    #[error("wrong passphrase or recovery code")]
+    WrongPassphrase,
+
+    #[error("the passphrase must have at least {0} characters")]
+    PassphraseTooShort(usize),
+
+    #[error(
+        "the object {0} does not open: it is damaged, or it was encrypted with a different key"
+    )]
+    Damaged(String),
+
+    #[error("the path {0} is too long for an encrypted storage")]
+    KeyTooLong(String),
 
     #[error("ошибка ввода-вывода в {path}: {source}")]
     Io {
