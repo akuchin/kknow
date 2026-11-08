@@ -163,6 +163,16 @@ Each note has its own font size. Press <kbd>⌘=</kbd> for larger, <kbd>⌘−</
 for smaller and <kbd>⌘0</kbd> for the default. The range is 70% to 200%. The
 status bar has the same control with a slider.
 
+## Line numbers
+
+The line numbers button in the status bar shows or hides the line numbers.
+**Settings → Editor** has the same switch. The numbers are on by default.
+
+In the editor each line has a number. In Read mode the text has no source
+lines, so the numbers show where each block starts: a paragraph, a heading, a
+list item, a code block or a table. The numbers are the same as in the
+editor, so you can find the place in the source.
+
 ## Edits outside the app
 
 kknow watches each open vault. If git, sync or another editor changes a note,

@@ -536,7 +536,9 @@ Its right side is about the note and the window:
 - the font size of the note: −, a slider, + and the value. Click the value to
   go back to the default size;
 - the line numbers button. It shows or hides the line numbers on the left of
-  the text. The "Editor" section of the settings has the same switch;
+  the text. In "Read" mode the number stands next to the start of each
+  paragraph, heading, list item, code block and table. The "Editor" section of
+  the settings has the same switch;
 - the MCP lamp: the state of the MCP server for agents. Click it to turn the
   server on or off, change the port and connect an agent (see "Agents
   (MCP)");

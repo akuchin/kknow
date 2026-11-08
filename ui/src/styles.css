@@ -2092,6 +2092,66 @@ img.note-image {
   top: 1.35em;
 }
 
+/* Line numbers in "Read" mode, when the line numbers setting is on. The
+   preview has no lines, only the source line marks of blocks, so the number
+   shows where a paragraph, heading, list item, code block or table starts.
+
+   All numbers stand in one column on the left, as in the editor, also for a
+   nested list item. So the column is placed against the preview, not against
+   the mark: the mark loses its own position, and the number keeps only its
+   vertical place in the text (no `top`). The bookmark goes to the same column
+   edge for the same reason. */
+@property --preview-font {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 16px;
+}
+
+@property --text-line {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 24px;
+}
+
+#app[data-mode="read"][data-line-numbers="true"] .preview {
+  position: relative;
+  /* `1em` here becomes pixels (`@property`), so a number in a heading is as
+     small as one in a paragraph. */
+  --preview-font: 1em;
+  --line-gutter: max(72px, calc((100% - 720px) / 2));
+  padding-left: var(--line-gutter);
+}
+
+#app[data-mode="read"][data-line-numbers="true"] .preview .line-mark {
+  position: static;
+  /* The height of a text line here, in pixels: the number gets the same line
+     box, so it stands in the middle of the text line, also in a heading. */
+  --text-line: 1lh;
+}
+
+#app[data-mode="read"][data-line-numbers="true"] .preview .line-mark::after {
+  content: attr(data-line);
+  position: absolute;
+  left: 0;
+  width: calc(var(--line-gutter) - 30px);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: calc(var(--preview-font) * 0.75);
+  line-height: var(--text-line);
+  font-weight: normal;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--text-muted) 75%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+#app[data-mode="read"][data-line-numbers="true"] .preview .line-mark.is-bookmarked::before {
+  left: calc(var(--line-gutter) - 20px);
+  top: auto;
+  margin-top: 0.35em;
+}
+
 .preview h1,
 .preview h2,
 .preview h3 {

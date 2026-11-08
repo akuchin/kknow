@@ -11,7 +11,7 @@ import { LOCALE_NAMES, locale, locales, setLocale, t } from "../i18n";
 import { openMenu } from "../menu";
 import { modeOf } from "../note-mode";
 import { setDefaultScale } from "../note-scale";
-import { el } from "./dom";
+import { app, el } from "./dom";
 import { editor } from "./editor";
 import { applyScale, flushPendingSave, positionKey, setMode } from "./note";
 import { state } from "./state";
@@ -162,6 +162,8 @@ export async function toggleLineNumbers(): Promise<void> {
 
 function showLineNumbers(on: boolean): void {
   editor.setLineNumbers(on);
+  // "Read" mode draws its numbers in CSS from the line marks of the preview.
+  app.dataset.lineNumbers = String(on);
   status.setLineNumbers(on);
 }
 

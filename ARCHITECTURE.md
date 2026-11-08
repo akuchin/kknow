@@ -1943,6 +1943,20 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   `settings.json`. They are a window setting, not part of the document, so they
   are in a compartment. The editor turns them on and off without a new state,
   and the undo history stays.
+- "Read" mode shows the same setting without CodeMirror. The window puts
+  `data-line-numbers` on `#app`, and CSS draws `data-line` of each source line
+  mark (`line-mark`, see "Bookmarks") as `::after` content. Thus the numbers
+  need no code on each render, and they come and go with the setting.
+  - The preview has only block marks, so a number stands at the start of a
+    paragraph, heading, list item, code block or table, not at each line.
+  - All numbers stand in one column, also for a nested list item: the column
+    is placed against the preview, not against the mark. The mark loses its
+    own position, and the number keeps only its vertical place in the text.
+    The bookmark ribbon goes to the same column for the same reason.
+  - Two registered properties (`@property`) turn lengths into pixels where
+    they are set: `--preview-font` (`1em` of the preview) and `--text-line`
+    (`1lh` of the mark). So a number in a heading is as small as in a
+    paragraph, and it stands in the middle of the heading line.
 - The gutter has no background and no border. Its colors are the theme
   variables (`--text-muted`, `--accent`, `--warning`), so it fits each theme.
 

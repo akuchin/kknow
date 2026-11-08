@@ -85,6 +85,25 @@ test("the mode switch shows the editor, both panes or the preview", async ({ pag
   await expect(app).toHaveAttribute("data-mode", "edit");
 });
 
+test("in Read mode the blocks show their line numbers while the setting is on", async ({ page }) => {
+  // "Meetings" has a heading, a paragraph and a nested list.
+  await noteRow(page, "Работа/Встречи").click();
+  await page.locator('.mode-switch button[data-mode="read"]').click();
+  const mark = (line: number) => page.locator(`#preview .line-mark[data-line="${line}"]`);
+  const number = (line: number) =>
+    mark(line).evaluate((el) => getComputedStyle(el, "::after").content);
+
+  // The mock starts with the line numbers on.
+  await expect(page.locator("#app")).toHaveAttribute("data-line-numbers", "true");
+  expect(await number(5)).toBe('"5"');
+  // A nested list item gets its number too.
+  expect(await number(7)).toBe('"7"');
+
+  await page.locator("#status-lines").click();
+  await expect(page.locator("#app")).toHaveAttribute("data-line-numbers", "false");
+  expect(await number(5)).toBe("none");
+});
+
 test("the font size of a note changes from the status bar", async ({ page }) => {
   const value = page.locator("#status-scale-value");
   await expect(value).toHaveText("100%");
