@@ -144,3 +144,20 @@ test("a link with an alias shows the alias alone", async ({ page }) => {
   await expect(editorText(page)).toContainText("Read the language today");
   await expect(editorText(page)).not.toContainText("Rust|");
 });
+
+test("a wide code block scrolls on its own, not the whole editor", async ({ page }) => {
+  await typeAtEnd(page, "```\n" + "x".repeat(300) + "\n```\n\nafter");
+  await page.keyboard.press("ControlOrMeta+Home");
+  await expect(page.locator("#editor .cm-code-block")).toBeVisible();
+
+  // The text shares the scroller row with the gutter: with or without line
+  // numbers, the row must fit, or the right edge of the text is cut off.
+  const overflow = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector("#editor .cm-scroller") as HTMLElement;
+      return scroller.scrollWidth - scroller.clientWidth;
+    });
+  expect(await overflow()).toBe(0);
+  await page.locator("#status-lines").click();
+  expect(await overflow()).toBe(0);
+});

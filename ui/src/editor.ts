@@ -61,7 +61,10 @@ const theme = EditorView.theme({
     caretColor: "var(--accent)",
     // Without this, a wide code block would stretch the editor content, and the
     // whole text would scroll sideways. This way only the block scrolls.
-    maxWidth: "100%",
+    // `max-width: 100%` is not enough: the content shares the scroller row with
+    // the gutter, so it would overflow by the gutter width. A flex item with
+    // `min-width: 0` takes only the space that is left.
+    minWidth: "0",
   },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { overflow: "auto" },
