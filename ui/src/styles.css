@@ -2218,6 +2218,79 @@ img.note-image {
   padding: 0;
 }
 
+/* A block with a copy button (`code-copy.ts`): the `<code>` scrolls, not the
+   `<pre>`, so the button stays in the corner on a long line. The padding
+   moves to the `<code>` with the scroll. */
+.preview pre.has-copy {
+  position: relative;
+  overflow: visible;
+  padding: 0;
+}
+
+.preview pre.has-copy > code {
+  display: block;
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: inherit;
+}
+
+/* The copy button of a code block, in the preview and in the editor. It shows
+   on hover over the block, so it does not cover the code all the time. */
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.code-copy .icon {
+  width: 15px;
+  height: 15px;
+}
+
+pre:hover > .code-copy,
+.cm-code-widget:hover > .code-copy,
+.code-copy:focus-visible,
+.code-copy[data-state] {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  color: var(--text);
+}
+
+.code-copy[data-state="copied"] {
+  color: var(--accent);
+}
+
+.code-copy[data-state="failed"] {
+  color: var(--warning);
+}
+
+/* In the editor the button is next to the block: the wrapper has 8px of
+   padding above the block. */
+.cm-code-widget {
+  position: relative;
+}
+
+.cm-code-widget > .code-copy {
+  top: 14px;
+}
+
 /* A mermaid diagram is a picture, not a listing: it needs no background or
    border. Until it renders, the block holds the source, so it stays monospace.
 

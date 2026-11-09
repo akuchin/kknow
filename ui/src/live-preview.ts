@@ -38,6 +38,7 @@ import { addPageComment } from "./confluence";
 import { addEmbed, embedGeneration, embedsChanged } from "./live-embeds";
 import { addListMark } from "./live-lists";
 import { DIAGRAM_CLASS, DIAGRAM_LANG, renderDiagrams } from "./diagram";
+import { copyButton } from "./code-copy";
 import { paintCode } from "./highlight";
 import { icon } from "./icons";
 import { imageElement, isImage, paintImages } from "./images";
@@ -290,7 +291,9 @@ class CodeWidget extends WidgetType {
     // than CodeMirror thought, and a click landed on the line below.
     const wrapper = document.createElement("div");
     wrapper.className = "cm-code-widget";
-    wrapper.append(box);
+    // The button is next to the `<pre>`, not inside it: the block scrolls
+    // sideways, and the button must stay in its corner.
+    wrapper.append(box, copyButton(() => this.source));
     return wrapper;
   }
 

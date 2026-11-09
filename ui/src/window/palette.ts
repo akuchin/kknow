@@ -11,6 +11,7 @@ import { MAC } from "../actions";
 import { api, linkText, onVaultChanged, parseLink, type LinkPreview } from "../api";
 import { renderDiagrams } from "../diagram";
 import type { EditorLinks } from "../editor";
+import { addCopyButtons } from "../code-copy";
 import { paintCodeBlocks } from "../highlight";
 import { HoverPreview } from "../hover-preview";
 import { clearEmbeds, setEmbedSource } from "../live-embeds";
@@ -205,6 +206,7 @@ function initHover(): void {
     },
     paint: (root) => {
       paintCodeBlocks(root);
+      addCopyButtons(root);
       paintImages(root);
       void renderDiagrams(root);
     },

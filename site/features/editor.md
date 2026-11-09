@@ -126,6 +126,16 @@ A note from another person must not tell a third-party server that you opened
 it.
 :::
 
+## Code blocks
+
+kknow colors the code by the language after the opening fence, for example
+` ```rust `. Live preview shows the block as in the preview. Click the block
+to edit its source.
+
+Move the pointer over a code block to see the **copy** button in the corner.
+It copies only the code, without the fences and the language name. The button
+is in the editor and in the preview.
+
 ## Mermaid diagrams
 
 A code block in the `mermaid` language becomes a picture in the preview:

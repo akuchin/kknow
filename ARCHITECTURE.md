@@ -1458,6 +1458,19 @@ page from `initSyncForm`, so it does not import `vaults.ts`.
   preview, the window colours a `<pre><code class="language-…">` block with the
   same style. Token colours are the `code-*` theme variables, so a theme also
   colours code.
+- A code block has a copy button (`ui/src/code-copy.ts`), in the editor
+  widget and in the preview. It copies the code without the fences and
+  without the last line break.
+  - In the editor the button is next to the `<pre>`, in the widget wrapper:
+    the block scrolls sideways, and the button must stay in its corner. The
+    button keeps the focus and the cursor where they were, and its click does
+    not open the block for editing.
+  - In the preview the button is inside the `<pre>`, after the `<code>`. The
+    block stays one element, so the line mark before it still points at the
+    `<pre>` (`preview-lines.ts`). The `<code>` scrolls instead of the `<pre>`.
+  - The clipboard write is in `ui/src/clipboard.ts`, and `copyText` of the
+    window uses it too: first `navigator.clipboard`, then `execCommand` if the
+    webview blocks it.
 - There are two rules:
   - Inline markup — `**bold**`, `` `code` ``, `[link]()`, `[[wiki]]` — shows
     **for each element** (`touched`). The asterisks are visible only while the

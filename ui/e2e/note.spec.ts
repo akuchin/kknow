@@ -195,3 +195,39 @@ test("a long command shows its output as it goes and stops on request", async ({
   await expect(stop).toBeHidden();
   await expect(output).not.toContainText("архив готов");
 });
+
+test("the copy button of a code block copies the code, in the preview and the editor", async ({
+  page,
+}) => {
+  // The clipboard of the test browser is not the same in each engine; the
+  // stub records what the window asks to copy.
+  await page.addInitScript(() => {
+    const copied: string[] = [];
+    (window as unknown as { copied: string[] }).copied = copied;
+    navigator.clipboard.writeText = (text: string) => {
+      copied.push(text);
+      return Promise.resolve();
+    };
+  });
+  // Again: the stub must be in place before the window code starts.
+  await openWindow(page);
+  const copied = () => page.evaluate(() => (window as unknown as { copied: string[] }).copied);
+  const code = '// точка входа\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}';
+
+  await noteRow(page, "Projects/kknow").click();
+  await page.locator('.mode-switch button[data-mode="read"]').click();
+  const block = page.locator("#preview pre");
+  await block.hover();
+  const inPreview = block.locator(".code-copy");
+  await inPreview.click();
+  await expect(inPreview).toHaveAttribute("data-state", "copied");
+  expect(await copied()).toEqual([code]);
+
+  await page.locator('.mode-switch button[data-mode="edit"]').click();
+  const widget = page.locator("#editor .cm-code-widget");
+  await widget.hover();
+  await widget.locator(".code-copy").click();
+  expect(await copied()).toEqual([code, code]);
+  // The click copies; it does not open the block for editing.
+  await expect(widget).toBeVisible();
+});

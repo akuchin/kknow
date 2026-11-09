@@ -12,6 +12,7 @@
 import { api, type LinkRef, type NoteView, type ViewMode } from "../api";
 import type { EditorPosition } from "../editor";
 import { renderDiagrams } from "../diagram";
+import { addCopyButtons } from "../code-copy";
 import { paintCodeBlocks } from "../highlight";
 import { t } from "../i18n";
 import { paintImages, setImageOwner } from "../images";
@@ -272,6 +273,7 @@ export function showPreview(html: string): void {
   explainStoppedEmbeds();
   paintBookmarks(el.preview, editor.getBookmarks());
   paintCodeBlocks(el.preview);
+  addCopyButtons(el.preview);
   paintImages(el.preview);
   void renderDiagrams(el.preview);
 }

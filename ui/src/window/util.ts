@@ -1,6 +1,7 @@
 // Small steps that several zones of the window share.
 
 import { api } from "../api";
+import { writeClipboard } from "../clipboard";
 import { t } from "../i18n";
 import { fail, setStatus } from "./status";
 
@@ -13,32 +14,10 @@ export async function openSettings(section?: string): Promise<void> {
   }
 }
 
-/**
- * Puts text on the clipboard.
- *
- * First try `navigator.clipboard`. If the webview blocks it (no permission or
- * an insecure context), fall back to the old `execCommand("copy")` with a
- * hidden field: it works with any user gesture, and a menu click is one.
- */
+/** Puts text on the clipboard and says so in the status bar. */
 export async function copyText(text: string | null): Promise<void> {
   if (text === null) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus(t("status.copied"));
-    return;
-  } catch {
-    // Fall back below.
-  }
-
-  const field = document.createElement("textarea");
-  field.value = text;
-  field.setAttribute("readonly", "");
-  field.style.position = "fixed";
-  field.style.opacity = "0";
-  document.body.append(field);
-  field.select();
-  const copied = document.execCommand("copy");
-  field.remove();
+  const copied = await writeClipboard(text);
   setStatus(t(copied ? "status.copied" : "status.copyFailed"), copied ? "idle" : "error");
 }
 

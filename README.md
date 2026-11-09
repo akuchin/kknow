@@ -345,6 +345,8 @@ Code) can also edit the file at the path from `read_note`.
   removes it. Field parsing comes later.
 - The parser skips code and math: `` `[[this is not a link]]` `` is not a link.
 - The preview shows a code block in the `mermaid` language as a diagram.
+- A code block has a copy button in the corner. It shows on hover and copies
+  only the code, in the editor and in the preview.
 - Comments for an agent: `words<!-- @agent «words»: task -->`. The editor
   highlights the words and hides the comment. To add a comment, select the
   words, right-click and choose "Add comment", or press ⌘⇧M. Without a
