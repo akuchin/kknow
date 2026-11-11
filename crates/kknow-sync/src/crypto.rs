@@ -204,27 +204,25 @@ pub struct Slot {
 
 impl Slot {
     fn wrap(key: &DataKey, wrapping: &[u8; 32], salt: Vec<u8>, aad: &[u8]) -> Result<Self> {
-        let mut nonce = vec![0; NONCE];
+        let mut nonce = [0; NONCE];
         random(&mut nonce)?;
         let wrapped = XChaCha20Poly1305::new(wrapping.into())
-            .encrypt(XNonce::from_slice(&nonce), Payload { msg: &key.0, aad })
+            .encrypt(&XNonce::from(nonce), Payload { msg: &key.0, aad })
             .map_err(|_| Error::Crypto("cannot wrap the key".into()))?;
         Ok(Slot {
             salt,
-            nonce,
+            nonce: nonce.to_vec(),
             wrapped,
         })
     }
 
     /// `None` if the secret is wrong.
     fn unwrap(&self, wrapping: &[u8; 32], aad: &[u8]) -> Option<DataKey> {
-        if self.nonce.len() != NONCE {
-            return None;
-        }
+        let nonce = XNonce::try_from(self.nonce.as_slice()).ok()?;
         let bytes = Zeroizing::new(
             XChaCha20Poly1305::new(wrapping.into())
                 .decrypt(
-                    XNonce::from_slice(&self.nonce),
+                    &nonce,
                     Payload {
                         msg: &self.wrapped,
                         aad,
@@ -379,7 +377,7 @@ impl Cipher {
         let sealed = self
             .content
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: &plain,
                     aad: key.as_bytes(),
@@ -403,10 +401,11 @@ impl Cipher {
             return Err(damaged());
         }
         let (nonce, sealed) = body.split_at(NONCE);
+        let nonce = XNonce::try_from(nonce).map_err(|_| damaged())?;
         let plain = Zeroizing::new(
             self.content
                 .decrypt(
-                    XNonce::from_slice(nonce),
+                    &nonce,
                     Payload {
                         msg: sealed,
                         aad: key.as_bytes(),
