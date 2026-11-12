@@ -21,6 +21,18 @@ function query() {
     noteFolder: document.querySelector<HTMLSpanElement>("#note-folder")!,
     noteFolderText: document.querySelector<HTMLSpanElement>("#note-folder-text")!,
     noteVaultLabel: document.querySelector<HTMLSpanElement>("#note-vault-label")!,
+    noteLock: document.querySelector<HTMLButtonElement>("#note-lock")!,
+    lockView: document.querySelector<HTMLElement>("#lock-view")!,
+    lockForm: document.querySelector<HTMLFormElement>("#lock-form")!,
+    lockTitle: document.querySelector<HTMLHeadingElement>("#lock-view-title")!,
+    lockText: document.querySelector<HTMLParagraphElement>("#lock-view-text")!,
+    lockSecret: document.querySelector<HTMLInputElement>("#lock-secret")!,
+    lockRepeat: document.querySelector<HTMLInputElement>("#lock-repeat")!,
+    lockCode: document.querySelector<HTMLElement>("#lock-code")!,
+    lockError: document.querySelector<HTMLParagraphElement>("#lock-error")!,
+    lockCancel: document.querySelector<HTMLButtonElement>("#lock-cancel")!,
+    lockCopy: document.querySelector<HTMLButtonElement>("#lock-copy")!,
+    lockSubmit: document.querySelector<HTMLButtonElement>("#lock-submit")!,
     toggleSidebar: document.querySelector<HTMLButtonElement>("#toggle-sidebar")!,
     navBack: document.querySelector<HTMLButtonElement>("#nav-back")!,
     navForward: document.querySelector<HTMLButtonElement>("#nav-forward")!,
@@ -124,6 +136,9 @@ export function initDom(): void {
               title="${t("topbar.note.menu")}">
         <span id="note-title">${t("topbar.note.empty")}</span>${iconMarkup("caret")}
       </button>
+      <!-- The lock of a locked note: open or closed. A click on an open lock
+           closes all locked notes of the vault. -->
+      <button id="note-lock" class="ghost bare note-lock" hidden></button>
       <span id="note-folder" class="topbar-note-folder" hidden>
         <span class="vault-label" id="note-vault-label"></span>
         <span id="note-folder-text"></span>
@@ -313,6 +328,27 @@ export function initDom(): void {
       </button>
     </header>
     <article id="trash-view-body" class="preview"></article>
+  </section>
+
+  <!-- A locked note: the password field instead of the text. The same
+       panel sets the first password, shows the recovery code once and asks
+       for a new password after the code. It covers the editor and the
+       preview, as the trash view does. -->
+  <section id="lock-view" class="lock-view" aria-labelledby="lock-view-title" hidden>
+    <form id="lock-form" class="lock-form" novalidate>
+      ${iconMarkup("lock")}
+      <h2 id="lock-view-title"></h2>
+      <p id="lock-view-text" class="muted"></p>
+      <input id="lock-secret" type="password" autocomplete="off" spellcheck="false" />
+      <input id="lock-repeat" type="password" autocomplete="off" spellcheck="false" hidden />
+      <code id="lock-code" class="lock-code" hidden></code>
+      <p id="lock-error" class="lock-error" role="alert" hidden></p>
+      <div class="lock-buttons">
+        <button type="button" id="lock-cancel" class="ghost">${t("lock.cancel")}</button>
+        <button type="button" id="lock-copy" class="ghost" hidden>${t("lock.code.copy")}</button>
+        <button type="submit" id="lock-submit" class="primary"></button>
+      </div>
+    </form>
   </section>
 
   <footer class="statusbar" id="statusbar"></footer>

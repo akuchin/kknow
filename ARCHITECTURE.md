@@ -72,6 +72,8 @@ does not treat this folder as notes. The files are:
 - `.kknow/bookmarks.json` — bookmarks.
 - `.kknow/threads/<id>.json` — the thread of an `@agent#id` comment.
 - `.kknow/proposals/<id>.json` — an edit that an agent proposed.
+- `.kknow/lock.json` — the key of locked notes, wrapped by the password and
+  by the recovery code.
 - `.kknow/themes/*.json` — themes.
 - `.kknow/trash/<entry>/…` — deleted notes and folders.
 
@@ -214,7 +216,7 @@ External edit:
 - kknow compares these three manifests and makes a `Plan` of actions:
   `Upload`, `Download`, `RemoveLocal`, `RemoveRemote`, `KeepBoth`.
 - **Shared files.** A closed list of `.kknow` files syncs with the notes
-  (`kknow_sync::shared`): `bookmarks.json`, `threads/*.json`,
+  (`kknow_sync::shared`): `bookmarks.json`, `lock.json`, `threads/*.json`,
   `proposals/*.json`. They belong to the notes: a comment that an agent
   answered on the laptop must have its answer on the desktop.
   - The list is closed on purpose. A new file in `.kknow` does not leave the
@@ -367,6 +369,61 @@ The plan and its decisions are in
   address in the form resets the `encrypted` flag: it is a different storage.
 - Argon2 and `blake2` have `opt-level = 3` in the dev profile. 128 MiB
   without optimization takes seconds, and a debug window must unlock fast.
+
+### Locked notes
+
+A locked note is encrypted in the vault folder, not only in the storage. The
+plan was issue #12; the model follows Apple Notes: one password for each
+vault opens all its locked notes until the app closes.
+
+- **The format and the crypto are in `kknow_sync::locked`**, next to
+  `kknow_sync::crypto`: the envelope (`KeyFile`, Argon2id, the recovery code)
+  and the cipher are already there, and the sync engine must tell a locked
+  note itself. A separate key context (`Cipher::for_locked_notes`) keeps the
+  notes key apart from a sync key. The session is `kknow_app::lock`.
+- **The file stays a `.md` text file with the same name.** The vault, the
+  watcher, sync and git read it as any note. The text is an armor: `BEGIN`
+  and `END` lines, a notice for other editors, `Key:` with a hash of the
+  notes key, and the sealed text in base32. `is_locked` checks only the first
+  line, so each read can afford it.
+- **The sealed text is one line.** git merges different lines by itself, and
+  a merge of two halves of two ciphertexts is garbage. With one line, two
+  edits always conflict, and the conflict becomes a copy, as for any note.
+- **The associated data is a constant, not the path.** A rename or a move
+  must not need a new encryption. The cost: a person with disk access can
+  swap two locked notes without detection.
+- **`Key:` tells another key from damage.** Two devices that set a password
+  before a sync have two keys; the error then says "locked with another
+  password" (`OtherNotesKey`), not "damaged".
+- **The key lives only in `Workspace::notes_key`.** Not in the keychain, not
+  on disk: a restart or `lock_all` closes the notes. `lock.json` is a shared
+  file of sync, so a second device opens them with the same password. Its
+  merge keeps the local version: two wrapped keys cannot be joined.
+- **The index never has the text.** `ingest` gives a locked note the parse
+  of an empty text, also in an open session. Search finds it by name; it has
+  no links, tags, tasks or comments in the graph. Links to it still work.
+- **Two reads.** `Workspace::read` refuses a locked note with `NoteLocked`,
+  also in an open session. It is the read of MCP tools, threads, proposals,
+  sections (hover and embeds) and the CLI, so they cannot leak the text by
+  accident. `Workspace::open_text` decrypts it for the window. `set_task`
+  (MCP) and `set_task_unlocked` (the window) are two methods for the same
+  reason.
+- **Each write seals.** `store` looks at `locked`, and `store_as` takes the
+  flag for a conflict copy: the copy of a locked note is locked too.
+  `save_if_unchanged` opens the disk text before the compare.
+- **No bookmarks.** A bookmark keeps the text of its line in
+  `bookmarks.json`, so a locked note forgets its bookmarks, and the window
+  hides the bookmark button.
+- **Sync keeps both versions.** The manifest entry has `locked: true` (a field
+  after format 1, ignored by older builds). `decide` uses `KeepBoth` for such a
+  note whatever the policy: it cannot read the two texts to pick one.
+- **The window** has a panel over the editor and the preview
+  (`lock-view.ts`), as the trash view. One form has five uses: open, set the
+  first password, confirm the password before Lock or Remove lock, show the
+  recovery code, and set a new password after the code. A closed note comes
+  as `NoteView { closed: true }` with no text, and `onEdit` and `saveNow`
+  skip it. The lock icons read `locks.ts`; a click on an open lock in the
+  tree sends `kknow:lock-all`, because the lock zone is above the tree.
 
 ### Git
 
@@ -1353,6 +1410,7 @@ The modules make layers. A module imports only from lower layers:
 | 1 | `editor.ts` | the CodeMirror instance of the open note |
 | 1 | `rows.ts` | the row parts that the tree, the trash and the file list share; the mark of the open note |
 | 2 | `util.ts` | small shared actions: open the settings, copy text, read a list |
+| 2 | `locks.ts` | the lock session of each vault: a password, open or closed |
 | 2 | `notes-float.ts` | the agent notes float and the two selection popups |
 | 3 | `note.ts` | open, show, save and close a note; the preview, the heading, positions, the font size, the backlink count, the mode, back and forward |
 | 4 | `commands.ts` | command items, runs, the run output, the commands of the open note |
@@ -1363,13 +1421,14 @@ The modules make layers. A module imports only from lower layers:
 | 5 | `tree.ts` | the sidebar tree, collapsed and expanded branches, `reveal` |
 | 5 | `mcp.ts` | the MCP lamp in the status bar and its setup float |
 | 6 | `appearance.ts` | app settings, themes, the language, line numbers |
-| 6 | `edits.ts` | create, rename, move, duplicate and delete; the row menu; the new note form |
-| 7 | `vaults.ts` | the vault menu, a vault switch, rename, colour, forget, ⌘1…⌘9, edits from outside |
-| 8 | `files.ts` | separate files, drag and drop, attachments |
-| 9 | `palette.ts` | the sources and actions of the palette, the links of the preview |
-| 10 | `toolbar.ts` | the note toolbar menus |
-| 10 | `keys.ts` | the window actions, the keydown handler, the keymap |
-| 11 | `main.ts` | `boot` and the subscriptions to the core events |
+| 6 | `lock-view.ts` | the lock panel, the lock in the header, Lock, Remove lock and Lock all |
+| 7 | `edits.ts` | create, rename, move, duplicate and delete; the row menu; the new note form |
+| 8 | `vaults.ts` | the vault menu, a vault switch, rename, colour, forget, ⌘1…⌘9, edits from outside |
+| 9 | `files.ts` | separate files, drag and drop, attachments |
+| 10 | `palette.ts` | the sources and actions of the palette, the links of the preview |
+| 11 | `toolbar.ts` | the note toolbar menus |
+| 11 | `keys.ts` | the window actions, the keydown handler, the keymap |
+| 12 | `main.ts` | `boot` and the subscriptions to the core events |
 
 Pure modules outside `window/` hold the logic that has no DOM:
 `tree-model.ts` (the tree as data), `sync-text.ts` (the sync texts),

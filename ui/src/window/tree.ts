@@ -19,6 +19,7 @@ import { buildTree, fileName, type Folder } from "../tree-model";
 import { filterVaults, labelsOf, livePicks } from "../vault-labels";
 import { app, el } from "./dom";
 import { openFound } from "./note";
+import { isUnlocked, refreshLock } from "./locks";
 import { emptyItem, markActive, rowActions, rowMenu } from "./rows";
 import { state } from "./state";
 import { fail } from "./status";
@@ -38,6 +39,13 @@ export interface TreeHooks {
   /** Opens the git changes panel of the active vault. */
   openGit: () => Promise<void>;
 }
+
+/**
+ * The event of a click on an open lock in the tree: `lock-view.ts` closes
+ * all locked notes of the vault in `detail`. An event, not a hook: the lock
+ * zone is above the tree.
+ */
+export const LOCK_ALL_EVENT = "kknow:lock-all";
 
 let hooks: TreeHooks;
 
@@ -512,13 +520,42 @@ function noteItem(note: NoteSummary, vaultId: string): HTMLLIElement {
   row.className = "tree-row note-row";
   row.dataset.id = note.id;
   row.dataset.vault = vaultId;
-  row.append(button, rowActions(more));
+  row.append(button);
+  if (note.locked) row.append(lockButton(note, vaultId));
+  row.append(rowActions(more));
   row.oncontextmenu = (event) => {
     event.preventDefault();
     void hooks.openCommandMenu(more, target);
   };
   item.append(row);
   return item;
+}
+
+/**
+ * The lock of a locked note: always visible, unlike the row buttons. Open
+ * while the session of the vault is unlocked; a click on an open lock closes
+ * all locked notes of the vault, a click on a closed one opens the note and
+ * its password field.
+ */
+function lockButton(note: NoteSummary, vaultId: string): HTMLButtonElement {
+  const open = isUnlocked(vaultId);
+  const lock = document.createElement("button");
+  lock.className = "note-lock";
+  lock.dataset.open = String(open);
+  const label = t(open ? "lock.icon.open" : "lock.icon.closed");
+  lock.title = label;
+  lock.setAttribute("aria-label", label);
+  lock.append(icon(open ? "lockOpen" : "lock"));
+  lock.onclick = () => {
+    if (open) document.dispatchEvent(new CustomEvent(LOCK_ALL_EVENT, { detail: vaultId }));
+    else void openFound(note.id, vaultId);
+  };
+  return lock;
+}
+
+/** True if the note of a loaded vault is a locked note. */
+export function isLockedNote(vaultId: string, id: string): boolean {
+  return trees.get(vaultId)?.some((note) => note.id === id && note.locked) === true;
 }
 
 /** Notes of the active vault, for the palette and the counter. */
@@ -539,6 +576,8 @@ export async function loadNotes(id: string): Promise<NoteSummary[]> {
     // A broken trash folder must not hide the notes.
     api.listTrash(id).catch(() => []),
   ]);
+  // The lock icons of the tree need the session of the vault.
+  if (notes.some((note) => note.locked)) await refreshLock(id).catch(() => undefined);
   trees.set(id, notes);
   folderLists.set(id, folders);
   trashes.set(id, trash);

@@ -142,6 +142,12 @@ fn app(error: &kknow_app::Error) -> Coded {
                 ("other", outer.display().to_string()),
             ],
         ),
+        E::NoteLocked(id) => value("noteLocked", id),
+        E::NotesClosed => ("notesClosed", vec![]),
+        E::NoLockPassword => ("noLockPassword", vec![]),
+        E::LockPasswordExists => ("lockPasswordExists", vec![]),
+        E::NotLocked(id) => value("notLocked", id),
+        E::AlreadyLocked(id) => value("alreadyLocked", id),
         E::Io { path, source } => io(path, source),
     }
 }
@@ -213,6 +219,7 @@ fn sync(error: &kknow_sync::Error) -> Coded {
         E::PassphraseTooShort(min) => value("passphraseTooShort", min),
         E::Damaged(key) => value("damagedObject", key),
         E::KeyTooLong(key) => value("keyTooLong", key),
+        E::OtherNotesKey => ("otherNotesKey", vec![]),
         E::Locked => ("storageLocked", vec![]),
         E::NotEncrypted => ("notEncrypted", vec![]),
         E::AlreadyEncrypted => ("alreadyEncrypted", vec![]),

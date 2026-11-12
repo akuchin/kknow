@@ -26,6 +26,7 @@ import { el } from "./dom";
 import { createNote } from "./edits";
 import { editor } from "./editor";
 import { pickFile } from "./files";
+import { canLockAll, lockAll } from "./lock-view";
 import { goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, openFound, openNote, setMode, travel } from "./note";
 import { state } from "./state";
@@ -122,6 +123,8 @@ export function initPalette(): void {
         run: () => void openSettings("vaults"),
       },
       { label: t("palette.action.reload"), run: () => void reloadVault() },
+      // Only while locked notes are open: there is nothing to close otherwise.
+      ...(canLockAll() ? [{ label: t("palette.action.lockAll"), run: () => void lockAll() }] : []),
       { label: t("menu.scale.larger"), action: "scale.larger", run: () => changeCurrentScale(1) },
       { label: t("menu.scale.smaller"), action: "scale.smaller", run: () => changeCurrentScale(-1) },
       { label: t("menu.scale.reset"), action: "scale.reset", run: () => changeCurrentScale(0) },

@@ -1083,6 +1083,35 @@ mod tests {
     }
 
     #[test]
+    fn two_edits_of_a_locked_note_give_a_copy_not_a_merge() {
+        let key = crate::locked::NotesKey::new(&crate::DataKey::generate().unwrap());
+        let world = World::new();
+        let laptop = world.machine("laptop");
+        put(&laptop, "Diary.md", &key.seal("line one\nline two\n").unwrap());
+        commit_all(&laptop, "start");
+        laptop.sync().unwrap();
+        let desk = world.machine("desk");
+
+        // Each side changes a different line of the plain text. A plain note
+        // would merge; the sealed text is one line, so it cannot.
+        let theirs = key.seal("LINE ONE\nline two\n").unwrap();
+        put(&laptop, "Diary.md", &theirs);
+        commit_all(&laptop, "laptop");
+        laptop.sync().unwrap();
+        let mine = key.seal("line one\nLINE TWO\n").unwrap();
+        put(&desk, "Diary.md", &mine);
+        commit_all(&desk, "desk");
+
+        let report = desk.sync().unwrap();
+        let [conflict] = report.merged.conflicts.as_slice() else {
+            panic!("one conflict was expected: {report:?}");
+        };
+        assert_eq!(read(&desk, "Diary.md"), mine);
+        assert_eq!(read(&desk, &conflict.copy), theirs);
+        assert_eq!(key.open(&read(&desk, &conflict.copy)).unwrap(), "LINE ONE\nline two\n");
+    }
+
+    #[test]
     fn uncommitted_edits_in_the_way_stop_the_merge_with_their_names() {
         let world = World::new();
         let laptop = world.machine("laptop");

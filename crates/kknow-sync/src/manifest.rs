@@ -34,6 +34,11 @@ pub struct Entry {
     pub hash: String,
     /// Size in bytes. Only for people who read the manifest.
     pub size: u64,
+    /// The note is locked ([`crate::locked`]). A conflict on it always gives
+    /// a copy: the policy cannot pick a side of two texts it cannot read.
+    /// The field came after format 1; an older build ignores it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 impl Entry {
@@ -45,6 +50,7 @@ impl Entry {
         Entry {
             hash: hash(bytes),
             size: bytes.len() as u64,
+            locked: crate::locked::is_locked(bytes),
         }
     }
 

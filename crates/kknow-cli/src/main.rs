@@ -59,6 +59,16 @@ enum Command {
     Render { note: String },
     /// Create an empty note.
     New { name: String },
+    /// Lock a note with the vault password: the file becomes ciphertext.
+    ///
+    /// The password comes from `KKNOW_LOCK_PASSPHRASE` or a prompt. A vault
+    /// without a password gets one, and kknow prints the recovery code once.
+    Lock { note: String },
+    /// Remove the lock of a note: the file becomes plain text again.
+    ///
+    /// The password or the recovery code comes from `KKNOW_LOCK_PASSPHRASE`
+    /// or a prompt.
+    Unlock { note: String },
     /// Full-text search: `kknow search "tag:rust notes"`.
     Search {
         query: Vec<String>,
@@ -412,6 +422,8 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             let id = workspace.create(&name).map_err(|error| error.to_string())?;
             println!("создана заметка {id}");
         }
+        Command::Lock { note } => lock(&mut workspace, &note)?,
+        Command::Unlock { note } => unlock(&mut workspace, &note)?,
         Command::Search { query, limit } => search(&workspace, &query.join(" "), limit)?,
         Command::Themes => themes(&workspace),
         Command::Bookmarks => bookmarks(&workspace),
@@ -1302,12 +1314,17 @@ fn s3_secret(config: &RemoteConfig) -> Option<String> {
 /// There is no flag on purpose, as for the S3 keys: `ps` shows the command
 /// line, and the shell history keeps it.
 fn passphrase(variable: &str, prompt: &str) -> Result<String, String> {
+    secret(variable, prompt, "the storage is encrypted")
+}
+
+/// [`passphrase`] with the reason for the error when there is no terminal.
+fn secret(variable: &str, prompt: &str, reason: &str) -> Result<String, String> {
     if let Ok(value) = std::env::var(variable) {
         return Ok(value);
     }
     if !std::io::stdin().is_terminal() {
         return Err(format!(
-            "the storage is encrypted: set {variable} or run the command in a terminal"
+            "{reason}: set {variable} or run the command in a terminal"
         ));
     }
     rpassword::prompt_password(prompt).map_err(|error| error.to_string())
@@ -1315,15 +1332,80 @@ fn passphrase(variable: &str, prompt: &str) -> Result<String, String> {
 
 /// A new passphrase: from the variable, or typed two times.
 fn new_passphrase(variable: &str) -> Result<String, String> {
+    new_secret(variable, "passphrase", "the storage is encrypted")
+}
+
+/// A new secret: from the variable, or typed two times.
+fn new_secret(variable: &str, noun: &str, reason: &str) -> Result<String, String> {
     if let Ok(value) = std::env::var(variable) {
         return Ok(value);
     }
-    let first = passphrase(variable, "New passphrase: ")?;
-    let second = passphrase(variable, "The same passphrase again: ")?;
+    let first = secret(variable, &format!("New {noun}: "), reason)?;
+    let second = secret(variable, &format!("The same {noun} again: "), reason)?;
     if first != second {
-        return Err("the two passphrases are different".to_string());
+        return Err(format!("the two {noun}s are different"));
     }
     Ok(first)
+}
+
+/// The variable of the password of locked notes.
+const LOCK_VARIABLE: &str = "KKNOW_LOCK_PASSPHRASE";
+
+/// Opens the locked notes of the vault: with a new password for a vault
+/// without one, else with the password or the recovery code.
+fn open_lock(workspace: &mut Workspace) -> Result<(), String> {
+    if workspace.lock_state().password {
+        let typed = secret(
+            LOCK_VARIABLE,
+            "Vault password or recovery code: ",
+            "the note needs the vault password",
+        )?;
+        workspace
+            .unlock_notes(&typed)
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    println!("The vault has no password for locked notes yet.");
+    let password = new_secret(LOCK_VARIABLE, "password", "the vault needs a password")?;
+    let code = workspace
+        .set_lock_password(&password)
+        .map_err(|error| error.to_string())?;
+    println!();
+    println!("Recovery code: {}", code.display().as_str());
+    println!();
+    println!("Write it down and keep it in a safe place. It opens the locked notes if");
+    println!("you lose the password. kknow shows it only now. Without the password and");
+    println!("the code, nobody can read the locked notes, and neither can kknow.");
+    println!();
+    Ok(())
+}
+
+/// `kknow lock`.
+fn lock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
+    let id = find(workspace, raw)?.clone();
+    if workspace.is_locked(&id) {
+        return Err(format!("the note {id} is already locked"));
+    }
+    open_lock(workspace)?;
+    workspace
+        .lock_note(&id)
+        .map_err(|error| error.to_string())?;
+    println!("locked: {id}");
+    Ok(())
+}
+
+/// `kknow unlock`.
+fn unlock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
+    let id = find(workspace, raw)?.clone();
+    if !workspace.is_locked(&id) {
+        return Err(format!("the note {id} is not locked"));
+    }
+    open_lock(workspace)?;
+    workspace
+        .remove_lock(&id)
+        .map_err(|error| error.to_string())?;
+    println!("unlocked: {id}");
+    Ok(())
 }
 
 /// `kknow sync encrypt`.

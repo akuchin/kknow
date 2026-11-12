@@ -185,6 +185,16 @@ fn decide(
     base: &Manifest,
     policy: ConflictPolicy,
 ) -> Option<Action> {
+    // A locked note on either side keeps both versions: neither text can be
+    // read, so a side picked by the policy could lose a person's edit.
+    let locked = [local, remote]
+        .iter()
+        .any(|manifest| manifest.get(id).is_some_and(|entry| entry.locked));
+    let policy = if locked {
+        ConflictPolicy::KeepBoth
+    } else {
+        policy
+    };
     let decision = decide_hashes(
         local.hash_of(id),
         remote.hash_of(id),
@@ -413,6 +423,27 @@ mod tests {
         assert_eq!(
             diff(&local, &remote, &base, ConflictPolicy::PreferRemote),
             [Action::Download(id("Index"))]
+        );
+    }
+
+    #[test]
+    fn a_locked_note_keeps_both_versions_whatever_the_policy() {
+        let sealed = |text: &str| format!("{}\n{text}\n{}\n", crate::locked::BEGIN, crate::locked::END);
+        let local = manifest(&[("Diary", &sealed("mine"))]);
+        let remote = manifest(&[("Diary", &sealed("theirs"))]);
+        let base = manifest(&[("Diary", &sealed("old"))]);
+
+        for policy in [ConflictPolicy::PreferLocal, ConflictPolicy::PreferRemote] {
+            let actions = diff(&local, &remote, &base, policy);
+            assert!(
+                matches!(actions.as_slice(), [Action::KeepBoth { .. }]),
+                "{policy:?}: {actions:?}"
+            );
+        }
+        // A remote delete does not win over a local edit of a locked note.
+        assert_eq!(
+            diff(&local, &manifest(&[]), &base, ConflictPolicy::PreferRemote),
+            [Action::Upload(id("Diary"))]
         );
     }
 

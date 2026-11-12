@@ -27,6 +27,7 @@ import { initEdits, openCommandMenu, openNewNoteForm } from "./window/edits";
 import { initEditor } from "./window/editor";
 import { initFiles, refreshFiles, savePastedImage, takeDrop, takeOpened } from "./window/files";
 import { applyKeymap, initKeys, refreshKeymap } from "./window/keys";
+import { initLockView } from "./window/lock-view";
 import { rememberOpened, saveBookmarks } from "./window/marks";
 import {
   LAST_FILE,
@@ -66,10 +67,8 @@ async function boot(): Promise<void> {
   // The browser uses the document language for hyphenation and word selection.
   document.documentElement.lang = locale;
 
-  // The zones start in the order of the old top-level code: the markup, the
-  // editor, its floats and the status bar first; the tree follows the note
-  // event before the commands; the task boxes of the preview take clicks
-  // before its links; the palette exists before the keys.
+  // Zones start in the old order: markup, editor, floats, status bar; the tree
+  // follows the note before the commands; task boxes take clicks before links.
   initDom();
   initEditor({
     onChange: onEdit,
@@ -107,6 +106,7 @@ async function boot(): Promise<void> {
   // A note the user opens replaces the trash note and the changes view.
   const closeViews = () => (closeTrashView(), hideGit());
   initNote({ closeViews, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
+  initLockView();
   initAside();
   initToolbar();
   initSync({ resolve: resolveConflicts });

@@ -159,6 +159,9 @@ const PATHS = {
   comment: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
   // Confluence page of a note: two waves, as in the product logo.
   confluence: ["M3 17c3.5-5.5 7.5-6.5 13-3l4 2.5", "M21 7c-3.5 5.5-7.5 6.5-13 3L4 7.5"],
+  // Lock: a locked note that is closed, and an open one.
+  lock: ["M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z", "M8 11V7a4 4 0 0 1 8 0v4"],
+  lockOpen: ["M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z", "M8 11V7a4 4 0 0 1 7.8-1.2"],
   trash: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6"],
   // Git: throw away the changes of a file.
   discard: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],

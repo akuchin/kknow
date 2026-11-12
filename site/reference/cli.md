@@ -33,8 +33,15 @@ Without `--vault`, kknow uses the current directory.
 | `tasks [--all]` | open tasks; `--all` adds the done ones |
 | `bookmarks` | bookmarks: `note:line  «name»  text` |
 | `bookmark <note> <line> [--name <name>]` | add, remove or name a bookmark |
+| `lock <note>` | lock a note with the vault password; the first time, set the password and print the recovery code |
+| `unlock <note>` | remove the lock: the note becomes plain text again |
 | `watch` | print the changes in the vault |
 | `themes` | themes of the vault and their problems |
+
+`lock` and `unlock` read the password or the recovery code from
+`KKNOW_LOCK_PASSPHRASE`, or ask for it. A locked note is "locked" for `show`,
+`render` and the other commands that read the text. See
+[Locked notes](/features/locked-notes).
 
 ## Vaults
 

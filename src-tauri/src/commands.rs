@@ -87,6 +87,8 @@ pub struct NoteSummary {
     title: String,
     folder: Option<String>,
     tags: Vec<String>,
+    /// The file is a locked note: the tree shows a lock.
+    locked: bool,
 }
 
 #[derive(Serialize)]
@@ -123,6 +125,11 @@ pub struct NoteView {
     threads: Vec<Thread>,
     /// Proposals of agents for this note that wait for review.
     proposals: Vec<ProposalView>,
+    /// The file is a locked note.
+    locked: bool,
+    /// A locked note in a locked session: `content` and `html` are empty,
+    /// and the window shows the password field instead of the text.
+    closed: bool,
 }
 
 /// Where a link in the editor leads, and the anchors of that note for
@@ -186,6 +193,9 @@ pub struct LinkPreview {
     /// The link names a heading or block that the note does not have: the
     /// preview shows the whole note.
     part_missing: bool,
+    /// A locked note: `html` is empty, and the preview shows a lock. Its
+    /// text never goes to a preview, also in an unlocked session.
+    locked: bool,
 }
 
 /// A heading of a note.
@@ -287,11 +297,14 @@ fn link_ref(workspace: &Workspace, id: &NoteId, label: Option<&String>) -> LinkR
     }
 }
 
-fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> NoteView {
+pub(crate) fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> NoteView {
     let parsed = workspace.parsed(id);
     let bookmarks = workspace.note_bookmarks(id, &content);
+    let locked = workspace.is_locked(id);
 
     NoteView {
+        locked,
+        closed: false,
         id: id.as_str().to_string(),
         title: title_of(workspace, id),
         html: workspace.render(id, &content),
@@ -302,9 +315,32 @@ fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> NoteView {
             .map(|parsed| parsed.tags.iter().map(|tag| tag.name.clone()).collect())
             .unwrap_or_default(),
         bookmarks,
-        // A broken record folder must not stop the note from opening.
-        threads: workspace.note_threads(id).unwrap_or_default(),
-        proposals: workspace.note_proposals(id).unwrap_or_default(),
+        // A broken record folder must not stop the note from opening. A
+        // locked note has neither: agents do not see it.
+        threads: if locked {
+            Vec::new()
+        } else {
+            workspace.note_threads(id).unwrap_or_default()
+        },
+        proposals: if locked {
+            Vec::new()
+        } else {
+            workspace.note_proposals(id).unwrap_or_default()
+        },
+    }
+}
+
+/// The view of a note as the person sees it: a locked note opens with the
+/// key of the session, or comes closed.
+pub(crate) fn open_view(workspace: &Workspace, id: &NoteId) -> Result<NoteView> {
+    match workspace.open_text(id) {
+        Ok(content) => Ok(note_view(workspace, id, content)),
+        Err(kknow_app::Error::NotesClosed) => Ok(NoteView {
+            closed: true,
+            html: String::new(),
+            ..note_view(workspace, id, String::new())
+        }),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -326,7 +362,7 @@ fn dedup(workspace: &Workspace, edges: &[Edge], pick: impl Fn(&Edge) -> &NoteId)
     refs
 }
 
-fn note_id(workspace: &Workspace, raw: &str) -> Result<NoteId> {
+pub(crate) fn note_id(workspace: &Workspace, raw: &str) -> Result<NoteId> {
     workspace
         .find(raw)
         .cloned()
@@ -560,6 +596,7 @@ pub fn list_notes(state: State<'_, AppState>, vault: Option<String>) -> Result<V
                 title: parsed.title().unwrap_or_else(|| id.name()).to_string(),
                 folder: id.folder().map(str::to_string),
                 tags: parsed.tags.iter().map(|tag| tag.name.clone()).collect(),
+                locked: workspace.is_locked(id),
             })
             .collect())
     })
@@ -574,12 +611,12 @@ pub fn load_note(
     let slot = state.slot(vault.as_deref())?;
     let view = slot.read(|workspace| {
         let id = note_id(workspace, &id)?;
-        let content = workspace.read(&id)?;
-        Ok(note_view(workspace, &id, content))
+        open_view(workspace, &id)
     })?;
     // An agent without MCP asks in the text (`@agent-note`). The question
     // goes to the thread of its comment, where the person can answer it.
-    if kknow_index::parse::agent_answers(&view.content).is_empty() {
+    // A locked note has no threads.
+    if view.locked || kknow_index::parse::agent_answers(&view.content).is_empty() {
         return Ok(view);
     }
     slot.write(|workspace| {
@@ -783,6 +820,16 @@ pub fn link_preview(
             return Ok(None);
         };
         let id = found.id;
+        if workspace.is_locked(&id) {
+            return Ok(Some(LinkPreview {
+                id: id.as_str().to_string(),
+                title: title_of(workspace, &id),
+                html: String::new(),
+                line: None,
+                part_missing: false,
+                locked: true,
+            }));
+        }
         let subpath = target
             .split('|')
             .next()
@@ -802,6 +849,7 @@ pub fn link_preview(
             html: section.html,
             line: section.line,
             part_missing,
+            locked: false,
         }))
     })
 }
@@ -1110,7 +1158,7 @@ pub fn set_task(
 ) -> Result<NoteView> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
-        let content = workspace.set_task(&id, line, done)?;
+        let content = workspace.set_task_unlocked(&id, line, done)?;
         Ok(note_view(workspace, &id, content))
     })
 }

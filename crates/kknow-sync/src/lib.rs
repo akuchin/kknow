@@ -31,6 +31,7 @@ pub mod encrypted;
 mod engine;
 pub mod folder;
 pub mod git;
+pub mod locked;
 pub mod manifest;
 mod plan;
 pub mod provider;
@@ -210,6 +211,9 @@ pub enum Error {
         "the object {0} does not open: it is damaged, or it was encrypted with a different key"
     )]
     Damaged(String),
+
+    #[error("the note was locked with another password: this vault has a different lock key")]
+    OtherNotesKey,
 
     #[error("the path {0} is too long for an encrypted storage")]
     KeyTooLong(String),

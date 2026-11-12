@@ -72,6 +72,8 @@ interface MockNote {
   html: string;
   /** Bookmarks: the mock simply stores them on the note. */
   bookmarks?: BookmarkMark[];
+  /** A locked note. The mock keeps the text plain and only hides it. */
+  locked?: boolean;
 }
 
 /**
@@ -319,6 +321,53 @@ function mockImage(target: string): ArrayBuffer {
 }
 
 /** A mock vault: the list entry plus its notes. */
+/**
+ * The lock session of a mock vault: the password, the recovery code and
+ * whether the notes are open. The core keeps a key; the mock compares text.
+ */
+interface MockLock {
+  password: string | null;
+  code: string;
+  unlocked: boolean;
+}
+
+/** The lock of each mock vault by ID; a vault without one has no password. */
+const locks = new Map<string, MockLock>();
+
+function lockOf(vault: MockVault = activeVault): MockLock {
+  let lock = locks.get(vault.id);
+  if (!lock) {
+    lock = { password: null, code: "K7QF-2M9X-ABCD-EFGH-JKLM-NPQR-ST", unlocked: false };
+    locks.set(vault.id, lock);
+  }
+  return lock;
+}
+
+/** The vault of a command: the one it names, else the active one. */
+function vaultOf(args: Record<string, unknown> | undefined): MockVault {
+  return vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
+}
+
+/** Opens the session as the core does; the code opens it too. */
+function unlockMock(vault: MockVault, secret: string): "password" | "recoveryCode" {
+  const lock = lockOf(vault);
+  if (!lock.password) throw coded("noLockPassword", "the vault has no password for locked notes");
+  const typed = secret.trim().toUpperCase().replace(/[\s-]/g, "");
+  if (typed === lock.code.replace(/-/g, "")) {
+    lock.unlocked = true;
+    return "recoveryCode";
+  }
+  if (secret !== lock.password) throw coded("wrongPassphrase", "wrong passphrase or recovery code");
+  lock.unlocked = true;
+  return "password";
+}
+
+function checkPassword(password: string): void {
+  if ([...password].length < 8) {
+    throw coded("passphraseTooShort", "the passphrase must have at least 8 characters", { value: "8" });
+  }
+}
+
 interface MockVault {
   id: string;
   name: string;
@@ -789,7 +838,17 @@ function statusOf(vault: string): SyncStatus {
 }
 
 function view(note: MockNote): NoteView {
+  if (note.locked && !lockOf().unlocked) {
+    return { ...openView(note), content: "", html: "", closed: true, bookmarks: [] };
+  }
+  return openView(note);
+}
+
+function openView(note: MockNote): NoteView {
+  const locked = note.locked === true;
   return {
+    locked,
+    closed: false,
     id: note.id,
     title: note.title,
     content: note.content,
@@ -800,12 +859,14 @@ function view(note: MockNote): NoteView {
     ),
     outgoing: [],
     tags: note.tags,
-    bookmarks: note.bookmarks ?? [],
-    threads: threads.filter((thread) => thread.note === note.id),
-    proposals: proposals
-      .filter((proposal) => proposal.note === note.id)
-      .map((proposal) => recount(proposal, note.content))
-      .filter((proposal) => proposal.status === "pending"),
+    bookmarks: locked ? [] : (note.bookmarks ?? []),
+    threads: locked ? [] : threads.filter((thread) => thread.note === note.id),
+    proposals: locked
+      ? []
+      : proposals
+          .filter((proposal) => proposal.note === note.id)
+          .map((proposal) => recount(proposal, note.content))
+          .filter((proposal) => proposal.status === "pending"),
   };
 }
 
@@ -891,7 +952,8 @@ function noteBacklinks(id: string): BacklinkLineView[] {
   const names = [id, id.split("/").pop() ?? id].map((each) => each.toLowerCase());
   const lines: BacklinkLineView[] = [];
   for (const note of [...activeVault.notes].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (note.id === id) continue;
+    // A locked note has no links in the index: it is never a source.
+    if (note.id === id || note.locked) continue;
     note.content.split("\n").forEach((text, index) => {
       for (const found of text.matchAll(/!?\[\[([^\]|#]+)[^\]]*\]\]/g)) {
         if (!names.includes(found[1].trim().toLowerCase())) continue;
@@ -928,7 +990,7 @@ function unlinkedMentions(id: string): MentionView[] {
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "giu");
   const mentions: MentionView[] = [];
   for (const note of [...activeVault.notes].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (note.id === id) continue;
+    if (note.id === id || note.locked) continue;
     const links = linkSpans(note.content);
     let lineStart = 0;
     let code = false;
@@ -976,6 +1038,9 @@ function linkPreview(from: string, link: string): LinkPreview | null {
   const target = linkTarget(from, link);
   if (!target) return null;
   const note = find(target.id);
+  if (note.locked) {
+    return { id: note.id, title: note.title, html: "", line: null, partMissing: false, locked: true };
+  }
   const lines = note.content.split("\n");
   const sub = link.split("|")[0].split(/#(.*)/s)[1]?.trim() ?? "";
   const start = target.line;
@@ -997,7 +1062,14 @@ function linkPreview(from: string, link: string): LinkPreview | null {
       return heading ? `<h${heading[1].length}>${escaped}</h${heading[1].length}>` : `<p>${escaped}</p>`;
     })
     .join("");
-  return { id: note.id, title: note.title, html, line: start, partMissing: Boolean(sub) && start === null };
+  return {
+    id: note.id,
+    title: note.title,
+    html,
+    line: start,
+    partMissing: Boolean(sub) && start === null,
+    locked: false,
+  };
 }
 
 function find(id: string): MockNote {
@@ -1014,6 +1086,8 @@ function hits(vault: MockVault, query: string): { note: MockNote; text: string }
   return vault.notes
     .filter((note) => {
       if (field === "title") return note.title.toLowerCase().includes(text);
+      // The index has no text and no tags of a locked note: only its name.
+      if (note.locked) return note.id.toLowerCase().includes(text);
       if (field === "tag") return note.tags.some((tag) => tag.toLowerCase().includes(text));
       return (
         note.content.toLowerCase().includes(text) ||
@@ -1394,8 +1468,51 @@ export async function invoke<T>(
         id: note.id,
         title: note.title,
         folder: note.folder,
-        tags: note.tags,
+        tags: note.locked ? [] : note.tags,
+        locked: note.locked === true,
       })) as T;
+    }
+
+    case "lock_state": {
+      const lock = lockOf(vaultOf(args));
+      return { password: lock.password !== null, unlocked: lock.unlocked } as T;
+    }
+
+    case "set_lock_password": {
+      const lock = lockOf(vaultOf(args));
+      if (lock.password) throw coded("lockPasswordExists", "the vault already has a password for locked notes");
+      checkPassword(args?.password as string);
+      lock.password = args?.password as string;
+      lock.unlocked = true;
+      return lock.code as T;
+    }
+
+    case "unlock_notes":
+      return unlockMock(vaultOf(args), args?.secret as string) as T;
+
+    case "change_lock_password": {
+      const lock = lockOf(vaultOf(args));
+      if (!lock.unlocked) throw coded("notesClosed", "locked notes are closed: enter the vault password");
+      checkPassword(args?.password as string);
+      lock.password = args?.password as string;
+      return undefined as T;
+    }
+
+    case "lock_all":
+      lockOf(vaultOf(args)).unlocked = false;
+      return undefined as T;
+
+    case "lock_note":
+    case "remove_lock": {
+      const vault = vaultOf(args);
+      const lock = lockOf(vault);
+      if (!lock.password) throw coded("noLockPassword", "the vault has no password for locked notes");
+      if (!lock.unlocked) throw coded("notesClosed", "locked notes are closed: enter the vault password");
+      const note = vault.notes.find((each) => each.id === id);
+      if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
+      note.locked = command === "lock_note";
+      if (note.locked) note.bookmarks = [];
+      return view(note) as T;
     }
 
     case "load_note":
@@ -1403,6 +1520,9 @@ export async function invoke<T>(
 
     case "save_note": {
       const note = find(id);
+      if (note.locked && !lockOf().unlocked) {
+        throw coded("notesClosed", "locked notes are closed: enter the vault password");
+      }
       note.content = args?.content as string;
       const lines = args?.bookmarks as BookmarkMark[] | null;
       if (lines) note.bookmarks = bookmarkLines(lines, note.content);
