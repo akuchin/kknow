@@ -125,6 +125,7 @@ S3 and folder sync copy them with the notes:
 | `.kknow/bookmarks.json` | bookmarks |
 | `.kknow/threads/*.json` | threads of the [comments for the agent](/features/agents#threads-the-agent-asks-you-answer) |
 | `.kknow/proposals/*.json` | [proposals](/features/agents#proposals-you-accept-each-edit) of agents |
+| `.kknow/lock.json` | the key of [locked notes](/features/locked-notes), wrapped by the password |
 
 The sync state, the storage address and the trash stay on each machine. Other
 files in `.kknow/` do not sync until kknow adds them to this list, so a file
@@ -138,6 +139,11 @@ versions instead:
   machine can come back from the other.
 - threads: the messages of both machines in time order.
 - proposals: a decision on an edit wins over "waiting".
+- `lock.json`: this machine keeps its version. Set the password of locked
+  notes on one machine and sync before you lock notes on another.
+
+A conflict on a [locked note](/features/locked-notes) always gives a copy,
+whatever the conflict policy.
 
 Git commits these files too, and on a merge conflict it joins them in the
 same way. See [What goes into the repository](#what-goes-into-the-repository).

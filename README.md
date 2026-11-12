@@ -21,6 +21,7 @@ All functions in this document work:
   and with a git repository (with a view to stage and commit changes and see their diff);
 - end-to-end encryption of an S3 or folder storage: names and text of notes,
   a passphrase and a recovery code;
+- locked notes: single notes encrypted on disk with a vault password;
 - themes;
 - settings in a separate window;
 - custom commands for a note, a folder, a vault or a file outside a vault.

@@ -165,6 +165,15 @@ export class HoverPreview {
       this.host.open(preview);
     };
     head.append(title);
+    if (preview.locked) {
+      // The text of a locked note never goes to a preview.
+      const note = document.createElement("p");
+      note.className = "muted hover-locked";
+      note.textContent = t("hover.locked");
+      this.popup.replaceChildren(head, note);
+      this.popup.hidden = false;
+      return;
+    }
     if (preview.partMissing) {
       const note = document.createElement("span");
       note.className = "muted";

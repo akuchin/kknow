@@ -1232,6 +1232,37 @@ mod tests {
     }
 
     #[test]
+    fn a_locked_note_is_closed_to_agents_also_in_an_unlocked_session() {
+        let mut host = one(&[("Diary.md", "# Diary\n\n- [ ] secret task\n")]);
+        let diary = NoteId::parse("Diary").unwrap();
+        let workspace = &mut host.workspaces[0];
+        workspace
+            .set_lock_password_with(
+                "correct horse",
+                kknow_sync::crypto::KdfParams {
+                    memory_kib: 64,
+                    passes: 1,
+                    lanes: 1,
+                },
+            )
+            .unwrap();
+        workspace.lock_note(&diary).unwrap();
+        assert!(workspace.lock_state().unlocked);
+
+        let (text, is_error) = tool(&mut host, "read_note", json!({ "note": "Diary" }));
+        assert!(is_error);
+        assert_eq!(text, "the note Diary is locked");
+        let (_, is_error) = tool(
+            &mut host,
+            "set_task",
+            json!({ "note": "Diary", "line": 3, "done": true }),
+        );
+        assert!(is_error);
+        let (found, _) = tool(&mut host, "search", json!({ "query": "secret" }));
+        assert!(!found.contains("Diary"), "{found}");
+    }
+
+    #[test]
     fn list_notes_filters_by_folder() {
         let mut host = one(&[
             ("Работа/Отчёт.md", "# Итоги квартала\n"),

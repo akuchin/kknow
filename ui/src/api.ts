@@ -50,6 +50,8 @@ import type {
   BacklinkLineView,
   MentionView,
   LinkPreview,
+  LockStateView,
+  UnlockedBy,
   HeadingView,
   Theme,
   ThemeSet,
@@ -112,6 +114,8 @@ export type {
   BacklinkLineView,
   MentionView,
   LinkPreview,
+  LockStateView,
+  UnlockedBy,
   HeadingView,
   Theme,
   ThemeSet,
@@ -137,8 +141,15 @@ export type {
  * bookmarks, and a standalone file has `file: true`, so its `id` is an
  * absolute path and the `*_file` commands read and write it.
  */
-export type NoteView = Omit<VaultNoteView, "bookmarks" | "threads" | "proposals"> & {
+export type NoteView = Omit<
+  VaultNoteView,
+  "bookmarks" | "threads" | "proposals" | "locked" | "closed"
+> & {
   bookmarks?: BookmarkMark[];
+  /** A locked note; a standalone file is never locked. */
+  locked?: boolean;
+  /** A locked note in a locked session: no text, the lock panel instead. */
+  closed?: boolean;
   /** Comment threads and agent proposals: a standalone file has neither. */
   threads?: Thread[];
   proposals?: ProposalView[];
@@ -436,6 +447,23 @@ export const api = {
   /** `current` is the old passphrase or the recovery code. */
   syncChangePassphrase: (current: string, next: string, vault?: string) =>
     invoke<void>("sync_change_passphrase", { current, new: next, vault: vault ?? null }),
+  /** Is there a password for locked notes, and is the session open. */
+  lockState: (vault?: string) => invoke<LockStateView>("lock_state", { vault: vault ?? null }),
+  /** The first password of the vault. The answer is the recovery code, shown once. */
+  setLockPassword: (password: string, vault?: string) =>
+    invoke<string>("set_lock_password", { password, vault: vault ?? null }),
+  /** Opens all locked notes of the vault with the password or the recovery code. */
+  unlockNotes: (secret: string, vault?: string) =>
+    invoke<UnlockedBy>("unlock_notes", { secret, vault: vault ?? null }),
+  /** A new password in an open session; the notes stay as they are. */
+  changeLockPassword: (password: string, vault?: string) =>
+    invoke<void>("change_lock_password", { password, vault: vault ?? null }),
+  /** Drops the key from memory: all locked notes of the vault close. */
+  lockAll: (vault?: string) => invoke<void>("lock_all", { vault: vault ?? null }),
+  lockNote: (id: string, vault?: string) =>
+    invoke<NoteView>("lock_note", { id, vault: vault ?? null }),
+  removeLock: (id: string, vault?: string) =>
+    invoke<NoteView>("remove_lock", { id, vault: vault ?? null }),
   /** Standalone files. The core also forgets files that are gone from disk. */
   listFiles: () => invoke<FileEntry[]>("list_files"),
   /** Opens a file picked in the dialog or dropped on the window. */

@@ -15,13 +15,15 @@ kknow keeps data in two places: in each vault and in the app config directory.
     bookmarks.json      bookmarks
     threads/*.json      threads of the comments for the agent
     proposals/*.json    edits that agents proposed
+    lock.json           the key of locked notes, wrapped by the password and
+                        by the recovery code; no secret in plain text
     themes/*.json       themes of this vault
     trash/<entry>/…     deleted notes and folders
 ```
 
 kknow skips all hidden folders, for example `.git` and `.obsidian`. S3 and
-folder sync copy only `bookmarks.json`, `threads/` and `proposals/` from
-`.kknow/`. See [What sync copies](/features/sync#what-sync-copies-from-kknow).
+folder sync copy only `bookmarks.json`, `lock.json`, `threads/` and
+`proposals/` from `.kknow/`. See [What sync copies](/features/sync#what-sync-copies-from-kknow).
 
 With git sync, kknow adds `.kknow/remote.json`, `.kknow/sync.json` and the
 trash (`.kknow/trash/`) to `.git/info/exclude`. The rest of `.kknow/` goes into the repository.
@@ -29,6 +31,10 @@ trash (`.kknow/trash/`) to `.git/info/exclude`. The rest of `.kknow/` goes into 
 `remote.json` has no secret key or token. The window keeps them in the system
 keychain. For an encrypted storage, `remote.json` has `"encrypted": true`, and
 the data key is in the keychain too.
+
+A [locked note](/features/locked-notes) is a `.md` file with the same name.
+Its text is ciphertext between `-----BEGIN KKNOW LOCKED NOTE-----` and
+`-----END KKNOW LOCKED NOTE-----`.
 
 ## In an encrypted storage
 

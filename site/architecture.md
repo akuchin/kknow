@@ -208,6 +208,28 @@ keeps a plain stub manifest of format 2 (an older build stops at it) and
 encrypts the plain `.md` files of other programs. The engine then takes the
 hash of each such file again, so a plain edit in place is a remote change.
 
+### Locked notes
+
+A locked note is encrypted in the vault itself, not only in the storage. The
+format is in `kknow_sync::locked`, next to the crypto of sync; the session is
+in `kknow_app::lock`:
+
+- a random notes key, wrapped in `.kknow/lock.json` by Argon2id from the
+  password and by the recovery code: the same `KeyFile` as `key.json`. The
+  file is a shared file of sync;
+- a note: a text file with a `BEGIN`/`END` armor, a hash of the key and the
+  sealed text in base32 on one line. One line, so git cannot merge two
+  versions;
+- the key lives only in the `Workspace` of the vault, in memory.
+
+`Workspace::ingest` gives a locked note the parse of an empty text: no text,
+links or tags reach the index and the graph. `Workspace::read`, the read of
+agents, MCP tools, threads and proposals, refuses a locked note also in an
+open session; only `Workspace::open_text` for the window decrypts it.
+`Workspace::store` seals the text before each write. The manifest marks a
+locked note (`locked: true`), and the plan keeps both versions of it whatever
+the conflict policy.
+
 ### Git
 
 Git is not a `SyncProvider`. It has commits and its own merge, so it is a

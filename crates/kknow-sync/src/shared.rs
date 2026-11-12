@@ -21,7 +21,10 @@ use std::path::Path;
 use crate::{Error, Result};
 
 /// Single shared files, relative to the vault root.
-pub const SHARED_FILES: &[&str] = &[".kknow/bookmarks.json"];
+///
+/// `lock.json` holds the key of locked notes wrapped by the password: a
+/// second device needs it to open them, and it has no secret in plain form.
+pub const SHARED_FILES: &[&str] = &[".kknow/bookmarks.json", crate::locked::LOCK_FILE];
 
 /// Folders of shared records: each `<id>.json` inside syncs.
 pub const SHARED_DIRS: &[&str] = &[".kknow/proposals", ".kknow/threads"];

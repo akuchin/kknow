@@ -59,6 +59,7 @@ const CONTEXT_CONTENT: &str = "kknow 2026-11-07 sync object contents";
 const CONTEXT_NAMES: &str = "kknow 2026-11-07 sync object names";
 const CONTEXT_RECOVERY: &str = "kknow 2026-11-07 sync recovery code";
 const CONTEXT_CHECK: &str = "kknow 2026-11-07 sync key check";
+const CONTEXT_LOCKED: &str = "kknow 2026-11-11 locked note contents";
 const NAME_HEADER: &[u8] = b"kknow name v1";
 const AAD_PASSPHRASE: &[u8] = b"kknow key slot passphrase";
 const AAD_RECOVERY: &[u8] = b"kknow key slot recovery";
@@ -284,15 +285,22 @@ impl KeyFile {
     /// A person types one of the two in the same field. A text that reads as
     /// a code is tried as a code first: that check is fast.
     pub fn unlock(&self, secret: &str) -> Result<DataKey> {
+        self.open(secret).map(|(key, _)| key)
+    }
+
+    /// [`KeyFile::unlock`] that also tells which secret opened the key. After
+    /// the recovery code, the window asks for a new passphrase.
+    pub fn open(&self, secret: &str) -> Result<(DataKey, Secret)> {
         if let Some(code) = RecoveryCode::parse(secret) {
             let wrapping = code.wrapping_key(&self.recovery.salt);
             if let Some(key) = self.recovery.unwrap(&wrapping, AAD_RECOVERY) {
-                return Ok(key);
+                return Ok((key, Secret::RecoveryCode));
             }
         }
         let wrapping = self.kdf.derive(secret, &self.passphrase.salt)?;
         self.passphrase
             .unwrap(&wrapping, AAD_PASSPHRASE)
+            .map(|key| (key, Secret::Passphrase))
             .ok_or(Error::WrongPassphrase)
     }
 
@@ -326,6 +334,13 @@ impl KeyFile {
     }
 }
 
+/// The secret that opened a [`KeyFile`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Secret {
+    Passphrase,
+    RecoveryCode,
+}
+
 /// A hash of the data key that tells nothing about the key itself.
 pub fn key_check(key: &DataKey) -> Vec<u8> {
     blake3::derive_key(CONTEXT_CHECK, &key.0)[..16].to_vec()
@@ -352,7 +367,18 @@ pub struct Cipher {
 
 impl Cipher {
     pub fn new(key: &DataKey) -> Self {
-        let content = Zeroizing::new(blake3::derive_key(CONTEXT_CONTENT, &key.0));
+        Self::with_context(key, CONTEXT_CONTENT)
+    }
+
+    /// The cipher of locked notes (`kknow_sync::locked`). The notes key is
+    /// not a sync key, but a separate context keeps the two uses apart even
+    /// if a person gives both the same key one day.
+    pub fn for_locked_notes(key: &DataKey) -> Self {
+        Self::with_context(key, CONTEXT_LOCKED)
+    }
+
+    fn with_context(key: &DataKey, context: &str) -> Self {
+        let content = Zeroizing::new(blake3::derive_key(context, &key.0));
         let mut names = Zeroizing::new([0; 64]);
         let mut hasher = blake3::Hasher::new_derive_key(CONTEXT_NAMES);
         hasher.update(&key.0);
@@ -488,7 +514,7 @@ fn random(buf: &mut [u8]) -> Result<()> {
 ///
 /// Not base64: `FolderProvider` can be on a file system that does not see
 /// the case of letters, and there two base64 names would be one file.
-mod base32 {
+pub(crate) mod base32 {
     const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 
     pub fn encode(bytes: &[u8]) -> String {

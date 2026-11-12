@@ -49,6 +49,7 @@ export default defineConfig({
           { text: "Search", link: "/features/search" },
           { text: "Sync", link: "/features/sync" },
           { text: "Encryption", link: "/features/encryption" },
+          { text: "Locked notes", link: "/features/locked-notes" },
           { text: "Agents (MCP)", link: "/features/agents" },
           { text: "Bookmarks, tasks, trash", link: "/features/organize" },
           { text: "Custom commands", link: "/features/commands" },

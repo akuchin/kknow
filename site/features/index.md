@@ -50,6 +50,9 @@ details.
 - **End-to-end encryption** of an S3 or folder storage: the names and the
   text of notes leave the device encrypted. A passphrase and a recovery code.
   → [Encryption](/features/encryption)
+- **Locked notes.** Lock a single note with the vault password: it is
+  ciphertext on disk, in sync and in git. One password opens all locked notes
+  until kknow closes. → [Locked notes](/features/locked-notes)
 - **MCP server for AI agents.** Claude Code, Cursor and other clients read your
   vaults, do tasks and resolve your comments. → [Agents](/features/agents)
 - **Custom commands.** Run your own script on a note, a folder or a vault.

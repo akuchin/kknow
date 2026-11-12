@@ -7,6 +7,7 @@ mod files;
 mod git;
 mod keymap;
 mod live;
+mod lock;
 mod mcp_http;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -300,6 +301,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            lock::lock_state,
+            lock::set_lock_password,
+            lock::unlock_notes,
+            lock::change_lock_password,
+            lock::lock_all,
+            lock::lock_note,
+            lock::remove_lock,
             commands::list_vaults,
             commands::add_vault,
             commands::remove_vault,

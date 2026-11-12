@@ -8,6 +8,7 @@ pub mod commands;
 pub mod files;
 pub mod keymap;
 pub mod lines;
+pub mod lock;
 pub mod mcp;
 pub mod mentions;
 pub mod sections;
@@ -105,6 +106,24 @@ pub enum Error {
 
     #[error("пустое сообщение")]
     EmptyMessage,
+
+    #[error("the note {0} is locked")]
+    NoteLocked(NoteId),
+
+    #[error("locked notes are closed: enter the vault password")]
+    NotesClosed,
+
+    #[error("the vault has no password for locked notes")]
+    NoLockPassword,
+
+    #[error("the vault already has a password for locked notes")]
+    LockPasswordExists,
+
+    #[error("the note {0} is not locked")]
+    NotLocked(NoteId),
+
+    #[error("the note {0} is already locked")]
+    AlreadyLocked(NoteId),
 
     #[error("хранилище не найдено: {0}")]
     UnknownVault(String),
@@ -218,6 +237,12 @@ pub struct Workspace {
     /// Vault bookmarks. They go to `.kknow/bookmarks.json` on each change:
     /// there are few of them, and a lost bookmark is annoying.
     bookmarks: Bookmarks,
+    /// Notes whose file is a locked note (`kknow_sync::locked`). The parse of
+    /// such a note is empty: no text, links or tags reach the index.
+    locked: BTreeSet<NoteId>,
+    /// The key of locked notes while the session is unlocked. Only memory:
+    /// see [`lock`].
+    notes_key: Option<kknow_sync::locked::NotesKey>,
 }
 
 impl Workspace {
@@ -232,6 +257,8 @@ impl Workspace {
             resolver: Resolver::new(std::iter::empty()),
             search: SearchIndex::new()?,
             bookmarks: Bookmarks::default(),
+            locked: BTreeSet::new(),
+            notes_key: None,
         };
         workspace.load_bookmarks()?;
         workspace.reparse_all()?;
@@ -318,6 +345,9 @@ impl Workspace {
     /// Names the bookmark on line `line` of the note, or removes the name
     /// (`None`). `false` means there is no bookmark on that line.
     pub fn name_bookmark(&mut self, id: &NoteId, line: usize, name: Option<&str>) -> Result<bool> {
+        if self.locked.contains(id) {
+            return Err(Error::NoteLocked(id.clone()));
+        }
         let mut found = false;
         self.edit_bookmarks(|bookmarks| found = bookmarks.rename_mark(id, line, name))?;
         Ok(found)
@@ -326,7 +356,12 @@ impl Workspace {
     /// Puts the note bookmarks on exactly these lines of `content`, with these
     /// names ([`Bookmarks::place`]). The window uses this to report where edits
     /// moved them.
+    ///
+    /// A locked note keeps no bookmarks: a bookmark stores its line text.
     pub fn set_bookmarks(&mut self, id: &NoteId, marks: &[Mark], content: &str) -> Result<()> {
+        if self.locked.contains(id) {
+            return self.anchor_bookmarks(id, "");
+        }
         self.edit_bookmarks(|bookmarks| bookmarks.place(id, marks, content))
     }
 
@@ -335,6 +370,7 @@ impl Workspace {
 
         self.parsed.clear();
         self.hashes.clear();
+        self.locked.clear();
         // An in-memory index is cheaper to rebuild than to clean of documents
         // for notes that are gone.
         self.search = SearchIndex::new()?;
@@ -351,8 +387,18 @@ impl Workspace {
 
     /// Parses the note content and updates everything that depends on it,
     /// except the graph: the graph is built from all notes at once.
+    ///
+    /// A locked note gets the parse of an empty text: search finds it by
+    /// name only, and it has no links, tags, tasks or comments. This holds
+    /// also while the session is unlocked.
     fn ingest(&mut self, id: &NoteId, content: &str) -> Result<()> {
-        let parsed = kknow_index::parse(content);
+        let locked = kknow_sync::locked::is_locked(content.as_bytes());
+        let parsed = kknow_index::parse(if locked { "" } else { content });
+        if locked {
+            self.locked.insert(id.clone());
+        } else {
+            self.locked.remove(id);
+        }
 
         let title = parsed.title().unwrap_or_else(|| id.name()).to_string();
         let tags: Vec<String> = parsed.tags.iter().map(|tag| tag.name.clone()).collect();
@@ -391,13 +437,14 @@ impl Workspace {
                     }
 
                     self.ingest(id, &content)?;
-                    self.edit_bookmarks(|bookmarks| bookmarks.reanchor(id, &content))?;
+                    self.anchor_bookmarks(id, &content)?;
                     changes.updated.push(id.clone());
                 }
                 VaultEvent::Removed(id) => {
                     self.vault.refresh(id)?;
                     if self.parsed.remove(id).is_some() {
                         self.hashes.remove(id);
+                        self.locked.remove(id);
                         self.search.remove(id)?;
                         changes.removed.push(id.clone());
                     }
@@ -612,8 +659,17 @@ impl Workspace {
         self.vault.path_for(id)
     }
 
+    /// The text of the note on disk.
+    ///
+    /// A locked note is an error, also while the session is unlocked: this
+    /// is the read of agents, MCP tools, proposals and threads. The window
+    /// reads a locked note with [`Workspace::open_text`].
     pub fn read(&self, id: &NoteId) -> Result<String> {
-        Ok(self.vault.read(id)?)
+        let content = self.vault.read(id)?;
+        if kknow_sync::locked::is_locked(content.as_bytes()) {
+            return Err(Error::NoteLocked(id.clone()));
+        }
+        Ok(content)
     }
 
     /// Finds a note by ID, or by file name if the ID does not match.
@@ -640,9 +696,37 @@ impl Workspace {
 
     /// Writes the note and parses it. The caller commits the search and
     /// rebuilds the graph.
+    ///
+    /// A locked note is sealed before the write: plain text of a locked note
+    /// never goes to disk.
     fn store(&mut self, id: &NoteId, content: &str) -> Result<()> {
+        let locked = self.locked.contains(id);
+        self.store_as(id, content, locked)
+    }
+
+    /// [`Workspace::store`] that says itself if the file is a locked note:
+    /// a conflict copy of a locked note is a new note, and it must be
+    /// locked too.
+    fn store_as(&mut self, id: &NoteId, content: &str, locked: bool) -> Result<()> {
+        if locked {
+            let sealed = self.notes_key()?.seal(content)?;
+            self.vault.write(id, &sealed)?;
+            self.ingest(id, &sealed)?;
+            return self.anchor_bookmarks(id, &sealed);
+        }
         self.vault.write(id, content)?;
         self.ingest(id, content)?;
+        self.anchor_bookmarks(id, content)
+    }
+
+    /// Moves the bookmarks of the note to the new text. A bookmark keeps the
+    /// text of its line in `bookmarks.json`, so a locked note has none.
+    fn anchor_bookmarks(&mut self, id: &NoteId, content: &str) -> Result<()> {
+        if self.locked.contains(id) {
+            return self.edit_bookmarks(|bookmarks| {
+                bookmarks.forget(id);
+            });
+        }
         self.edit_bookmarks(|bookmarks| bookmarks.reanchor(id, content))
     }
 
@@ -656,9 +740,16 @@ impl Workspace {
     /// A tiny gap stays between the read and the write: the file system cannot
     /// compare and write in one step. But this protects against the main case,
     /// an edit made while the note was open.
+    ///
+    /// For a locked note, `base` and `content` are plain text, and the disk
+    /// is opened with the key of the session before the compare.
     pub fn save_if_unchanged(&mut self, id: &NoteId, content: &str, base: &str) -> Result<Saved> {
         let path = self.path_for(id);
+        let locked = self.locked.contains(id);
         let disk = match std::fs::read_to_string(&path) {
+            Ok(disk) if kknow_sync::locked::is_locked(disk.as_bytes()) => {
+                Some(self.notes_key()?.open(&disk)?)
+            }
             Ok(disk) => Some(disk),
             // Deleted outside: the write brings the note back and keeps the edits.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -668,7 +759,9 @@ impl Workspace {
         match disk {
             Some(disk) if disk != base && disk != content => {
                 let copy = conflict_copy(id, content);
-                self.save(&copy, content)?;
+                self.store_as(&copy, content, locked)?;
+                self.search.commit()?;
+                self.rebuild_graph();
                 Ok(Saved::Conflict { copy, disk })
             }
             _ => {
@@ -692,8 +785,22 @@ impl Workspace {
     /// The line number comes from an older parse, and the file can change
     /// since then. So the text comes from disk, and a line without a task is
     /// an error, not a guess. The same state again writes nothing.
+    ///
+    /// A locked note is refused: MCP tools call this too. The window uses
+    /// [`Workspace::set_task_unlocked`].
     pub fn set_task(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
         let content = self.read(id)?;
+        self.write_task(id, content, line, done)
+    }
+
+    /// [`Workspace::set_task`] for the person in the window: a locked note
+    /// opens with the key of the session.
+    pub fn set_task_unlocked(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
+        let content = self.open_text(id)?;
+        self.write_task(id, content, line, done)
+    }
+
+    fn write_task(&mut self, id: &NoteId, content: String, line: usize, done: bool) -> Result<String> {
         let changed = kknow_index::parse::set_task(&content, line, done)
             .ok_or_else(|| Error::NotATask(id.clone(), line))?;
         if changed != content {
@@ -746,6 +853,7 @@ impl Workspace {
         self.vault.remove(id)?;
         self.parsed.remove(id);
         self.hashes.remove(id);
+        self.locked.remove(id);
         self.search.remove(id)?;
         self.search.commit()?;
         self.rebuild_graph();
@@ -867,6 +975,7 @@ impl Workspace {
     fn moved(&mut self, from: &NoteId, to: &NoteId) -> Result<()> {
         self.parsed.remove(from);
         self.hashes.remove(from);
+        self.locked.remove(from);
         self.search.remove(from)?;
         let content = self.vault.read(to)?;
         self.ingest(to, &content)
@@ -907,6 +1016,7 @@ impl Workspace {
         for id in &removed {
             self.parsed.remove(id);
             self.hashes.remove(id);
+            self.locked.remove(id);
             self.search.remove(id)?;
         }
         if !removed.is_empty() {

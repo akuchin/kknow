@@ -85,6 +85,8 @@ fn generate() -> String {
     collect.visit::<crate::run::ManifestView>();
     collect.visit::<crate::run::RunLine>();
     collect.visit::<crate::errors::ErrorView>();
+    collect.visit::<crate::lock::LockStateView>();
+    collect.visit::<crate::lock::UnlockedBy>();
     collect.visit::<kknow_app::theme::ThemeSet>();
     collect.visit::<kknow_app::settings::AppSettings>();
     collect.visit::<kknow_run::Outcome>();

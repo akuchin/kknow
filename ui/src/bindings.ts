@@ -365,7 +365,12 @@ line: number | null,
  * The link names a heading or block that the note does not have: the
  * preview shows the whole note.
  */
-partMissing: boolean, };
+partMissing: boolean, 
+/**
+ * A locked note: `html` is empty, and the preview shows a lock. Its
+ * text never goes to a preview, also in an unlocked session.
+ */
+locked: boolean, };
 
 export type LinkRef = { id: string, title: string, label: string | null, };
 
@@ -386,6 +391,19 @@ line: number | null, headings: Array<HeadingView>,
  * Block IDs without the caret.
  */
 blocks: Array<string>, };
+
+/**
+ * The lock state of a vault.
+ */
+export type LockStateView = { 
+/**
+ * The vault has a password for locked notes.
+ */
+password: boolean, 
+/**
+ * Locked notes open: the key is in memory.
+ */
+unlocked: boolean, };
 
 /**
  * Which app opens markdown now.
@@ -443,7 +461,11 @@ start: number, end: number, };
  */
 export type NoteLabel = "title" | "file";
 
-export type NoteSummary = { id: string, title: string, folder: string | null, tags: Array<string>, };
+export type NoteSummary = { id: string, title: string, folder: string | null, tags: Array<string>, 
+/**
+ * The file is a locked note: the tree shows a lock.
+ */
+locked: boolean, };
 
 export type NoteView = { id: string, title: string, content: string, html: string, backlinks: Array<LinkRef>, outgoing: Array<LinkRef>, tags: Array<string>, 
 /**
@@ -457,7 +479,16 @@ threads: Array<Thread>,
 /**
  * Proposals of agents for this note that wait for review.
  */
-proposals: Array<ProposalView>, };
+proposals: Array<ProposalView>, 
+/**
+ * The file is a locked note.
+ */
+locked: boolean, 
+/**
+ * A locked note in a locked session: `content` and `html` are empty,
+ * and the window shows the password field instead of the text.
+ */
+closed: boolean, };
 
 /**
  * What was opened from outside or from the window, and how to show it.
@@ -821,6 +852,12 @@ deleted: number,
  * Notes in the entry: paths from the vault root, `Folder/note.md`.
  */
 notes: Array<string>, };
+
+/**
+ * What opened the session. After the recovery code, the window asks for a
+ * new password.
+ */
+export type UnlockedBy = "password" | "recoveryCode";
 
 /**
  * What the windows show.

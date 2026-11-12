@@ -14,6 +14,7 @@ import { folderOf, join, leafOf } from "../tree-model";
 import { commandItems, editCommandsSection } from "./commands";
 import { el } from "./dom";
 import { editor } from "./editor";
+import { lockNote, removeLock } from "./lock-view";
 import { rememberOpened } from "./marks";
 import {
   applyNote,
@@ -26,7 +27,7 @@ import {
 } from "./note";
 import { state } from "./state";
 import { fail, setStatus } from "./status";
-import { collator, foldersIn, openSidebar, refreshTree, renderTree } from "./tree";
+import { collator, foldersIn, isLockedNote, openSidebar, refreshTree, renderTree } from "./tree";
 import { copyText } from "./util";
 
 /** Steps of higher zones that the edits zone starts. */
@@ -163,6 +164,20 @@ export async function openCommandMenu(anchor: HTMLElement, target: CommandTarget
           key: "D",
           run: () => void duplicateNote(note, vaultId),
         },
+        // A locked note can only lose its lock; a plain one can get it.
+        isLockedNote(vaultId, note)
+          ? {
+              label: t("commands.note.removeLock"),
+              glyph: "lockOpen",
+              key: "U",
+              run: () => void removeLock(note, vaultId),
+            }
+          : {
+              label: t("commands.note.lock"),
+              glyph: "lock",
+              key: "K",
+              run: () => void lockNote(note, vaultId),
+            },
       ],
     });
     system.push({

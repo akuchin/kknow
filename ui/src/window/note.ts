@@ -79,7 +79,8 @@ let previewTimer: number | undefined;
 let wordsTimer: number | undefined;
 
 export function onEdit(text: string): void {
-  if (!state.note) return;
+  // A closed locked note has no text: the lock panel covers the editor.
+  if (!state.note || state.note.closed) return;
   setStatus(t("status.notSaved"), "work");
   scheduleWords(text);
 
@@ -173,7 +174,9 @@ function isDirty(): boolean {
  */
 async function saveNow(text: string): Promise<void> {
   const note = state.note;
-  if (!note) return;
+  // A closed locked note is not in the editor: an empty text there is not
+  // the note.
+  if (!note || note.closed) return;
   // The edit was reverted to the disk content, so there is nothing to write.
   if (text === note.content) {
     setStatus(t("status.saved"));
@@ -375,7 +378,8 @@ export function applyNote(
   if (!options.keepEditor) {
     // After the preview: the scroll position applies only when the text is in place.
     const position = positions.get(positionKey(view));
-    editor.setBookmarks(view.bookmarks ?? [], !view.file);
+    // A locked note keeps no bookmarks: `bookmarks.json` stores line text.
+    editor.setBookmarks(view.bookmarks ?? [], !view.file && !view.locked);
     // The preview was drawn earlier with the bookmarks of the previous note.
     paintBookmarks(el.preview, editor.getBookmarks());
     editor.setPosition(position?.editor);
@@ -453,7 +457,8 @@ export function renderNoteTools(): void {
   if (!state.note) return;
 
   // The core keeps bookmarks and links per vault: a standalone file has none.
-  el.noteBookmarks.hidden = state.note.file === true;
+  // A locked note has no bookmarks either: they keep the text of their line.
+  el.noteBookmarks.hidden = state.note.file === true || state.note.locked === true;
   el.noteBacklinks.hidden = state.note.file === true;
 
   const marks = editor.getBookmarks().length;
