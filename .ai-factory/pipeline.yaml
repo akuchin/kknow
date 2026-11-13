@@ -1,0 +1,28 @@
+# AI Factory pipeline for this repository.
+# The factory reads this file only from the default branch.
+# Format: see README.md of AI Factory, section "Configure a repository".
+version: 1
+specApproval: manual
+specPath: docs/specs/{issue}-{slug}.md
+maxFixRounds: 3
+maxSpecChanges: 3
+check:
+  run: .ai-factory/check.sh
+  # A cold build of the Tauri app takes about 15 minutes. The cache volumes make it faster.
+  maxSeconds: 2400
+steps:
+  spec:
+    maxMinutes: 30
+    maxCostUsd: 3
+  code:
+    maxMinutes: 60
+    maxCostUsd: 8
+    extraInstructions: |
+      Follow CLAUDE.md and ARCHITECTURE.md. Write documents and comments in Simplified Technical English.
+      If the change closes a point of TODO.md, remove or update that point.
+  review:
+    maxMinutes: 20
+    maxCostUsd: 2
+  qa:
+    maxMinutes: 20
+    maxCostUsd: 2
