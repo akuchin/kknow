@@ -28,7 +28,7 @@ function press(code: string, mods: Partial<Record<"meta" | "ctrl" | "alt" | "shi
   } as KeyboardEvent;
 }
 
-test("macOS: значки в порядке Apple", () => {
+test("macOS: symbols in the Apple order", () => {
   assert.equal(formatKey("Mod-Shift-b", true), "⇧⌘B");
   assert.equal(formatKey("Mod-Alt-ArrowLeft", true), "⌥⌘←");
   assert.equal(formatKey("Mod-\\", true), "⌘\\");
@@ -38,7 +38,7 @@ test("macOS: значки в порядке Apple", () => {
   assert.equal(formatKey("Shift", true), "⇧");
 });
 
-test("Windows и Linux: Ctrl и плюсы", () => {
+test("Windows and Linux: Ctrl and plus signs", () => {
   assert.equal(formatKey("Mod-Shift-b", false), "Ctrl+Shift+B");
   assert.equal(formatKey("Mod-Alt-ArrowLeft", false), "Ctrl+Alt+←");
   assert.equal(formatKey("Mod-=", false), "Ctrl+=");
@@ -48,37 +48,37 @@ test("Windows и Linux: Ctrl и плюсы", () => {
   assert.equal(formatKey("Shift", false), "Shift");
 });
 
-test("Mod — это ⌘ на macOS и Ctrl на других системах", () => {
+test("Mod is ⌘ on macOS and Ctrl on other systems", () => {
   assert.ok(matchesKey(press("KeyN", { meta: true }), "Mod-n", true));
   assert.ok(!matchesKey(press("KeyN", { ctrl: true }), "Mod-n", true));
   assert.ok(matchesKey(press("KeyN", { ctrl: true }), "Mod-n", false));
   assert.ok(!matchesKey(press("KeyN", { meta: true }), "Mod-n", false));
 });
 
-test("модификаторы совпадают точно", () => {
+test("modifiers match exactly", () => {
   assert.ok(matchesKey(press("KeyS", { meta: true }), "Mod-s", true));
   assert.ok(!matchesKey(press("KeyS", { meta: true, shift: true }), "Mod-s", true));
   assert.ok(matchesKey(press("KeyS", { meta: true, shift: true }), "Mod-Shift-s", true));
 });
 
-test("клавиша по месту, а не по букве раскладки", () => {
+test("a key by its place, not by the layout letter", () => {
   assert.ok(matchesKey(press("Backslash", { meta: true }), "Mod-\\", true));
   assert.ok(matchesKey(press("Minus", { meta: true }), "Mod--", true));
   assert.ok(matchesKey(press("NumpadEnter"), "Enter", true));
 });
 
-test("запись сочетания: событие → клавиша", () => {
+test("recording a shortcut: event → key", () => {
   assert.equal(keyFromEvent(press("KeyN", { meta: true, shift: true }), true), "Mod-Shift-n");
   assert.equal(keyFromEvent(press("KeyN", { ctrl: true }), true), "Ctrl-n");
   assert.equal(keyFromEvent(press("KeyN", { ctrl: true }), false), "Mod-n");
   assert.equal(keyFromEvent(press("Backslash", { meta: true }), true), "Mod-\\");
   assert.equal(keyFromEvent(press("Digit5", { alt: true }), true), "Alt-5");
   assert.equal(keyFromEvent(press("ArrowLeft", { meta: true, alt: true }), true), "Mod-Alt-ArrowLeft");
-  assert.equal(keyFromEvent(press("MetaLeft", { meta: true }), true), null, "один модификатор — ещё не клавиша");
+  assert.equal(keyFromEvent(press("MetaLeft", { meta: true }), true), null, "a modifier alone is not a key yet");
   assert.equal(keyFromEvent(press("ShiftRight", { shift: true }), true), null);
 });
 
-test("клавише нужен модификатор, кроме F1…F24", () => {
+test("a key needs a modifier, except F1…F24", () => {
   assert.ok(canBind("Mod-j", true));
   assert.ok(canBind("Alt-Shift-ArrowUp", true));
   assert.ok(canBind("F5", true));
@@ -86,12 +86,12 @@ test("клавише нужен модификатор, кроме F1…F24", ()
   assert.ok(!canBind("Shift-j", true));
 });
 
-test("изменённые клавиши ложатся поверх умолчаний", () => {
+test("changed keys go over the defaults", () => {
   useKeymap({ "note.new": ["Mod-Shift-n"], "submit": ["Mod-Enter"], "note.save": ["Mod-j", "Super-j", 5] as never }, false);
   try {
     assert.deepEqual(keysOf("note.new"), ["Mod-Shift-n"]);
-    assert.deepEqual(keysOf("submit"), ["Enter"], "Enter и Esc не переназначить");
-    assert.deepEqual(keysOf("note.save"), ["Mod-j"], "неверные клавиши отброшены");
+    assert.deepEqual(keysOf("submit"), ["Enter"], "Enter and Esc cannot be rebound");
+    assert.deepEqual(keysOf("note.save"), ["Mod-j"], "invalid keys are dropped");
     assert.deepEqual(keysOf("note.find"), ["Mod-f"]);
     assert.ok(!rebindable().includes("edit.copy"));
   } finally {
@@ -99,19 +99,19 @@ test("изменённые клавиши ложатся поверх умолч
   }
 });
 
-test("конфликты: чужое действие, система, хранилище, редактор", () => {
+test("conflicts: another action, the system, a vault, the editor", () => {
   assert.deepEqual(conflictOf("Mod-n", "note.save", [], true), { kind: "action", action: "note.new" });
-  assert.equal(conflictOf("Mod-n", "note.new", [], true), null, "своя клавиша — не конфликт");
+  assert.equal(conflictOf("Mod-n", "note.new", [], true), null, "its own key is not a conflict");
   assert.deepEqual(conflictOf("Mod-c", "note.new", [], true), { kind: "system" });
   assert.deepEqual(conflictOf("Mod-q", "note.new", [], true), { kind: "system" });
   assert.deepEqual(conflictOf("Mod-3", "note.new", [], true), { kind: "vault" });
   assert.deepEqual(conflictOf("Mod-d", "note.new", ["Mod-d"], true), { kind: "editor" });
-  // ⌘I у редактора — «выделить узел», но курсив его перекрывает.
+  // The editor has ⌘I as "select node", but italic overrides it.
   assert.equal(conflictOf("Mod-i", "format.italic", ["Mod-i"], true), null);
   assert.equal(conflictOf("Mod-j", "note.new", ["Mod-d"], true), null);
 });
 
-test("клавиша уходит от другого действия, умолчание выпадает из списка", () => {
+test("a key moves from another action, and a default drops out of the list", () => {
   try {
     const moved = bind("note.save", "Mod-n", true);
     assert.deepEqual(moved, { "note.save": ["Mod-n"], "note.new": [] });
@@ -122,13 +122,13 @@ test("клавиша уходит от другого действия, умол
     assert.deepEqual(unbind("note.save"), { "note.new": [] });
 
     useKeymap({ "note.new": ["Mod-j"] }, false);
-    assert.deepEqual(bind("note.new", "Mod-n", true), {}, "вернулась клавиша по умолчанию");
+    assert.deepEqual(bind("note.new", "Mod-n", true), {}, "the default key is back");
   } finally {
     useKeymap({}, false);
   }
 });
 
-test("незнакомое действие из файла не теряется", () => {
+test("an unknown action from the file is not lost", () => {
   try {
     useKeymap({ "future.action": ["Mod-j"] }, false);
     assert.deepEqual(bind("note.new", "Mod-Shift-n", true), {

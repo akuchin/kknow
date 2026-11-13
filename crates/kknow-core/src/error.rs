@@ -6,28 +6,28 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("корень хранилища — не каталог: {0}")]
+    #[error("the vault root is not a folder: {0}")]
     NotADirectory(PathBuf),
 
-    #[error("заметки нет в хранилище: {0}")]
+    #[error("the vault has no such note: {0}")]
     NoteNotFound(NoteId),
 
-    #[error("путь выходит за корень хранилища: {0}")]
+    #[error("the path goes outside the vault root: {0}")]
     OutsideVault(PathBuf),
 
-    #[error("некорректный путь папки: {0}")]
+    #[error("invalid folder path: {0}")]
     InvalidFolder(String),
 
-    #[error("уже существует: {0}")]
+    #[error("already exists: {0}")]
     AlreadyExists(PathBuf),
 
-    #[error("запись корзины не найдена: {0}")]
+    #[error("trash entry is not found: {0}")]
     TrashEntryNotFound(String),
 
-    #[error("файл слишком большой: {0}")]
+    #[error("the file is too large: {0}")]
     TooLarge(PathBuf),
 
-    #[error("некорректное имя картинки: {0}")]
+    #[error("invalid image name: {0}")]
     InvalidImageName(String),
 
     #[error("{}", io_text(path, source))]
@@ -63,7 +63,7 @@ pub fn io_text(path: &std::path::Path, source: &std::io::Error) -> String {
         ErrorKind::NotFound => format!("{path} does not exist"),
         ErrorKind::ReadOnlyFilesystem => format!("{path} is on a read-only disk"),
         ErrorKind::StorageFull => format!("the disk is full: {path}"),
-        _ => format!("ошибка ввода-вывода в {path}: {source}"),
+        _ => format!("I/O error in {path}: {source}"),
     }
 }
 

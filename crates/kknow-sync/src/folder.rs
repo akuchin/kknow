@@ -84,7 +84,7 @@ impl FolderProvider {
                 .all(|part| !part.is_empty() && part != "." && part != "..");
 
         if !safe {
-            return Err(Error::new(operation, key, "недопустимый ключ"));
+            return Err(Error::new(operation, key, "invalid key"));
         }
         Ok(self.root.join(key))
     }
@@ -115,11 +115,8 @@ impl SyncProvider for FolderProvider {
                 // another name. A silent "no key" is worse than an error here:
                 // sync would treat the note as deleted and remove it locally.
                 if placeholder(&path).exists() {
-                    return Err(Error::new(
-                        Operation::Get,
-                        key,
-                        "файл ещё не скачан облаком — откройте папку и дождитесь загрузки",
-                    ));
+                    return Err(Error::new(Operation::Get, key, "not downloaded")
+                        .because(Cause::NotDownloaded));
                 }
                 Ok(None)
             }
@@ -295,7 +292,7 @@ mod tests {
         assert_eq!(provider.list("notes/").unwrap(), ["notes/Проект.md"]);
 
         let error = provider.get("notes/Проект.md").unwrap_err();
-        assert!(error.to_string().contains("не скачан"), "{error}");
+        assert_eq!(error.cause, Cause::NotDownloaded, "{error}");
     }
 
     #[test]

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use kknow_app::settings::AppSettings;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::state::Result;
 
@@ -31,23 +31,23 @@ pub struct SettingsState {
 
 impl SettingsState {
     pub fn use_file(&self, file: Option<PathBuf>, settings: AppSettings) {
-        *self.file.lock().expect("настройки испорчены") = file;
-        *self.settings.lock().expect("настройки испорчены") = settings;
+        *self.file.lock().expect("settings are poisoned") = file;
+        *self.settings.lock().expect("settings are poisoned") = settings;
     }
 
     pub fn get(&self) -> AppSettings {
-        self.settings.lock().expect("настройки испорчены").clone()
+        self.settings.lock().expect("settings are poisoned").clone()
     }
 
     /// Writes the settings. A write error does not undo the change in memory:
     /// the window must use the new language even if the file did not open.
     fn put(&self, next: AppSettings) -> AppSettings {
-        *self.settings.lock().expect("настройки испорчены") = next.clone();
+        *self.settings.lock().expect("settings are poisoned") = next.clone();
 
-        let file = self.file.lock().expect("настройки испорчены");
+        let file = self.file.lock().expect("settings are poisoned");
         if let Some(path) = file.as_ref() {
             if let Err(error) = next.save(path) {
-                eprintln!("не удалось записать настройки: {error}");
+                eprintln!("cannot write the settings: {error}");
             }
         }
         next
@@ -69,6 +69,12 @@ pub fn set_settings<R: Runtime>(
     let saved = state.put(settings);
     #[cfg(target_os = "macos")]
     crate::menu::relabel(&app, &saved.locale);
+    if let Some(window) = app.get_webview_window(crate::commands::SETTINGS_WINDOW) {
+        let _ = window.set_title(&crate::i18n::label(
+            &saved.locale,
+            crate::i18n::SETTINGS_TITLE,
+        ));
+    }
     let _ = app.emit(EVENT, saved.clone());
     Ok(saved)
 }

@@ -12,26 +12,26 @@ test("a standalone file from the list opens, saves and gives way to a note", asy
   await expect(page.locator("#note-title")).toHaveText("README");
   await expect(page.locator("#note-folder-text")).toHaveText("kknow");
   await expect(file).toHaveClass(/active/);
-  await expect(editorText(page)).toContainText("Заметочник на Rust");
+  await expect(editorText(page)).toContainText("A notes app in Rust");
 
   await editorText(page).click();
   await page.keyboard.press("ControlOrMeta+End");
-  await page.keyboard.type("Правка файла");
+  await page.keyboard.type("A file edit");
   await expect(statusMessage(page)).toHaveText(t("status.saved"));
 
   await noteRow(page, "Rust").click();
   await expect(file).not.toHaveClass(/active/);
   await file.click();
-  await expect(editorText(page)).toContainText("Правка файла");
+  await expect(editorText(page)).toContainText("A file edit");
 });
 
 test("a file picked in the dialog joins the list and opens", async ({ page }) => {
   // The mock dialog is a prompt with the path.
-  page.once("dialog", (dialog) => dialog.accept("/Users/me/Desktop/черновик.md"));
+  page.once("dialog", (dialog) => dialog.accept("/Users/me/Desktop/draft.md"));
   await page.locator("#open-file").click();
 
-  const file = page.locator('#file-list button.note[data-path="/Users/me/Desktop/черновик.md"]');
+  const file = page.locator('#file-list button.note[data-path="/Users/me/Desktop/draft.md"]');
   await expect(file).toHaveClass(/active/);
-  await expect(page.locator("#note-title")).toHaveText("черновик");
-  await expect(editorText(page)).toContainText("Открыт в заглушке");
+  await expect(page.locator("#note-title")).toHaveText("draft");
+  await expect(editorText(page)).toContainText("Opened in the mock");
 });

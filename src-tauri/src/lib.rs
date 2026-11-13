@@ -5,6 +5,7 @@ mod commands;
 mod errors;
 mod files;
 mod git;
+mod i18n;
 mod keymap;
 mod live;
 mod lock;
@@ -239,7 +240,7 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let updates = event.id() == menu::UPDATES_ITEM;
             if event.id() == menu::SETTINGS_ITEM || updates {
-                if let Err(error) = commands::open_settings(app.clone(), None) {
+                if let Err(error) = commands::open_settings(app.clone(), app.state(), None) {
                     eprintln!("не удалось открыть настройки: {error}");
                 }
             }

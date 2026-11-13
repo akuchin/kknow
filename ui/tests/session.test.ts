@@ -11,37 +11,37 @@ test("only the last edit is written after the pause", async () => {
   const written: string[] = [];
   const saves = new SaveQueue(async (text) => void written.push(text), 20);
 
-  saves.schedule("а");
-  saves.schedule("аб");
+  saves.schedule("a");
+  saves.schedule("ab");
   assert.ok(saves.pending);
   await tick(40);
 
-  assert.deepEqual(written, ["аб"]);
+  assert.deepEqual(written, ["ab"]);
   assert.ok(!saves.pending);
 });
 
 test("writes run one at a time, in order", async () => {
   const log: string[] = [];
   const saves = new SaveQueue(async (text) => {
-    log.push(`начало ${text}`);
+    log.push(`start ${text}`);
     await tick(10);
-    log.push(`конец ${text}`);
+    log.push(`end ${text}`);
   }, 1000);
 
   void saves.save("1");
   await saves.save("2");
 
-  assert.deepEqual(log, ["начало 1", "конец 1", "начало 2", "конец 2"]);
+  assert.deepEqual(log, ["start 1", "end 1", "start 2", "end 2"]);
 });
 
 test("flush writes a pending edit at once", async () => {
   const written: string[] = [];
   const saves = new SaveQueue(async (text) => void written.push(text), 1000);
 
-  saves.schedule("старое");
-  await saves.flush(() => "из редактора");
+  saves.schedule("old");
+  await saves.flush(() => "from the editor");
 
-  assert.deepEqual(written, ["из редактора"]);
+  assert.deepEqual(written, ["from the editor"]);
   assert.ok(!saves.pending);
 });
 
@@ -52,8 +52,8 @@ test("flush without an edit waits for the write in progress", async () => {
     done = true;
   }, 1000);
 
-  void saves.save("текст");
-  await saves.flush(() => "не нужен");
+  void saves.save("text");
+  await saves.flush(() => "not needed");
 
   assert.ok(done);
 });
@@ -62,7 +62,7 @@ test("cancel drops a pending edit of a deleted note", async () => {
   const written: string[] = [];
   const saves = new SaveQueue(async (text) => void written.push(text), 10);
 
-  saves.schedule("удалённая");
+  saves.schedule("deleted");
   saves.cancel();
   await tick(30);
 

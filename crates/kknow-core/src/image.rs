@@ -185,7 +185,7 @@ fn free_name(folder: &Path, name: &str) -> String {
             n => format!("{stem} {n}.{ext}"),
         })
         .find(|candidate| fs::symlink_metadata(folder.join(candidate)).is_err())
-        .expect("бесконечный перебор имён закончился")
+        .expect("the endless name search ended")
 }
 
 fn has_image_extension(path: &Path) -> bool {

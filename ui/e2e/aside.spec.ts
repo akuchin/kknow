@@ -15,7 +15,7 @@ test("the note panel is on the right in all three modes", async ({ page }) => {
     await page.locator(`.mode-switch button[data-mode="${mode}"]`).click();
     await expect(app).toHaveAttribute("data-mode", mode);
     await expect(aside(page)).toBeVisible();
-    await expect(page.locator("#aside-outline-list")).toContainText("Оглавление");
+    await expect(page.locator("#aside-outline-list")).toContainText("Contents");
   }
 });
 
@@ -49,7 +49,7 @@ test("the outline follows edits and marks the section on the screen", async ({ p
 test("backlinks show the line of each link and open the note there", async ({ page }) => {
   await noteRow(page, "Rust").click();
   const backlinks = page.locator("#aside-backlinks-list");
-  const line = backlinks.locator(".aside-source", { hasText: "Оглавление" }).locator(".aside-line");
+  const line = backlinks.locator(".aside-source", { hasText: "Contents" }).locator(".aside-line");
   await expect(line).toContainText("[[Rust]]");
 
   await line.click();

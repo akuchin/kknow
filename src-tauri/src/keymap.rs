@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use kknow_app::keymap::Keymap;
+use kknow_app::keymap::{Keymap, Problem};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -33,26 +33,35 @@ pub struct KeymapView {
     /// The file path, for the hint on the keys page.
     pub file: Option<String>,
     /// Skipped entries of a hand-edited file.
-    pub problems: Vec<String>,
+    pub problems: Vec<Problem>,
 }
 
 impl KeymapState {
     pub fn use_file(&self, file: Option<PathBuf>) {
-        *self.file.lock().expect("клавиши испорчены") = file;
+        *self.file.lock().expect("keys are poisoned") = file;
     }
 
     fn read(&self) -> KeymapView {
-        let file = self.file.lock().expect("клавиши испорчены").clone();
+        let file = self.file.lock().expect("keys are poisoned").clone();
         let Some(path) = file else {
             return KeymapView {
-                keys: self.memory.lock().expect("клавиши испорчены").clone(),
+                keys: self.memory.lock().expect("keys are poisoned").clone(),
                 file: None,
                 problems: Vec::new(),
             };
         };
         let (keys, problems) = match Keymap::load(&path) {
             Ok(loaded) => (loaded.keymap, loaded.problems),
-            Err(error) => (Keymap::default(), vec![error.to_string()]),
+            Err(error) => (
+                Keymap::default(),
+                vec![Problem::File {
+                    path: path.display().to_string(),
+                    detail: match error {
+                        kknow_app::Error::Io { source, .. } => source.to_string(),
+                        other => other.to_string(),
+                    },
+                }],
+            ),
         };
         KeymapView {
             keys,
@@ -64,10 +73,10 @@ impl KeymapState {
     /// Writes the keys. A write error goes to the window: unlike the
     /// language, a key that is not on disk is lost on the next focus.
     fn write(&self, keys: Keymap) -> Result<KeymapView> {
-        let file = self.file.lock().expect("клавиши испорчены").clone();
+        let file = self.file.lock().expect("keys are poisoned").clone();
         match file {
             Some(path) => keys.save(&path)?,
-            None => *self.memory.lock().expect("клавиши испорчены") = keys,
+            None => *self.memory.lock().expect("keys are poisoned") = keys,
         }
         Ok(self.read())
     }
@@ -97,7 +106,7 @@ pub fn reveal_keymap(state: State<'_, KeymapState>) -> Result<()> {
     let path = state
         .file
         .lock()
-        .expect("клавиши испорчены")
+        .expect("keys are poisoned")
         .clone()
         .ok_or(Error::NoConfig)?;
 

@@ -116,7 +116,7 @@ function lookup(from: Dict, key: string, params: Params): string | undefined {
 }
 
 /** The text for a key that the code builds at run time, if a locale has it. */
-function maybe(key: string, params: Params): string | undefined {
+export function maybe(key: string, params: Params = {}): string | undefined {
   if (lookup(dict, key, params) === undefined && lookup(reference, key, params) === undefined) {
     return undefined;
   }
@@ -126,4 +126,9 @@ function maybe(key: string, params: Params): string | undefined {
 /** The error text in this language; see `error-view.ts`. */
 export function describeError(error: unknown): string {
   return errorText(error, maybe);
+}
+
+/** The text of a key in one language, without a fallback to another one. */
+export function textIn(name: string, key: string): string | undefined {
+  return LOCALES[name]?.[key];
 }

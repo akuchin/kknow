@@ -106,7 +106,7 @@ export type CommandList = { commands: Array<CommandView>,
  * a typo. Otherwise the command silently does not appear, and kknow looks
  * broken.
  */
-problems: Array<string>, };
+problems: Array<CommandProblem>, };
 
 /**
  * The whole manifest, as the settings form edits it.
@@ -123,7 +123,7 @@ path: string, commands: Array<CommandSpec>,
 /**
  * Environment shared by all commands in the file.
  */
-env: { [key in string]: string }, problems: Array<string>, 
+env: { [key in string]: string }, problems: Array<CommandProblem>, 
 /**
  * Available runners. The core owns this list. If the window kept its own
  * copy, the "Run it with" field could one day offer what the core cannot
@@ -135,6 +135,14 @@ kinds: Array<string>,
  * would erase what we could not parse.
  */
 broken: string | null, };
+
+/**
+ * What is wrong with the commands file or with one of its entries.
+ *
+ * It is data, not a ready text: the CLI prints `Display`, and the window
+ * translates `problem.command.<code>` with the fields, in its own language.
+ */
+export type CommandProblem = { "code": "file", path: string, detail: string, } | { "code": "noId" } | { "code": "duplicateId", id: string, } | { "code": "noName", id: string, } | { "code": "emptyScript", id: string, } | { "code": "unknownKind", id: string, kind: string, known: string, } | { "code": "noTargets", id: string, };
 
 /**
  * One command as written in the manifest.
@@ -332,6 +340,14 @@ export type GlobalResult = { vault: string, vaultName: string, color: string, id
 export type HeadingView = { level: number, text: string, line: number, };
 
 /**
+ * Why an entry of the file, or the whole file, was skipped.
+ *
+ * It is data, not a ready text: the window translates `problem.key.<code>`
+ * with the fields, in its own language.
+ */
+export type KeyProblem = { "code": "file", path: string, detail: string, } | { "code": "notAList", action: string, } | { "code": "notAString", action: string, } | { "code": "noKey", action: string, key: string, } | { "code": "unknownModifier", action: string, key: string, modifier: string, } | { "code": "repeatedModifier", action: string, key: string, modifier: string, } | { "code": "unknownKey", action: string, key: string, name: string, };
+
+/**
  * Action ID → its keys.
  */
 export type Keymap = { [key in string]: Array<string> };
@@ -347,7 +363,7 @@ file: string | null,
 /**
  * Skipped entries of a hand-edited file.
  */
-problems: Array<string>, };
+problems: Array<KeyProblem>, };
 
 /**
  * The note or the part of it that a link names, for a hover preview.
@@ -789,7 +805,14 @@ variables: { [key in string]: string },
  * What was dropped and why. The theme still works: one bad value must not
  * leave the user without a theme.
  */
-warnings: Array<string>, };
+warnings: Array<ThemeWarning>, };
+
+/**
+ * A file or a folder that gave no theme.
+ *
+ * Like [`Warning`], it is data that each frontend writes in its own language.
+ */
+export type ThemeProblem = { "code": "file", path: string, detail: string, } | { "code": "noName", path: string, };
 
 /**
  * Themes of a directory and problems with files that are not themes.
@@ -799,7 +822,7 @@ export type ThemeSet = { themes: Array<Theme>,
  * Files that did not parse. A theme must not disappear silently: its author
  * expects a result and will look for the cause.
  */
-problems: Array<string>, };
+problems: Array<ThemeProblem>, };
 
 /**
  * Where the theme comes from.
@@ -809,6 +832,14 @@ problems: Array<string>, };
  * A built-in theme has no file at all.
  */
 export type ThemeSource = "vault" | "global" | "builtIn";
+
+/**
+ * A variable that a theme lost, and why.
+ *
+ * It is data, not a ready text: the CLI prints `Display`, and the window
+ * translates `problem.theme.<code>` with the fields, in its own language.
+ */
+export type ThemeWarning = { "code": "unknownVariable", variable: string, } | { "code": "emptyValue", variable: string, } | { "code": "tooLong", variable: string, max: number, } | { "code": "badCharacter", variable: string, character: string, } | { "code": "function", variable: string, function: string, };
 
 export type Thread = { id: string, 
 /**
@@ -828,11 +859,21 @@ task: string, status: ThreadStatus, messages: Array<ThreadMessage>,
  */
 proposal?: string, created: number, updated: number, };
 
+/**
+ * What happened to the proposal of a thread.
+ */
+export type ThreadEvent = { "code": "proposed", proposal: string, reason: string, } | { "code": "rejected", proposal: string, feedback: string, } | { "code": "accepted", proposal: string, partly: boolean, feedback: string, };
+
 export type ThreadMessage = { 
 /**
  * [`ME`] for the person, else the name of the agent.
  */
-from: string, text: string, at: number, };
+from: string, text: string, at: number, 
+/**
+ * A message that kknow wrote, not a person or an agent. `text` is for the
+ * agent; the window shows the event in its own language.
+ */
+event?: ThreadEvent, };
 
 export type ThreadStatus = "open" | "inProgress" | "question" | "answered" | "review" | "done";
 

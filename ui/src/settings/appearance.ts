@@ -1,6 +1,7 @@
 /** The "Appearance" section: the theme, note labels and custom themes. */
 
 import { api, type NoteLabel, type Theme } from "../api";
+import { themeName, themeProblemText } from "../core-text";
 import { describeError, t } from "../i18n";
 import { heading, row, select } from "./controls";
 import { patch, state, view } from "./state";
@@ -16,7 +17,7 @@ export async function renderAppearance(): Promise<void> {
   try {
     const set = await api.listThemes();
     themes = set.themes;
-    problems = set.problems;
+    problems = set.problems.map(themeProblemText);
   } catch (error) {
     problems = [describeError(error)];
   }
@@ -24,7 +25,7 @@ export async function renderAppearance(): Promise<void> {
   const options = [
     { value: "light", label: t("theme.light") },
     { value: "dark", label: t("theme.dark") },
-    ...themes.map((theme) => ({ value: theme.id, label: theme.name })),
+    ...themes.map((theme) => ({ value: theme.id, label: themeName(theme) })),
   ];
 
   page.append(
@@ -52,7 +53,8 @@ export async function renderAppearance(): Promise<void> {
 
   // Theme problems show here too: a theme lives in the vault or in the shared
   // folder, and the person who put it there will fix it.
-  for (const problem of [...problems, ...themes.flatMap((theme) => theme.warnings)]) {
+  const warnings = themes.flatMap((theme) => theme.warnings.map(themeProblemText));
+  for (const problem of [...problems, ...warnings]) {
     const note = document.createElement("p");
     note.className = "settings-problem";
     note.textContent = problem;
@@ -100,7 +102,7 @@ function themeRow(theme: Theme): HTMLElement {
         ? "settings.appearance.source.global"
         : "settings.appearance.source.builtIn",
     );
-    return row(theme.name, label);
+    return row(themeName(theme), label);
   }
 
   const shared = theme.shadowsGlobal;
@@ -121,5 +123,5 @@ function themeRow(theme: Theme): HTMLElement {
 
   const source = t(shared ? "settings.appearance.source.both" : "settings.appearance.source.vault");
   const detail = t(shared ? "settings.appearance.update.detail" : "settings.appearance.share.detail");
-  return row(`${theme.name} · ${source}`, share, detail);
+  return row(`${themeName(theme)} · ${source}`, share, detail);
 }

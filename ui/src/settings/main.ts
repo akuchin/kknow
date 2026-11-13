@@ -135,6 +135,9 @@ async function boot(): Promise<void> {
     return;
   }
 
+  // The app sets the same title on the window; this one is for the mock.
+  document.title = t("settings.windowTitle");
+
   // Keys: the copy in `localStorage` may be old after a hand edit.
   await loadKeymap();
   void onKeymapChanged(takeKeymap);

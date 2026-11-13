@@ -216,7 +216,7 @@ impl Trash {
                 Err(source) => return Err(Error::io(&path, source)),
             }
         }
-        unreachable!("бесконечный перебор имён закончился")
+        unreachable!("the endless name search ended")
     }
 
     /// The entry folder by its name. A name that is not an entry name is

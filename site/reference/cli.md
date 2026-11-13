@@ -113,7 +113,7 @@ kknow proposals                               # proposals that wait for review
 kknow proposals list --all                    # also the reviewed ones
 kknow proposals accept 7f3a2b                 # apply all waiting edits
 kknow proposals accept 7f3a2b --only 1,3      # apply edits 1 and 3, reject the rest
-kknow proposals reject 7f3a2b --feedback "в отчёте 14"
+kknow proposals reject 7f3a2b --feedback "the report says 14"
 ```
 
 `--feedback` is a note for the agent. It reads the note with
@@ -131,4 +131,4 @@ The server uses stdin and stdout. An agent starts it as a child process. See
 
 ## Output language
 
-The CLI output and the error messages are in Russian.
+The CLI output and the error messages are in English.

@@ -16,58 +16,58 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("каталог с заметками не открыт")]
+    #[error("no notes folder is open")]
     NoVault,
 
-    #[error("заметка не найдена: {0}")]
+    #[error("note is not found: {0}")]
     NotFound(String),
 
-    #[error("синхронизация не настроена")]
+    #[error("sync is not set up")]
     NotConfigured,
 
-    #[error("не удалось показать файл: {0}")]
+    #[error("cannot show the file: {0}")]
     Reveal(String),
 
-    #[error("не удалось открыть файл: {0}")]
+    #[error("cannot open the file: {0}")]
     Open(String),
 
-    #[error("не найден каталог настроек: команды и общие темы негде хранить")]
+    #[error("cannot find the settings folder: there is no place for commands and shared themes")]
     NoConfig,
 
-    #[error("не удалось сделать тему общей: {0}")]
+    #[error("cannot share the theme: {0}")]
     ShareTheme(String),
 
-    #[error("файл не открыт в kknow: {0}")]
+    #[error("the file is not open in kknow: {0}")]
     UnknownFile(String),
 
-    #[error("файла больше нет, он убран из списка: {0}")]
+    #[error("the file is gone and is removed from the list: {0}")]
     FileGone(String),
 
-    #[error("картинка не найдена: {0}")]
+    #[error("image is not found: {0}")]
     ImageNotFound(String),
 
-    #[error("картинка пришла не байтами")]
+    #[error("the image did not come as bytes")]
     NoImageBytes,
 
-    #[error("не удалось открыть окно: {0}")]
+    #[error("cannot open the window: {0}")]
     Window(String),
 
-    #[error("новая версия ещё не скачана")]
+    #[error("the new version is not downloaded yet")]
     UpdateNotReady,
 
-    #[error("не удалось установить обновление: {0}")]
+    #[error("cannot install the update: {0}")]
     Update(String),
 
     // In the test build, secrets live in memory, so this error cannot happen.
     #[cfg_attr(test, allow(dead_code))]
-    #[error("связка ключей: {0}")]
+    #[error("keychain: {0}")]
     Keychain(String),
 
-    #[error("не указан путь к git: задайте его в настройках, раздел «Общие»")]
+    #[error("no path to git: set it in Settings, General")]
     GitPathNotSet,
 
     #[error(
-        "токен репозитория не найден: введите его в настройках хранилища или выберите другой способ входа"
+        "the repository token is not found: enter it in the vault settings or choose another sign-in method"
     )]
     NoGitToken,
 
@@ -131,7 +131,7 @@ impl VaultSlot {
     fn lock(&self) -> MutexGuard<'_, Workspace> {
         self.workspace
             .lock()
-            .expect("состояние хранилища испорчено")
+            .expect("the vault state is poisoned")
     }
 }
 
@@ -247,7 +247,7 @@ impl AppState {
 
     pub fn on_open(&self, hook: impl Fn(Arc<VaultSlot>) + Send + Sync + 'static) {
         if self.on_open.set(Box::new(hook)).is_err() {
-            panic!("обработчик открытия задают один раз");
+            panic!("the open handler is set once");
         }
     }
 
@@ -273,7 +273,7 @@ impl AppState {
     pub fn set_active(&self, id: &str) -> Result<VaultEntry> {
         let mut registry = self.registry();
         registry.set_active(id)?;
-        let entry = registry.get(id).cloned().expect("только что проверено");
+        let entry = registry.get(id).cloned().expect("just checked");
         drop(registry);
 
         self.persist();
@@ -460,7 +460,7 @@ impl AppState {
             return;
         };
         if let Err(error) = self.files_list().save(path) {
-            eprintln!("не удалось записать список открытых файлов: {error}");
+            eprintln!("cannot write the list of open files: {error}");
         }
     }
 
@@ -475,7 +475,7 @@ impl AppState {
             return;
         };
         if let Err(error) = self.registry().save(path) {
-            eprintln!("не удалось записать список хранилищ: {error}");
+            eprintln!("cannot write the vault list: {error}");
         }
     }
 }
@@ -483,14 +483,14 @@ impl AppState {
 /// A poisoned mutex means a panic in another command. The state is not
 /// reliable, so we must not continue with it; same rule as for a vault.
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().expect("состояние испорчено")
+    mutex.lock().expect("the state is poisoned")
 }
 
 /// Sets a path that is fixed for the life of the app. A second set is a bug in
 /// the start code: the first value is already in use.
 fn set_once(cell: &OnceLock<Option<PathBuf>>, value: Option<PathBuf>) {
     if cell.set(value).is_err() {
-        panic!("путь задают один раз, при запуске");
+        panic!("the path is set once, at start");
     }
 }
 

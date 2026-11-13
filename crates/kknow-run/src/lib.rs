@@ -30,24 +30,24 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("команда не найдена: {0}")]
+    #[error("command is not found: {0}")]
     Unknown(String),
 
-    #[error("неизвестный вид команды: {0}")]
+    #[error("unknown command kind: {0}")]
     UnknownKind(String),
 
-    #[error("команда «{command}» к этой цели не относится")]
+    #[error("command \"{command}\" does not apply to this target")]
     NotApplicable { command: String },
 
     #[error(
-        "не найдена программа {program}: её нет ни в PATH, ни в обычных местах \
-         ({places}). Окно, запущенное из Finder, видит короткий системный PATH — \
-         укажите полный путь полем program или задайте PATH в env. \
-         На Windows sh и bash ставятся вместе с Git for Windows"
+        "cannot find program {program}: it is not in PATH or in the usual places \
+         ({places}). A window started from Finder sees a short system PATH: \
+         give the full path in the program field or set PATH in env. \
+         On Windows, sh and bash come with Git for Windows"
     )]
     NoProgram { program: String, places: String },
 
-    #[error("не удалось запустить {program}: {source}")]
+    #[error("cannot start {program}: {source}")]
     Spawn {
         program: String,
         #[source]
@@ -57,7 +57,7 @@ pub enum Error {
     #[error("{}: {reason}", path.display())]
     Manifest { path: PathBuf, reason: String },
 
-    #[error("ошибка ввода-вывода в {path}: {source}")]
+    #[error("I/O error in {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]
@@ -747,8 +747,8 @@ fn wait(
     })?;
     let group = Group::of(&child);
 
-    let out = child.stdout.take().expect("stdout запрошен трубой");
-    let err = child.stderr.take().expect("stderr запрошен трубой");
+    let out = child.stdout.take().expect("stdout is a pipe");
+    let err = child.stderr.take().expect("stderr is a pipe");
     let (out_pipe, err_pipe) = (Pipe::of(&out), Pipe::of(&err));
     // When the process ended: from then on the readers stop on silence.
     let ended = OnceLock::new();

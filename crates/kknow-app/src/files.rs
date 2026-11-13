@@ -97,7 +97,7 @@ impl OpenFiles {
                 Ok(Loaded {
                     files: OpenFiles::default(),
                     problem: Some(format!(
-                        "список открытых файлов не разобрать ({error}); он отложен в {}",
+                        "cannot parse the list of open files ({error}); it is moved to {}",
                         broken.display()
                     )),
                     forgotten: Vec::new(),
@@ -112,7 +112,7 @@ impl OpenFiles {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("список сериализуем");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("the list serializes");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");
@@ -285,7 +285,7 @@ pub fn title(path: &Path, content: &str) -> String {
 /// would be random.
 pub fn render(path: &Path, content: &str) -> String {
     let id = NoteId::parse(&stem(path))
-        .unwrap_or_else(|| NoteId::parse("note").expect("простое имя — годный идентификатор"));
+        .unwrap_or_else(|| NoteId::parse("note").expect("a simple name is a valid ID"));
     kknow_index::to_html(content, &id, &Resolver::new([]))
 }
 
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(read(&path).unwrap(), "чужая правка\n");
         assert_eq!(read(&copy).unwrap(), "моя правка\n");
         let name = copy.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with("README (конфликт "), "{name}");
+        assert!(name.starts_with("README (conflict "), "{name}");
         assert!(name.ends_with(").md"), "{name}");
     }
 

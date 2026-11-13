@@ -1,6 +1,7 @@
 /** The "Commands" section: the command list and the form of one command. */
 
 import { api, type CommandManifest, type CommandSpec, type TargetKind } from "../api";
+import { commandName, commandProblemText, problemCommand } from "../core-text";
 import { describeError, t, type Key } from "../i18n";
 import { iconMarkup } from "../icons";
 import { chips, field, heading, row, select, toggle } from "./controls";
@@ -97,17 +98,16 @@ function fillCommandList(list: HTMLElement): void {
     const text = document.createElement("span");
     text.className = "settings-vault-text";
     const name = document.createElement("span");
-    name.textContent = command.name.trim() || t("settings.commands.untitled");
+    name.textContent = commandName(command).trim() || t("settings.commands.untitled");
     const detail = document.createElement("span");
     detail.className = "settings-row-detail";
     detail.textContent = [command.kind, ...command.targets.map(targetLabel)].join(" · ");
     text.append(name, detail);
     button.append(text);
 
-    // The core sends problems as "id: what is wrong" strings; the prefix finds
-    // the command. The window has no own validation on purpose: it could only
-    // differ from the core for the worse.
-    if (manifest!.problems.some((entry) => entry.startsWith(`${command.id}:`))) {
+    // A problem names its command by ID. The window has no own validation on
+    // purpose: it could only differ from the core for the worse.
+    if (manifest!.problems.some((entry) => problemCommand(entry) === command.id)) {
       const dot = document.createElement("span");
       dot.className = "status-dot";
       dot.dataset.tone = "error";
@@ -557,7 +557,7 @@ function problem(text: string): HTMLElement {
 }
 
 function fillProblems(box: HTMLElement): void {
-  box.replaceChildren(...manifest!.problems.map(problem));
+  box.replaceChildren(...manifest!.problems.map((entry) => problem(commandProblemText(entry))));
 }
 
 /**
@@ -628,7 +628,7 @@ async function removeCommand(): Promise<void> {
   const command = manifest?.commands[pickedCommand];
   if (!command) return;
 
-  const name = command.name.trim() || command.id || t("settings.commands.untitled");
+  const name = commandName(command).trim() || command.id || t("settings.commands.untitled");
   if (!window.confirm(t("settings.commands.remove.confirm", { name }))) return;
 
   manifest!.commands.splice(pickedCommand, 1);

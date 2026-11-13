@@ -177,7 +177,7 @@ impl AppSettings {
                 Ok(Loaded {
                     settings: AppSettings::default(),
                     problem: Some(format!(
-                        "настройки не разобрать ({error}); они отложены в {}",
+                        "cannot parse the settings ({error}); they are moved to {}",
                         broken.display()
                     )),
                 })
@@ -191,7 +191,7 @@ impl AppSettings {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("настройки сериализуемы");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("settings serialize");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");

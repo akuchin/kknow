@@ -12,7 +12,7 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # let dir = tempfile::tempdir()?;
-//! # std::fs::write(dir.path().join("Index.md"), "# Оглавление")?;
+//! # std::fs::write(dir.path().join("Index.md"), "# Contents")?;
 //! let mut vault = Vault::open(dir.path())?;
 //! let engine = SyncEngine::new(MemoryProvider::new());
 //!
@@ -131,39 +131,39 @@ pub enum Error {
     #[error(transparent)]
     Provider(#[from] provider::Error),
 
-    #[error("манифест не разобрать: {0}")]
+    #[error("cannot parse the manifest: {0}")]
     Manifest(#[from] serde_json::Error),
 
-    #[error("настройка синхронизации: не задан бакет")]
+    #[error("sync settings: no bucket is set")]
     NoBucket,
 
-    #[error("настройка синхронизации: не задана папка")]
+    #[error("sync settings: no folder is set")]
     NoFolder,
 
-    #[error("эта сборка собрана без поддержки S3")]
+    #[error("this build has no S3 support")]
     NoS3,
 
-    #[error("настройка синхронизации: не задан адрес репозитория")]
+    #[error("sync settings: no repository address is set")]
     NoGitUrl,
 
-    #[error("git синхронизирует хранилище своей командой, а не через манифест")]
+    #[error("git syncs the vault with its own command, not through the manifest")]
     GitIsNotAProvider,
 
-    #[error("git не найден: {}. Укажите путь к git в настройках", .0.display())]
+    #[error("git is not found: {}. Set the path to git in the settings", .0.display())]
     GitMissing(PathBuf),
 
     #[error("git: {0}")]
     Git(String),
 
     #[error(
-        "папка хранилища не пустая и не репозиторий git. Подключите пустую папку или папку, где уже есть репозиторий"
+        "the vault folder is not empty and is not a git repository. Connect an empty folder or a folder with a repository"
     )]
     GitNotEmpty,
 
-    #[error("хранилище — не корень репозитория git (корень: {}). Одно хранилище — один репозиторий", .0.display())]
+    #[error("the vault is not the root of a git repository (the root is {}). One vault is one repository", .0.display())]
     GitNotRoot(PathBuf),
 
-    #[error("в репозитории нет remote origin: укажите адрес")]
+    #[error("the repository has no remote origin: set the address")]
     GitNoOrigin,
 
     #[error("the git server does not answer ({0}). Check the address and the network connection")]
@@ -176,26 +176,26 @@ pub enum Error {
     GitRepoMissing(String),
 
     #[error(
-        "в адресе репозитория есть логин или токен. Уберите его из адреса и укажите токен отдельно"
+        "the repository address contains a login or a token. Remove it from the address and give the token separately"
     )]
     GitUrlCredentials,
 
-    #[error("HEAD не на ветке: переключитесь на ветку")]
+    #[error("HEAD is not on a branch: switch to a branch")]
     GitDetached,
 
-    #[error("пустое сообщение коммита")]
+    #[error("the commit message is empty")]
     GitEmptyMessage,
 
-    #[error("сначала закоммитьте изменения: их перезапишет слияние ({})", .0.join(", "))]
+    #[error("commit your changes first: the merge would overwrite them ({})", .0.join(", "))]
     GitLocalChanges(Vec<String>),
 
-    #[error("манифест обещает заметку {0}, но в хранилище её нет")]
+    #[error("the manifest has note {0}, but the vault does not")]
     MissingRemote(NoteId),
 
-    #[error("заметка {0} в хранилище не в UTF-8")]
+    #[error("note {0} in the vault is not UTF-8")]
     NotUtf8(NoteId),
 
-    #[error("хранилище изменилось во время синхронизации — запустите её ещё раз")]
+    #[error("the vault changed during sync: run it again")]
     RemoteChanged,
 
     #[error("encryption: {0}")]

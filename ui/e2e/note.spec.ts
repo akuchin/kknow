@@ -9,20 +9,20 @@ test.beforeEach(async ({ page }) => {
 test("an edit is saved and stays after the note opens again", async ({ page }) => {
   await noteRow(page, "Rust").click();
   await expect(page.locator("#note-title")).toHaveText("Rust");
-  await expect(editorText(page)).toContainText("Времена жизни");
+  await expect(editorText(page)).toContainText("Lifetimes");
 
   await editorText(page).click();
   await page.keyboard.press("ControlOrMeta+End");
-  await page.keyboard.type("Новая строка из теста");
+  await page.keyboard.type("A new line from the test");
   await expect(statusMessage(page)).toHaveText(t("status.notSaved"));
   await expect(statusMessage(page)).toHaveText(t("status.saved"));
 
   // Another note and back: the text comes from the mock core again.
   await noteRow(page, "Index").click();
   await expect(page.locator("#note-title")).toHaveText("Index");
-  await expect(editorText(page)).not.toContainText("Новая строка из теста");
+  await expect(editorText(page)).not.toContainText("A new line from the test");
   await noteRow(page, "Rust").click();
-  await expect(editorText(page)).toContainText("Новая строка из теста");
+  await expect(editorText(page)).toContainText("A new line from the test");
 });
 
 test("back and forward walk the opened notes", async ({ page }) => {
@@ -34,8 +34,8 @@ test("back and forward walk the opened notes", async ({ page }) => {
 
   await noteRow(page, "Rust").click();
   await expect(title).toHaveText("Rust");
-  await noteRow(page, "Ветки").click();
-  await expect(title).toHaveText("Ветки");
+  await noteRow(page, "Branches").click();
+  await expect(title).toHaveText("Branches");
 
   await back.click();
   await expect(title).toHaveText("Rust");
@@ -47,7 +47,7 @@ test("back and forward walk the opened notes", async ({ page }) => {
   await expect(title).toHaveText("Rust");
   // The keys do the same as the buttons.
   await page.keyboard.press("ControlOrMeta+Alt+ArrowRight");
-  await expect(title).toHaveText("Ветки");
+  await expect(title).toHaveText("Branches");
   await expect(forward).toBeDisabled();
   await page.keyboard.press("ControlOrMeta+Alt+ArrowLeft");
   await expect(title).toHaveText("Rust");
@@ -56,7 +56,7 @@ test("back and forward walk the opened notes", async ({ page }) => {
 test("a link in the preview opens its note", async ({ page }) => {
   await page.locator("#preview a", { hasText: "Rust" }).click();
   await expect(page.locator("#note-title")).toHaveText("Rust");
-  await expect(page.locator("#aside-backlinks-list")).toContainText("Оглавление");
+  await expect(page.locator("#aside-backlinks-list")).toContainText("Contents");
 });
 
 test("the mode switch shows the editor, both panes or the preview", async ({ page }) => {
@@ -70,7 +70,7 @@ test("the mode switch shows the editor, both panes or the preview", async ({ pag
   await expect(app).toHaveAttribute("data-mode", "read");
   await expect(pressed("read")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#editor")).toBeHidden();
-  await expect(page.locator("#preview h1")).toHaveText("Оглавление");
+  await expect(page.locator("#preview h1")).toHaveText("Contents");
 
   await pressed("edit").click();
   await expect(app).toHaveAttribute("data-mode", "edit");
@@ -87,7 +87,7 @@ test("the mode switch shows the editor, both panes or the preview", async ({ pag
 
 test("in Read mode the blocks show their line numbers while the setting is on", async ({ page }) => {
   // "Meetings" has a heading, a paragraph and a nested list.
-  await noteRow(page, "Работа/Встречи").click();
+  await noteRow(page, "Team/Meetings").click();
   await page.locator('.mode-switch button[data-mode="read"]').click();
   const mark = (line: number) => page.locator(`#preview .line-mark[data-line="${line}"]`);
   const number = (line: number) =>
@@ -128,7 +128,7 @@ test("the font size of a note changes from the status bar", async ({ page }) => 
 
 test("the palette offers the commands of the open note only", async ({ page }) => {
   const palette = page.locator("#palette");
-  const command = palette.locator(".palette-action", { hasText: "Отправить в Confluence" });
+  const command = palette.locator(".palette-action", { hasText: "Send to Confluence" });
   await page.locator("#open-palette").click();
   await expect(command).toBeVisible();
   await page.keyboard.press("Escape");
@@ -148,7 +148,7 @@ test("the palette offers the commands of the open note only", async ({ page }) =
 test("the note toolbar counts bookmarks and repeats the last command", async ({ page }) => {
   const count = page.locator("#bookmarks-count");
   const run = page.locator("#run-last");
-  const command = "Отправить в Confluence";
+  const command = "Send to Confluence";
   await expect(count).toHaveText("");
   await expect(run).toHaveAttribute("title", t("topbar.commands.title"));
 
@@ -182,18 +182,18 @@ test("a long command shows its output as it goes and stops on request", async ({
 
   const folder = page.locator('.folder-row[data-vault="notes"][data-path="Projects"] button.folder');
   await openRowMenu(page, folder);
-  await menuItem(page, "Сложить архив").click();
+  await menuItem(page, "Pack an archive").click();
 
   // The run is long: the float opens by itself, before the end.
   await expect(float).toBeVisible();
   await expect(stop).toBeVisible();
-  await expect(output).toContainText("собираю архив…");
-  await expect(output).not.toContainText("архив готов");
+  await expect(output).toContainText("packing the archive…");
+  await expect(output).not.toContainText("archive ready");
 
   await stop.click();
   await expect(page.locator("#run-summary")).toContainText(t("panel.run.stopped", { seconds: "" }).split(" ")[0]);
   await expect(stop).toBeHidden();
-  await expect(output).not.toContainText("архив готов");
+  await expect(output).not.toContainText("archive ready");
 });
 
 test("the copy button of a code block copies the code, in the preview and the editor", async ({
@@ -212,7 +212,7 @@ test("the copy button of a code block copies the code, in the preview and the ed
   // Again: the stub must be in place before the window code starts.
   await openWindow(page);
   const copied = () => page.evaluate(() => (window as unknown as { copied: string[] }).copied);
-  const code = '// точка входа\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}';
+  const code = '// entry point\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}';
 
   await noteRow(page, "Projects/kknow").click();
   await page.locator('.mode-switch button[data-mode="read"]').click();

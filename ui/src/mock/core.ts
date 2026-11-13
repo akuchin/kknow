@@ -4,6 +4,7 @@
  */
 import type {
   AppSettings,
+  CommandProblem,
   BookmarkMark,
   BookmarkView,
   CommandList,
@@ -85,14 +86,14 @@ const threads: Thread[] = [
   {
     id: "k3f",
     note: "Rust",
-    anchor: "заимствование",
-    task: "добавить пример с &mut",
+    anchor: "borrowing",
+    task: "add an example with &mut",
     status: "question",
     messages: [
-      { from: "me", text: "добавить пример с &mut", at: 1_730_000_000 },
+      { from: "me", text: "add an example with &mut", at: 1_730_000_000 },
       {
         from: "claude",
-        text: "Пример на функции, которая меняет вектор, или на структуре со ссылкой?",
+        text: "An example with a function that changes a vector, or with a struct that holds a reference?",
         at: 1_730_000_600,
       },
     ],
@@ -105,7 +106,7 @@ const proposals: ProposalView[] = [
   {
     id: "p7f3a",
     note: "Rust",
-    reason: "Уточнил формулировки",
+    reason: "Made the wording clearer",
     author: "claude",
     create: false,
     created: 1_730_001_000,
@@ -113,8 +114,8 @@ const proposals: ProposalView[] = [
     status: "pending",
     stale: [false, false],
     edits: [
-      { old: "пока даются тяжело", new: "пока даются тяжело: компилятор ругается чаще, чем хотелось бы", state: "pending" },
-      { old: "— отдельная тема", new: "— отдельная большая тема", state: "pending" },
+      { old: "are still hard for me", new: "are still hard for me: the compiler complains more often than I would like", state: "pending" },
+      { old: "are a separate topic", new: "are a separate big topic", state: "pending" },
     ],
   },
 ];
@@ -134,147 +135,147 @@ function recount(proposal: ProposalView, content: string): ProposalView {
 const notes: MockNote[] = [
   {
     id: "Index",
-    title: "Оглавление",
+    title: "Contents",
     folder: null,
-    tags: ["мета"],
-    content: "# Оглавление\n\nТочка входа. #мета\n\n- [[Rust]]\n- [[Призрак]]\n",
-    html: `<h1>Оглавление</h1><p>Точка входа. <a href="kknow://tag/%D0%BC%D0%B5%D1%82%D0%B0">#мета</a></p><ul><li><a href="kknow://note/Rust">Rust</a></li><li><a href="kknow://missing/%D0%9F%D1%80%D0%B8%D0%B7%D1%80%D0%B0%D0%BA">Призрак</a></li></ul>`,
+    tags: ["meta"],
+    content: "# Contents\n\nThe entry point. #meta\n\n- [[Rust]]\n- [[Ghost]]\n",
+    html: `<h1>Contents</h1><p>The entry point. <a href="kknow://tag/meta">#meta</a></p><ul><li><a href="kknow://note/Rust">Rust</a></li><li><a href="kknow://missing/Ghost">Ghost</a></li></ul>`,
   },
   {
     id: "Rust",
     title: "Rust",
     folder: null,
-    tags: ["rust", "учёба"],
-    bookmarks: [{ line: 3 }, { line: 5, name: "владение" }],
+    tags: ["rust", "study"],
+    bookmarks: [{ line: 3 }, { line: 5, name: "ownership" }],
     content:
-      "# Rust\n\nЯзык, на котором пишу [[Projects/kknow]]. #rust #учёба\n\n" +
-      "Владение и заимствование<!-- @agent#k3f «заимствование»: добавить пример с &mut --> пока даются тяжело.\n\n" +
-      "Времена жизни<!-- @agent «Времена жизни»: расписать на примере структуры, которая держит ссылку на строку, и объяснить, почему компилятор требует аннотацию, а в функции с одним аргументом — нет --> — отдельная тема.\n",
+      "# Rust\n\nThe language I write [[Projects/kknow]] in. #rust #study\n\n" +
+      "Ownership and borrowing<!-- @agent#k3f «borrowing»: add an example with &mut --> are still hard for me.\n\n" +
+      "Lifetimes<!-- @agent «Lifetimes»: explain them with a struct that holds a reference to a string, and say why the compiler needs an annotation there but not in a function with one argument --> are a separate topic.\n",
     html:
       // Line marks as in the core: the preview shows bookmarks with them.
-      `<h1>${line(1)}Rust</h1><p>${line(3)}Язык, на котором пишу <a href="kknow://note/Projects/kknow">Projects/kknow</a>. <a href="kknow://tag/rust">#rust</a> <a href="kknow://tag/%D1%83%D1%87%D1%91%D0%B1%D0%B0">#учёба</a></p>` +
-      `<p>${line(5)}Владение и <mark class="agent-note" title="добавить пример с &amp;mut">заимствование</mark> пока даются тяжело.</p>` +
-      `<p>${line(7)}Времена жизни <span class="agent-note is-detached" title="расписать на примере структуры"></span> — отдельная тема.</p>`,
+      `<h1>${line(1)}Rust</h1><p>${line(3)}The language I write <a href="kknow://note/Projects/kknow">Projects/kknow</a> in. <a href="kknow://tag/rust">#rust</a> <a href="kknow://tag/study">#study</a></p>` +
+      `<p>${line(5)}Ownership and <mark class="agent-note" title="add an example with &amp;mut">borrowing</mark> are still hard for me.</p>` +
+      `<p>${line(7)}Lifetimes <span class="agent-note is-detached" title="explain them with a struct"></span> are a separate topic.</p>`,
   },
   {
     id: "Projects/kknow",
     title: "kknow",
     folder: "Projects",
-    tags: ["rust", "проекты/kknow"],
+    tags: ["rust", "projects/kknow"],
     content:
-      "<!-- confluence: 987654321 -->\n# kknow\n\nПроект на [[Rust]].\n\n## Планы\n\n- этап 3: поиск\n\n" +
-      '```rust\n// точка входа\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}\n```\n',
+      "<!-- confluence: 987654321 -->\n# kknow\n\nA project in [[Rust]].\n\n## Plans\n\n- stage 3: search\n\n" +
+      '```rust\n// entry point\nfn main() {\n    let name = "kknow";\n    println!("{name}");\n}\n```\n',
     // Code block as the core returns it: pulldown-cmark sets `class="language-…"`.
     html:
-      `<h1>kknow</h1><p>Проект на <a href="kknow://note/Rust">Rust</a>.</p><h2>Планы</h2><ul><li>этап 3: поиск</li></ul>` +
-      '<pre><code class="language-rust">// точка входа\nfn main() {\n    let name = &quot;kknow&quot;;\n    println!(&quot;{name}&quot;);\n}\n</code></pre>',
+      `<h1>kknow</h1><p>A project in <a href="kknow://note/Rust">Rust</a>.</p><h2>Plans</h2><ul><li>stage 3: search</li></ul>` +
+      '<pre><code class="language-rust">// entry point\nfn main() {\n    let name = &quot;kknow&quot;;\n    println!(&quot;{name}&quot;);\n}\n</code></pre>',
   },
   {
     // Nested folder: it shows that the tree has more than one level.
     // The name is long on purpose: the tree cuts it with an ellipsis, not a wrap.
-    id: "Projects/Архив/Идеи, до которых руки пока не дошли",
-    title: "Идеи, до которых руки пока не дошли",
-    folder: "Projects/Архив",
+    id: "Projects/Archive/Ideas I have not got around to yet",
+    title: "Ideas I have not got around to yet",
+    folder: "Projects/Archive",
     tags: [],
-    content: "# Идеи\n\nЧто не сделано, но жалко забыть.\n",
-    html: "<h1>Идеи</h1><p>Что не сделано, но жалко забыть.</p>",
+    content: "# Ideas\n\nThings not done yet, but too good to forget.\n",
+    html: "<h1>Ideas</h1><p>Things not done yet, but too good to forget.</p>",
   },
   {
-    id: "Работа/Встречи",
-    title: "Встречи",
-    folder: "Работа",
+    id: "Team/Meetings",
+    title: "Meetings",
+    folder: "Team",
     tags: [],
     // Tasks: the palette lists the open ones, and a click on a box in the
     // preview marks it.
     content:
-      "# Встречи\n\nКто, когда и о чём.\n\n" +
-      "- [ ] разослать итоги планёрки\n- [x] забронировать переговорку\n" +
-      "  - [ ] позвать Иру из поддержки\n",
+      "# Meetings\n\nWho, when and what about.\n\n" +
+      "- [ ] send out the planning notes\n- [x] book a meeting room\n" +
+      "  - [ ] invite Ira from support\n",
     html:
-      `<h1>${line(1)}Встречи</h1><p>${line(3)}Кто, когда и о чём.</p>` +
-      `<ul><li>${line(5)}${box(false)}разослать итоги планёрки</li>` +
-      `<li>${line(6)}${box(true)}забронировать переговорку<ul>` +
-      `<li>${line(7)}${box(false)}позвать Иру из поддержки</li></ul></li></ul>`,
+      `<h1>${line(1)}Meetings</h1><p>${line(3)}Who, when and what about.</p>` +
+      `<ul><li>${line(5)}${box(false)}send out the planning notes</li>` +
+      `<li>${line(6)}${box(true)}book a meeting room<ul>` +
+      `<li>${line(7)}${box(false)}invite Ira from support</li></ul></li></ul>`,
   },
   {
     // Table with markup in cells: it shows editing and the toolbar.
-    id: "Ветки",
-    title: "Ветки",
+    id: "Branches",
+    title: "Branches",
     folder: null,
     tags: [],
     content:
-      "# Ветки\n\n| Ветка | Где живёт | Зачем |\n| --- | --- | :---: |\n" +
-      "| `studio-prod` | Prod Authoring | редакторы работают здесь, источник **правды** |\n" +
-      "| `prod` | git | выкладка; контент приезжает из `studio-prod` |\n" +
-      "| `feature/*` | форк [[Rust]] | повседневная работа |\n",
+      "# Branches\n\n| Branch | Where it lives | Why |\n| --- | --- | :---: |\n" +
+      "| `studio-prod` | Prod Authoring | editors work here, the source of **truth** |\n" +
+      "| `prod` | git | deployment; content comes from `studio-prod` |\n" +
+      "| `feature/*` | fork of [[Rust]] | everyday work |\n",
     html:
-      "<h1>Ветки</h1>\n<table><thead><tr><th>Ветка</th><th>Где живёт</th><th>Зачем</th></tr></thead>" +
+      "<h1>Branches</h1>\n<table><thead><tr><th>Branch</th><th>Where it lives</th><th>Why</th></tr></thead>" +
       "<tbody><tr><td><code>studio-prod</code></td><td>Prod Authoring</td>" +
-      "<td>редакторы работают здесь, источник <strong>правды</strong></td></tr></tbody></table>",
+      "<td>editors work here, the source of <strong>truth</strong></td></tr></tbody></table>",
   },
   {
     // Wide table: a narrow ID column and long cells with unbreakable code
     // pieces. It shows whether the table fits the panel or spreads wide.
-    id: "Ограничения",
-    title: "Ограничения",
+    id: "Constraints",
+    title: "Constraints",
     folder: null,
     tags: [],
     content:
-      "# Ограничения\n\n| ID | Ограничение | Источник |\n| --- | --- | --- |\n" +
-      "| C-1 | Keycloak остаётся единственным источником правды об учётных записях. | ADR-001 |\n" +
-      "| C-3 | Токен доступа должен оставаться коротким: только роли пользователя, " +
-      "никогда через `full_scope_allowed`. | ADR-004 |\n" +
-      "| C-5 | Rego пишем на синтаксисе v1 (`import rego.v1`) для OPA 1.x. | ADR-006 |\n" +
-      "| C-6 | Роли площадки следуют схеме `{site}-{level}`, где уровень — " +
-      "`reader` или `manager`. | ADR-006 |\n",
+      "# Constraints\n\n| ID | Constraint | Source |\n| --- | --- | --- |\n" +
+      "| C-1 | Keycloak stays the single source of truth for user accounts. | ADR-001 |\n" +
+      "| C-3 | The access token must stay short: only the roles of the user, " +
+      "never through `full_scope_allowed`. | ADR-004 |\n" +
+      "| C-5 | We write Rego in the v1 syntax (`import rego.v1`) for OPA 1.x. | ADR-006 |\n" +
+      "| C-6 | Site roles follow the pattern `{site}-{level}`, where the level is " +
+      "`reader` or `manager`. | ADR-006 |\n",
     html:
-      "<h1>Ограничения</h1>\n<table><thead><tr><th>ID</th><th>Ограничение</th>" +
-      "<th>Источник</th></tr></thead><tbody>" +
-      "<tr><td>C-1</td><td>Keycloak остаётся единственным источником правды об " +
-      "учётных записях.</td><td>ADR-001</td></tr>" +
-      "<tr><td>C-3</td><td>Токен доступа должен оставаться коротким: только роли " +
-      "пользователя, никогда через <code>full_scope_allowed</code>.</td><td>ADR-004</td></tr>" +
-      "<tr><td>C-5</td><td>Rego пишем на синтаксисе v1 (<code>import rego.v1</code>) " +
-      "для OPA 1.x.</td><td>ADR-006</td></tr>" +
-      "<tr><td>C-6</td><td>Роли площадки следуют схеме <code>{site}-{level}</code>, " +
-      "где уровень — <code>reader</code> или <code>manager</code>.</td><td>ADR-006</td></tr>" +
+      "<h1>Constraints</h1>\n<table><thead><tr><th>ID</th><th>Constraint</th>" +
+      "<th>Source</th></tr></thead><tbody>" +
+      "<tr><td>C-1</td><td>Keycloak stays the single source of truth for " +
+      "user accounts.</td><td>ADR-001</td></tr>" +
+      "<tr><td>C-3</td><td>The access token must stay short: only the roles " +
+      "of the user, never through <code>full_scope_allowed</code>.</td><td>ADR-004</td></tr>" +
+      "<tr><td>C-5</td><td>We write Rego in the v1 syntax (<code>import rego.v1</code>) " +
+      "for OPA 1.x.</td><td>ADR-006</td></tr>" +
+      "<tr><td>C-6</td><td>Site roles follow the pattern <code>{site}-{level}</code>, " +
+      "where the level is <code>reader</code> or <code>manager</code>.</td><td>ADR-006</td></tr>" +
       "</tbody></table>",
   },
   {
     // Long note: on open the parser does not reach the end, and the widgets at
     // the end come from background parsing. It checks that the table and the
     // diagram at the end render without a click.
-    id: "Длинная",
-    title: "Длинная",
+    id: "Long",
+    title: "Long",
     folder: null,
     tags: [],
     content:
-      "# Длинная\n\n" +
-      Array.from({ length: 400 }, (_, i) => `Абзац ${i + 1}: **текст** про [[Rust]].\n`).join("\n") +
-      "\n| Ветка | Зачем |\n| --- | --- |\n| `dev` | интеграция |\n" +
-      "\n```mermaid\nflowchart LR\n  Хвост --> Разобран\n```\n",
-    html: "<h1>Длинная</h1>",
+      "# Long\n\n" +
+      Array.from({ length: 400 }, (_, i) => `Paragraph ${i + 1}: **text** about [[Rust]].\n`).join("\n") +
+      "\n| Branch | Why |\n| --- | --- |\n| `dev` | integration |\n" +
+      "\n```mermaid\nflowchart LR\n  Tail --> Parsed\n```\n",
+    html: "<h1>Long</h1>",
   },
   {
     // Two diagrams, a valid one and one with a typo; the second shows the error display.
-    id: "Схема",
-    title: "Схема",
+    id: "Diagram",
+    title: "Diagram",
     folder: null,
     tags: [],
     content:
-      "# Схема\n\n```mermaid\nflowchart LR\n  Заметка --> Разбор --> Граф\n```\n\n```mermaid\nflowchart LR\n  A -->\n```\n",
-    html: `<h1>${line(1)}Схема</h1>\n${line(3, true)}<pre class="mermaid">flowchart LR\n  Заметка --&gt; Разбор --&gt; Граф\n</pre>\n${line(8, true)}<pre class="mermaid">flowchart LR\n  A --&gt;\n</pre>\n`,
+      "# Diagram\n\n```mermaid\nflowchart LR\n  Note --> Parse --> Graph\n```\n\n```mermaid\nflowchart LR\n  A -->\n```\n",
+    html: `<h1>${line(1)}Diagram</h1>\n${line(3, true)}<pre class="mermaid">flowchart LR\n  Note --&gt; Parse --&gt; Graph\n</pre>\n${line(8, true)}<pre class="mermaid">flowchart LR\n  A --&gt;\n</pre>\n`,
   },
   {
     // Images: wide and tall ones show how CSS shrinks them; also one with a
     // caption size, one by file name and a missing one.
-    id: "Картинки",
-    title: "Картинки",
+    id: "Images",
+    title: "Images",
     folder: null,
     tags: [],
     content:
-      "# Картинки\n\nШирокая:\n\n![панорама](img/wide.svg)\n\nВысокая, по имени файла:\n\n![[tall.svg]]\n\nС размером: ![[wide.svg|200]] и дальше текст.\n\nПропавшая: ![нет](img/missing.png)\n\nИз сети: ![](https://example.com/a.png)\n",
-    html: `<h1>Картинки</h1>\n<p>Широкая:</p>\n<p><img class="note-image" data-src="img/wide.svg" alt="панорама"></p>\n<p>Высокая, по имени файла:</p>\n<p><img class="note-image" data-src="tall.svg" alt=""></p>\n<p>С размером: <img class="note-image" data-src="wide.svg" alt="" style="width:200px"> и дальше текст.</p>\n<p>Пропавшая: <img class="note-image" data-src="img/missing.png" alt="нет"></p>\n<p>Из сети: <img class="note-image" data-src="https://example.com/a.png" alt=""></p>\n`,
+      "# Images\n\nWide:\n\n![panorama](img/wide.svg)\n\nTall, by file name:\n\n![[tall.svg]]\n\nWith a size: ![[wide.svg|200]] and more text.\n\nMissing: ![none](img/missing.png)\n\nFrom the web: ![](https://example.com/a.png)\n",
+    html: `<h1>Images</h1>\n<p>Wide:</p>\n<p><img class="note-image" data-src="img/wide.svg" alt="panorama"></p>\n<p>Tall, by file name:</p>\n<p><img class="note-image" data-src="tall.svg" alt=""></p>\n<p>With a size: <img class="note-image" data-src="wide.svg" alt="" style="width:200px"> and more text.</p>\n<p>Missing: <img class="note-image" data-src="img/missing.png" alt="none"></p>\n<p>From the web: <img class="note-image" data-src="https://example.com/a.png" alt=""></p>\n`,
   },
   {
     // Embeds as the core renders them: a section of another note with a task
@@ -314,7 +315,7 @@ const notes: MockNote[] = [
 
 /** Mock image: an SVG of the needed size with a caption. */
 function mockImage(target: string): ArrayBuffer {
-  if (target.includes("missing")) throw coded("imageNotFound", `картинка не найдена: ${target}`, { value: target });
+  if (target.includes("missing")) throw coded("imageNotFound", `image not found: ${target}`, { value: target });
   const [width, height] = target.includes("tall") ? [600, 1800] : [2400, 900];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#7aa2f7"/><circle cx="50%" cy="50%" r="${height / 4}" fill="#e0af68"/><text x="24" y="80" font-size="64" fill="#1a1b26">${target}</text></svg>`;
   return new TextEncoder().encode(svg).buffer as ArrayBuffer;
@@ -428,30 +429,30 @@ function putInTrash(vault: MockVault, path: string, notes: MockNote[], folders: 
 const vaults: MockVault[] = [
   {
     id: "notes",
-    name: "notes (мок)",
-    path: "~/notes (мок)",
+    name: "notes (mock)",
+    path: "~/notes (mock)",
     color: "blue",
     labels: ["work", "ai"],
     available: true,
     notes,
-    folders: ["Черновики"],
+    folders: ["Drafts"],
     // Two old deletions: a folder and a note, so the trash has something to show.
     trash: [
       {
         id: "1760000000",
-        path: "Старое",
+        path: "Old",
         deleted: Math.floor(Date.now() / 1000) - 12 * 24 * 60 * 60,
         notes: [
-          trashedNote("Старое/Идеи", "# Идеи\n\nСтарые идеи.\n"),
-          trashedNote("Старое/Планы", "# Планы\n\nСтарые планы.\n"),
+          trashedNote("Old/Ideas", "# Ideas\n\nOld ideas.\n"),
+          trashedNote("Old/Plans", "# Plans\n\nOld plans.\n"),
         ],
-        folders: ["Старое"],
+        folders: ["Old"],
       },
       {
         id: "1761000000",
-        path: "Черновик.md",
+        path: "Draft.md",
         deleted: Math.floor(Date.now() / 1000) - 60 * 60,
-        notes: [trashedNote("Черновик", "# Черновик\n\nУдалён час назад.\n")],
+        notes: [trashedNote("Draft", "# Draft\n\nDeleted an hour ago.\n")],
         folders: [],
       },
     ],
@@ -459,35 +460,35 @@ const vaults: MockVault[] = [
   {
     id: "work-asw",
     name: "Work — ASW",
-    path: "~/work (мок)",
+    path: "~/work (mock)",
     color: "violet",
     labels: ["work"],
     available: true,
     notes: [
       {
-        id: "Смета",
-        title: "Смета",
+        id: "Budget",
+        title: "Budget",
         folder: null,
-        tags: ["работа"],
-        content: "# Смета\n\nРабочие расходы и компиляторы. #работа\n",
-        html: "<h1>Смета</h1><p>Рабочие расходы и компиляторы.</p>",
+        tags: ["office"],
+        content: "# Budget\n\nOffice costs and compilers. #office\n",
+        html: "<h1>Budget</h1><p>Office costs and compilers.</p>",
       },
       {
-        id: "Встречи/Ретро",
-        title: "Ретро",
-        folder: "Встречи",
+        id: "Meetings/Retro",
+        title: "Retro",
+        folder: "Meetings",
         tags: [],
-        content: "# Ретро\n\nЧто починить в процессе. Про Rust тоже.\n",
-        html: "<h1>Ретро</h1><p>Что починить в процессе.</p>",
+        content: "# Retro\n\nWhat to fix in the process. About Rust too.\n",
+        html: "<h1>Retro</h1><p>What to fix in the process.</p>",
       },
     ],
     folders: [],
     trash: [],
   },
   {
-    id: "arhiv-2024",
-    name: "Архив 2024",
-    path: "/Volumes/Backup/Архив 2024",
+    id: "archive-2024",
+    name: "Archive 2024",
+    path: "/Volumes/Backup/Archive 2024",
     color: "amber",
     labels: [],
     available: false,
@@ -612,16 +613,16 @@ function readSettings(): AppSettings {
  */
 const statuses = new Map<string, SyncStatus>([
   [
-    "arhiv-2024",
+    "archive-2024",
     {
-      vault: "arhiv-2024",
+      vault: "archive-2024",
       state: "conflict",
       done: 0,
       total: 0,
       at: Date.now() - 42 * 60000,
       message: null,
       conflicts: 2,
-      location: "/Volumes/Backup/Архив 2024",
+      location: "/Volumes/Backup/Archive 2024",
       autoSyncMinutes: 15,
     },
   ],
@@ -632,10 +633,10 @@ function configureSync(settings: SyncSettingsForm, secret: boolean): SyncSetting
   const provider = settings.provider;
 
   if (provider.kind === "s3" && !provider.bucket.trim()) {
-    throw coded("noBucket", "настройка синхронизации: не задан бакет");
+    throw coded("noBucket", "sync settings: no bucket is set");
   }
   if (provider.kind === "folder" && !provider.path.trim()) {
-    throw coded("noFolder", "настройка синхронизации: не задана папка");
+    throw coded("noFolder", "sync settings: no folder is set");
   }
 
   const location =
@@ -694,7 +695,7 @@ function checkPassphrase(passphrase: string): void {
 }
 
 function syncEncrypt(passphrase: string): EncryptionOn {
-  if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+  if (!remote) throw coded("syncNotConfigured", "sync is not set up");
   if (storage) throw coded("alreadyEncrypted", "the storage is already encrypted");
   checkPassphrase(passphrase);
   storage = { passphrase, code: MOCK_CODE };
@@ -703,7 +704,7 @@ function syncEncrypt(passphrase: string): EncryptionOn {
 }
 
 function syncUnlock(secret: string): SyncSettings {
-  if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+  if (!remote) throw coded("syncNotConfigured", "sync is not set up");
   if (!storage) throw coded("notEncrypted", "the storage is not encrypted");
   if (!opens(secret)) throw coded("wrongPassphrase", "wrong passphrase or recovery code");
   remote = { ...remote, encrypted: true, hasKey: true };
@@ -728,14 +729,14 @@ const gitState: GitStatus = {
   behind: 1,
   changes: [
     { path: "Index.md", from: null, staged: null, unstaged: "modified" },
-    { path: "Идеи/Новая мысль.md", from: null, staged: "added", unstaged: null },
-    { path: "картинки/схема.png", from: null, staged: null, unstaged: "untracked" },
+    { path: "Ideas/New thought.md", from: null, staged: "added", unstaged: null },
+    { path: "images/diagram.png", from: null, staged: null, unstaged: "untracked" },
   ],
 };
 
 function gitStatus(): GitStatus {
   if (remote?.provider.kind !== "git") {
-    throw coded("syncNotConfigured", "синхронизация не настроена");
+    throw coded("syncNotConfigured", "sync is not set up");
   }
   return structuredClone(gitState);
 }
@@ -781,27 +782,27 @@ function gitDiff(path: string, staged: boolean): string {
   }
   const head = `diff --git a/${path} b/${path}\n`;
   if (kind === "added" || kind === "untracked") {
-    return `${head}new file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,3 @@\n+# Новая мысль\n+\n+Черновик идеи.\n`;
+    return `${head}new file mode 100644\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,3 @@\n+# New thought\n+\n+A draft of an idea.\n`;
   }
   return (
-    `${head}--- a/${path}\n+++ b/${path}\n@@ -1,4 +1,5 @@\n # Оглавление\n \n-Старая строка.\n+Новая строка.\n+Ещё одна.\n Конец.\n`
+    `${head}--- a/${path}\n+++ b/${path}\n@@ -1,4 +1,5 @@\n # Contents\n \n-Old line.\n+New line.\n+One more.\n The end.\n`
   );
 }
 
 /** Connects git with the checks of the core: the program, the address, the token. */
 function connectGit(args: Record<string, unknown> | undefined): SyncSettings {
   if (!appSettings.gitPath) {
-    throw coded("gitPathNotSet", "не указан путь к git: задайте его в настройках");
+    throw coded("gitPathNotSet", "the path to git is not set: set it in the settings");
   }
   const url = (args?.url as string | null) ?? (remote?.provider.kind === "git" ? remote.provider.url : null);
-  if (!url) throw coded("noGitUrl", "настройка синхронизации: не задан адрес репозитория");
+  if (!url) throw coded("noGitUrl", "sync settings: no repository address is set");
   if (/^https?:\/\/[^/]*@/.test(url)) {
-    throw coded("gitUrlCredentials", "в адресе репозитория есть логин или токен");
+    throw coded("gitUrlCredentials", "the repository address contains a login or a token");
   }
   const auth = args?.auth as GitAuth;
   const token = Boolean(args?.token);
   if (auth === "token" && !token && !remote?.hasSecret) {
-    throw coded("noGitToken", "токен репозитория не найден");
+    throw coded("noGitToken", "repository token not found");
   }
   return configureSync(
     {
@@ -1074,7 +1075,7 @@ function linkPreview(from: string, link: string): LinkPreview | null {
 
 function find(id: string): MockNote {
   const note = activeVault.notes.find((candidate) => candidate.id === id);
-  if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
+  if (!note) throw coded("notFound", `note not found: ${id}`, { value: id });
   return note;
 }
 
@@ -1116,7 +1117,7 @@ function parseQuery(query: string): { field: string | null; text: string } {
   const match = /^(title|tag|body|path):\((.*)\)$|^(title|tag|body|path):(\S+)$/.exec(query.trim());
   if (!match) {
     // An unclosed parenthesis is a broken query; the core behaves the same.
-    if (/^\w+:\(/.test(query.trim())) throw coded("searchQuery", "не удалось разобрать запрос", { detail: query });
+    if (/^\w+:\(/.test(query.trim())) throw coded("searchQuery", "could not parse the query", { detail: query });
     return { field: null, text: query.trim().toLowerCase() };
   }
 
@@ -1143,29 +1144,29 @@ const MOCK_COMMANDS: (CommandSpec & {
   lineMs?: number;
 })[] = [
   {
-    ...blank("confluence", "Отправить в Confluence"),
+    ...blank("confluence", "Send to Confluence"),
     script: 'wiki-publish replace $KKNOW_FM_CONFLUENCE "$KKNOW_PATH"',
     targets: ["note"],
     requires: ["confluence"],
     output: {
       code: 0,
-      stdout: "загружаю {path}\nстраница обновлена: https://wiki.example/pages/12345\n",
+      stdout: "uploading {path}\npage updated: https://wiki.example/pages/12345\n",
       stderr: "",
     },
   },
   {
-    ...blank("lint", "Проверить ссылки"),
+    ...blank("lint", "Check links"),
     kind: "python",
     script: "import os\nprint(os.environ['KKNOW_PATH'])",
     match: ["Docs/**"],
     output: {
       code: 2,
-      stdout: "проверено: {target}\n",
-      stderr: "две ссылки ведут в никуда:\n  [[Призрак]]\n  [[Ещё не написано]]\n",
+      stdout: "checked: {target}\n",
+      stderr: "two links lead nowhere:\n  [[Ghost]]\n  [[Not written yet]]\n",
     },
   },
   {
-    ...blank("backup", "Сложить архив"),
+    ...blank("backup", "Pack an archive"),
     kind: "fish",
     script: "tar czf ~/backup.tgz $KKNOW_VAULT",
     targets: ["folder", "vault"],
@@ -1177,14 +1178,14 @@ const MOCK_COMMANDS: (CommandSpec & {
     output: {
       code: null,
       stdout:
-        "собираю архив…\nДневник/2026-10.md\nДневник/2026-09.md\nПроекты/kknow.md\nПроекты/план.md\nархив готов: 4 файла\n",
+        "packing the archive…\nJournal/2026-10.md\nJournal/2026-09.md\nProjects/kknow.md\nProjects/plan.md\narchive ready: 4 files\n",
       stderr: "",
     },
   },
   {
     // Broken on purpose: the settings form shows its problem, and the target
     // menu shows that an invalid command does not appear there.
-    ...blank("сломанная", "Опечатка в виде"),
+    ...blank("broken", "Typo in the kind"),
     kind: "phyton",
     script: "echo",
     output: { code: 0, stdout: "", stderr: "" },
@@ -1224,22 +1225,21 @@ let sharedEnv: Record<string, string> = { CONFLUENCE_SERVER: "https://wiki.examp
  * form displays an invalid command, so a problem must appear and disappear
  * with edits in the form, not be a static string.
  */
-function commandProblems(): string[] {
-  const problems: string[] = [];
+function commandProblems(): CommandProblem[] {
+  const problems: CommandProblem[] = [];
 
   for (const command of MOCK_COMMANDS) {
-    const issues: string[] = [];
-    if (!command.name.trim()) issues.push("нет подписи (name)");
-    if (!command.script.trim()) issues.push("пустой скрипт");
+    const id = command.id;
+    if (!id.trim()) {
+      problems.push({ code: "noId" });
+      continue;
+    }
+    if (!command.name.trim()) problems.push({ code: "noName", id });
+    if (!command.script.trim()) problems.push({ code: "emptyScript", id });
     if (!MOCK_KINDS.includes(command.kind)) {
-      issues.push(`неизвестный вид «${command.kind}»; известны: ${MOCK_KINDS.join(", ")}`);
+      problems.push({ code: "unknownKind", id, kind: command.kind, known: MOCK_KINDS.join(", ") });
     }
-    if (command.targets.length === 0) {
-      issues.push("пустой targets: команде не на чем появиться");
-    }
-
-    if (!command.id.trim()) problems.push("команда без id пропущена");
-    else if (issues.length > 0) problems.push(`${command.id}: ${issues.join("; ")}`);
+    if (command.targets.length === 0) problems.push({ code: "noTargets", id });
   }
 
   return problems;
@@ -1247,8 +1247,8 @@ function commandProblems(): string[] {
 
 /** Commands that can run; invalid ones do not reach the menu. */
 function healthyCommands(): typeof MOCK_COMMANDS {
-  const broken = new Set(commandProblems().map((problem) => problem.split(":")[0]));
-  return MOCK_COMMANDS.filter((command) => !broken.has(command.id));
+  const broken = new Set(commandProblems().map((problem) => ("id" in problem ? problem.id : "")));
+  return MOCK_COMMANDS.filter((command) => command.id.trim() && !broken.has(command.id));
 }
 
 function manifestView(): CommandManifest {
@@ -1269,7 +1269,7 @@ function manifestView(): CommandManifest {
 const looseFiles = new Map<string, string>([
   [
     "/Users/me/src/kknow/README.md",
-    "# kknow\n\nЗаметочник на Rust. См. [[Rust]] — в отдельном файле ссылка оборвана.\n",
+    "# kknow\n\nA notes app in Rust. See [[Rust]]: in a standalone file the link is broken.\n",
   ],
 ]);
 
@@ -1286,7 +1286,7 @@ function fileEntry(path: string): FileEntry {
 
 function fileView(path: string): NoteView {
   const content = looseFiles.get(path);
-  if (content === undefined) throw coded("fileGone", `файла больше нет, он убран из списка: ${path}`, { value: path });
+  if (content === undefined) throw coded("fileGone", `the file is gone and was removed from the list: ${path}`, { value: path });
   const heading = /^#\s+(.+)$/m.exec(content)?.[1];
   return {
     id: path,
@@ -1317,7 +1317,7 @@ let update: UpdateStatus = sessionStorage.getItem("kknow:mock:updated")
 const attachments = new Map<string, ArrayBuffer | null>();
 
 function mockAttachment(name: string, bytes: ArrayBuffer | null): string {
-  if (!isImageName(name)) throw coded("invalidImageName", `некорректное имя картинки: ${name}`, { value: name });
+  if (!isImageName(name)) throw coded("invalidImageName", `invalid image name: ${name}`, { value: name });
   const dot = name.lastIndexOf(".");
   let free = name;
   for (let n = 2; attachments.has(`attachments/${free}`); n++) {
@@ -1379,7 +1379,7 @@ export async function invoke<T>(
       return keymapView() as T;
 
     case "reveal_keymap":
-      console.info("reveal_keymap: в браузере файлового менеджера нет");
+      console.info("reveal_keymap: the browser has no file manager");
       return undefined as T;
 
     case "open_settings": {
@@ -1450,7 +1450,7 @@ export async function invoke<T>(
 
     case "activate_vault": {
       const found = vaults.find((vault) => vault.id === args?.id);
-      if (!found) throw coded("unknownVault", `хранилище не найдено: ${String(args?.id)}`, { value: String(args?.id) });
+      if (!found) throw coded("unknownVault", `vault not found: ${String(args?.id)}`, { value: String(args?.id) });
       activeVault = found;
       return vaultInfo(found) as T;
     }
@@ -1567,14 +1567,14 @@ export async function invoke<T>(
 
     case "review_proposal": {
       const proposal = proposals.find((each) => each.id === args?.proposal);
-      if (!proposal) throw coded("unknownProposal", `правка ${String(args?.proposal)} не найдена`, { value: String(args?.proposal) });
+      if (!proposal) throw coded("unknownProposal", `proposal ${String(args?.proposal)} not found`, { value: String(args?.proposal) });
       const note = find(proposal.note);
       const review = args?.review as Review;
       let content = note.content;
       for (const index of [...review.accept].sort((a, b) => a - b)) {
         const edit = proposal.edits[index];
         if (content.split(edit.old).length !== 2) {
-          throw coded("staleEdit", `в правке ${proposal.id} изменение ${index + 1} больше не находит свой текст: заметка изменилась`, { value: proposal.id, line: String(index + 1) });
+          throw coded("staleEdit", `in proposal ${proposal.id}, change ${index + 1} no longer finds its text: the note has changed`, { value: proposal.id, line: String(index + 1) });
         }
         content = content.replace(edit.old, edit.new);
       }
@@ -1624,7 +1624,7 @@ export async function invoke<T>(
       const done = args?.done as boolean;
       const lines = note.content.split("\n");
       const changed = setTaskBox(lines[number - 1] ?? "", done);
-      if (changed === null) throw coded("notATask", `в ${note.id} на строке ${number} нет задачи: заметка изменилась`, { value: note.id, line: String(number) });
+      if (changed === null) throw coded("notATask", `${note.id} has no task on line ${number}: the note has changed`, { value: note.id, line: String(number) });
       lines[number - 1] = changed;
       note.content = lines.join("\n");
       // The mock HTML is fixed, so only the box of that line changes.
@@ -1722,13 +1722,13 @@ export async function invoke<T>(
 
     case "reveal_note":
       // The browser has no file manager; the mock only shows that the call arrived.
-      console.info("reveal_note", id ?? "(каталог)");
+      console.info("reveal_note", id ?? "(vault)");
       return undefined as T;
 
     case "delete_note": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.notes.findIndex((note) => note.id === id);
-      if (index < 0) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
+      if (index < 0) throw coded("notFound", `note not found: ${id}`, { value: id });
       putInTrash(asked, `${id}.md`, asked.notes.splice(index, 1), []);
       return undefined as T;
     }
@@ -1743,9 +1743,9 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const to = (args?.to as string).replace(/^\/+|\/+$/g, "");
       const note = asked.notes.find((note) => note.id === id);
-      if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
+      if (!note) throw coded("notFound", `note not found: ${id}`, { value: id });
       if (asked.notes.some((other) => other !== note && other.id === to)) {
-        throw coded("noteExists", `заметка уже существует: ${to}`, { value: to });
+        throw coded("noteExists", `note already exists: ${to}`, { value: to });
       }
       note.id = to;
       note.folder = to.includes("/") ? to.slice(0, to.lastIndexOf("/")) : null;
@@ -1755,7 +1755,7 @@ export async function invoke<T>(
     case "duplicate_note": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const note = asked.notes.find((note) => note.id === id);
-      if (!note) throw coded("notFound", `заметка не найдена: ${id}`, { value: id });
+      if (!note) throw coded("notFound", `note not found: ${id}`, { value: id });
       // As in the core: `copy`, then `copy 2`, `copy 3`, and so on; the first free name.
       let copy = `${note.id} copy`;
       for (let n = 2; asked.notes.some((other) => other.id === copy); n += 1) {
@@ -1835,11 +1835,11 @@ export async function invoke<T>(
     case "restore_trash": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
-      if (index < 0) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.entry)}`, { value: String(args?.entry) });
+      if (index < 0) throw coded("trashEntryNotFound", `trash entry not found: ${String(args?.entry)}`, { value: String(args?.entry) });
       const entry = asked.trash[index];
       // As in the core: a taken file stops the whole restore.
       const taken = entry.notes.find((note) => asked.notes.some((other) => other.id === note.id));
-      if (taken) throw coded("exists", `уже существует: ${taken.id}.md`, { value: `${taken.id}.md` });
+      if (taken) throw coded("exists", `already exists: ${taken.id}.md`, { value: `${taken.id}.md` });
       asked.trash.splice(index, 1);
       asked.notes.push(...entry.notes);
       asked.folders.push(...entry.folders.filter((folder) => !asked.folders.includes(folder)));
@@ -1850,14 +1850,14 @@ export async function invoke<T>(
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const entry = asked.trash.find((each) => each.id === args?.entry);
       const note = entry?.notes.find((each) => `${each.id}.md` === args?.note);
-      if (!note) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.note)}`, { value: String(args?.note) });
+      if (!note) throw coded("trashEntryNotFound", `trash entry not found: ${String(args?.note)}`, { value: String(args?.note) });
       return note.html as T;
     }
 
     case "delete_trash_entry": {
       const asked = vaults.find((entry) => entry.id === args?.vault) ?? activeVault;
       const index = asked.trash.findIndex((entry) => entry.id === args?.entry);
-      if (index < 0) throw coded("trashEntryNotFound", `запись корзины не найдена: ${String(args?.entry)}`, { value: String(args?.entry) });
+      if (index < 0) throw coded("trashEntryNotFound", `trash entry not found: ${String(args?.entry)}`, { value: String(args?.entry) });
       asked.trash.splice(index, 1);
       return undefined as T;
     }
@@ -1874,7 +1874,7 @@ export async function invoke<T>(
         themes: [
           {
             id: "sepia",
-            name: "Сепия",
+            name: "Sepia",
             author: "kknow",
             base: "light",
             source: "vault",
@@ -1893,7 +1893,7 @@ export async function invoke<T>(
           },
           {
             id: "gruvbox-light",
-            name: "Gruvbox светлая",
+            name: "Gruvbox Light",
             author: "kknow",
             base: "light",
             source: "builtIn",
@@ -1944,7 +1944,7 @@ export async function invoke<T>(
 
     case "run_command": {
       const command = MOCK_COMMANDS.find((entry) => entry.id === args?.command);
-      if (!command) throw coded("unknownCommand", `команда не найдена: ${String(args?.command)}`, { value: String(args?.command) });
+      if (!command) throw coded("unknownCommand", `command not found: ${String(args?.command)}`, { value: String(args?.command) });
 
       // The browser has no real processes: the mock sends prepared output,
       // line by line, as the core does. Its job is to show the float.
@@ -1953,7 +1953,7 @@ export async function invoke<T>(
       const stdout = command.output.stdout
         .replace(
           "{path}",
-          (args?.file as string) ?? `/Users/kknow/${(args?.target as string) ?? "(каталог)"}`,
+          (args?.file as string) ?? `/Users/kknow/${(args?.target as string) ?? "(vault)"}`,
         )
         .replace("{target}", (args?.kind as string) ?? "vault");
       const printed: RunLine[] = [
@@ -2005,7 +2005,7 @@ export async function invoke<T>(
       const outputs = new Map(MOCK_COMMANDS.map((command) => [command.id, command.output]));
       const incoming = (args?.commands as CommandSpec[]).map((spec) => ({
         ...spec,
-        output: outputs.get(spec.id) ?? { code: 0, stdout: "готово\n", stderr: "" },
+        output: outputs.get(spec.id) ?? { code: 0, stdout: "done\n", stderr: "" },
       }));
 
       MOCK_COMMANDS.splice(0, MOCK_COMMANDS.length, ...incoming);
@@ -2026,11 +2026,11 @@ export async function invoke<T>(
       return mcpView() as T;
 
     case "reveal_themes":
-      console.info("reveal_themes: в браузере файлового менеджера нет");
+      console.info("reveal_themes: the browser has no file manager");
       return undefined as T;
 
     case "reveal_commands":
-      console.info("reveal_commands: в браузере файлового менеджера нет");
+      console.info("reveal_commands: the browser has no file manager");
       return undefined as T;
 
     case "sync_status":
@@ -2065,7 +2065,7 @@ export async function invoke<T>(
 
     case "git_version": {
       const path = String(args?.path ?? "");
-      if (!path.endsWith("git")) throw coded("gitMissing", `git не найден: ${path}`, { value: path });
+      if (!path.endsWith("git")) throw coded("gitMissing", `git not found: ${path}`, { value: path });
       return "git version 2.47.1" as T;
     }
 
@@ -2090,7 +2090,7 @@ export async function invoke<T>(
     case "git_commit": {
       gitStatus();
       if (!String(args?.message ?? "").trim()) {
-        throw coded("gitEmptyMessage", "пустое сообщение коммита");
+        throw coded("gitEmptyMessage", "empty commit message");
       }
       gitState.changes = gitState.changes.filter((change) => {
         change.staged = null;
@@ -2101,7 +2101,7 @@ export async function invoke<T>(
     }
 
     case "sync_now": {
-      if (!remote) throw coded("syncNotConfigured", "синхронизация не настроена");
+      if (!remote) throw coded("syncNotConfigured", "sync is not set up");
       // A device without the key: the error stays in the status, as in the
       // core, so the settings page shows the unlock form.
       if (storage && !(remote.encrypted && remote.hasKey)) {
@@ -2147,7 +2147,7 @@ export async function invoke<T>(
         removedLocal: 0,
         removedRemote: 0,
         pushed: 0,
-        conflicts: [{ id: "Index", copy: "Index (конфликт 3f9a1c2b)" }],
+        conflicts: [{ id: "Index", copy: "Index (conflict 3f9a1c2b)" }],
       } satisfies SyncReport as T;
     }
 
@@ -2156,8 +2156,8 @@ export async function invoke<T>(
 
     case "open_file": {
       const path = args?.path as string;
-      if (!/\.(md|markdown|mdown)$/i.test(path)) throw coded("notMarkdown", `это не markdown-файл: ${path}`, { value: path });
-      if (!looseFiles.has(path)) looseFiles.set(path, `# ${fileEntry(path).name}\n\nОткрыт в заглушке.\n`);
+      if (!/\.(md|markdown|mdown)$/i.test(path)) throw coded("notMarkdown", `not a markdown file: ${path}`, { value: path });
+      if (!looseFiles.has(path)) looseFiles.set(path, `# ${fileEntry(path).name}\n\nOpened in the mock.\n`);
       return { kind: "file", path } as T;
     }
 
@@ -2205,6 +2205,6 @@ export async function invoke<T>(
       return association as T;
 
     default:
-      throw new Error(`мок не знает команду ${command}`);
+      throw new Error(`the mock does not know the command ${command}`);
   }
 }

@@ -704,7 +704,7 @@ vault. Thus the file keeps its links, backlinks and search.
 A standalone file has no vault. Thus it has no search, backlinks or commands,
 and `[[links]]` in the preview are broken. kknow saves it as carefully as a
 note. If another program changed the file, kknow keeps that version on disk. It
-writes the window text next to it as a copy `README (конфликт 3f9a1c2b).md`.
+writes the window text next to it as a copy `README (conflict 3f9a1c2b).md`.
 This copy also appears in the list.
 
 ### Opening .md in kknow
@@ -814,7 +814,7 @@ edit and after a restart.
 kknow keeps bookmarks in the vault, in `.kknow/bookmarks.json`, so the terminal
 also sees them. `kknow bookmarks` prints the list, with names in «». `kknow
 bookmark plan 12` adds or removes a bookmark. `kknow bookmark plan 12 --name
-итоги` gives the bookmark a name, and sets the bookmark if it is not there.
+summary` gives the bookmark a name, and sets the bookmark if it is not there.
 `--name ""` removes the name. Sync copies `bookmarks.json` with the notes. If
 both machines changed the bookmarks, kknow keeps the bookmarks of both.
 Standalone files have no bookmarks.
@@ -852,13 +852,13 @@ kknow trash restore 1761300000    # put an entry back to its old path
 kknow trash empty                 # remove all entries for good
 ```
 
-In the window, each vault tree ends with the "Корзина" node. The number next
+In the window, each vault tree ends with the "Trash" node. The number next
 to it is the number of entries. Expand it to see the entries, the newest
 first. A click on a deleted note opens it read-only, over the open note:
-"Восстановить" in its header puts it back, Esc closes it. A deleted folder
+"Restore" in its header puts it back, Esc closes it. A deleted folder
 expands to its notes, and they open the same way. The menu of an entry ("⋯"
-or a right click) has "Восстановить" (a single note opens) and "Удалить
-навсегда". The menu of the "Корзина" node has "Очистить корзину". Both
+or a right click) has "Restore" (a single note opens) and "Delete for
+good". The menu of the "Trash" node has "Empty the trash". Both
 removals ask for a confirmation.
 
 A restore does not overwrite a note. If a file of the entry is taken, nothing
@@ -902,7 +902,7 @@ it to the [trash](#trash): the delete on the other device can be a mistake.
 
 If both sides changed a note, by default kknow keeps both versions. The local
 version stays in place. kknow writes the other version next to it as a copy
-`Note (конфликт 88b6a2d6)`. The name contains the content hash. Thus a repeated
+`Note (conflict 88b6a2d6)`. The name contains the content hash. Thus a repeated
 sync uses the existing copy and does not make new copies. The copy is an
 ordinary note. It goes to the cloud and appears on other devices, and you can
 merge it manually there. `--on-conflict local|remote` selects a side without a
@@ -1054,8 +1054,8 @@ folder.
 A vault and the shared folder can both have a theme with the same file name.
 Then that vault uses its own theme. For such a theme, the button is "Update
 shared". It overwrites the shared copy with the vault version. `kknow themes`
-shows the source of each theme: `встроенная` (built-in), `хранилище` (vault)
-or `общая` (shared).
+shows the source of each theme: `built-in`, `vault`
+or `shared`.
 
 To change a built-in theme, put a file with the same name (`gruvbox.json` or
 `gruvbox-light.json`) into the shared folder or into a vault. That file
@@ -1067,7 +1067,7 @@ All labels are in the `locales/` folder: one JSON file per language
 (`ru.json` is the default, `en.json`). The format is i18next JSON v4 with flat
 keys, so translation tools such as Weblate, Crowdin or i18n Ally can edit the
 files. To add a language, copy `ru.json` to `<code>.json`, translate it, and
-add the code to `LOCALES` in `src-tauri/src/menu.rs`. `pnpm ui:test` checks
+add the code to `LOCALES` in `src-tauri/src/i18n.rs`. `pnpm ui:test` checks
 that the new file has all keys and placeholders. To change the language, use
 the gear menu in the status bar or the settings ("General"). Each language
 name is in its own language: "Русский" stays "Русский" in the English locale
@@ -1083,8 +1083,8 @@ wrote the app in Russian first. On an English macOS, it would start to use a
 translation without your decision. You select the language, and kknow keeps it
 after a restart.
 
-Error messages come from the core and stay in Russian. The CLI uses the same
-messages, and they do not go through this dictionary.
+The window shows the errors of the core in its own language. The CLI and the
+MCP server print the messages of the core as they are, in English.
 
 ## Custom commands
 

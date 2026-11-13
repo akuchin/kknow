@@ -4,7 +4,8 @@ import { defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
 import type { KeyBinding } from "@codemirror/view";
 
-import { api, type KeymapView } from "../api";
+import { api, type KeymapView, type KeyProblem } from "../api";
+import { keyProblemText } from "../core-text";
 import {
   MAC,
   bind,
@@ -310,7 +311,7 @@ function keyRow(action: Exclude<Action, FixedAction>): HTMLElement {
 }
 
 /** Entries of a hand-edited file that the core skipped. */
-function keyProblems(problems: string[]): HTMLElement {
+function keyProblems(problems: KeyProblem[]): HTMLElement {
   const box = document.createElement("div");
   box.className = "settings-key-problems";
   const title = document.createElement("p");
@@ -318,7 +319,7 @@ function keyProblems(problems: string[]): HTMLElement {
   const list = document.createElement("ul");
   for (const problem of problems) {
     const item = document.createElement("li");
-    item.textContent = problem;
+    item.textContent = keyProblemText(problem);
     list.append(item);
   }
   box.append(title, list);

@@ -171,7 +171,7 @@ impl VaultRegistry {
                 Ok(Loaded {
                     registry: VaultRegistry::default(),
                     problem: Some(format!(
-                        "реестр хранилищ не разобрать ({error}); он отложен в {}",
+                        "cannot parse the vault registry ({error}); it is moved to {}",
                         broken.display()
                     )),
                 })
@@ -185,7 +185,7 @@ impl VaultRegistry {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("реестр сериализуем");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("the registry serializes");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");
@@ -328,7 +328,7 @@ impl VaultRegistry {
         };
 
         self.vaults.push(entry);
-        let added = self.vaults.last().expect("только что добавили");
+        let added = self.vaults.last().expect("just added");
         if self.active.is_none() {
             self.active = Some(added.id.clone());
         }
@@ -404,7 +404,7 @@ impl VaultRegistry {
         (2..)
             .map(|number| format!("{base}-{number}"))
             .find(|candidate| self.get(candidate).is_none())
-            .expect("свободный идентификатор находится")
+            .expect("a free ID exists")
     }
 
     /// The first label colour not in use. When all are in use, start the cycle

@@ -14,6 +14,8 @@
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
 
+use crate::errors::ErrorView;
+
 /// The system content type for markdown: `.md`, `.markdown`, `.mdown`.
 pub const MARKDOWN_TYPE: &str = "net.daringfireball.markdown";
 
@@ -53,14 +55,64 @@ pub fn markdown_association<R: Runtime>(app: AppHandle<R>) -> Association {
 /// `/Applications` (or started from there). It does not know a dev build and
 /// returns an error.
 #[tauri::command(async)]
-pub fn claim_markdown<R: Runtime>(app: AppHandle<R>) -> Result<Association, String> {
-    imp::set_default_handler(MARKDOWN_TYPE, &app.config().identifier)?;
+pub fn claim_markdown<R: Runtime>(app: AppHandle<R>) -> Result<Association, ErrorView> {
+    imp::set_default_handler(MARKDOWN_TYPE, &app.config().identifier).map_err(Refusal::view)?;
     Ok(association(&app))
+}
+
+/// Why the system did not make kknow the default app.
+///
+/// Each system builds only some of the variants.
+#[derive(Debug)]
+#[allow(dead_code)]
+enum Refusal {
+    /// Only macOS lets the app do this.
+    Unsupported,
+    /// A name with a zero byte: Core Foundation does not take it.
+    BadName(String),
+    /// Launch Services knows only an installed app.
+    NotInstalled(String),
+    /// Another code of Launch Services.
+    Status(i32),
+}
+
+impl Refusal {
+    /// A code for the window, as in `errors.rs`.
+    fn view(self) -> ErrorView {
+        let message = self.to_string();
+        let (code, value) = match self {
+            Refusal::Unsupported => ("associationUnsupported", None),
+            Refusal::BadName(name) => ("associationBadName", Some(name)),
+            Refusal::NotInstalled(bundle) => ("associationNotInstalled", Some(bundle)),
+            Refusal::Status(status) => ("associationStatus", Some(status.to_string())),
+        };
+        ErrorView {
+            code,
+            params: value.map(|value| ("value", value)).into_iter().collect(),
+            message,
+        }
+    }
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refusal::Unsupported => write!(f, "only macOS lets kknow set the default app"),
+            Refusal::BadName(name) => write!(f, "invalid name: {name}"),
+            Refusal::NotInstalled(bundle) => write!(
+                f,
+                "the system does not know the app {bundle}: only an installed app can be the default"
+            ),
+            Refusal::Status(status) => write!(f, "Launch Services refused (code {status})"),
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
 mod imp {
     use std::ffi::{CStr, CString, c_char, c_void};
+
+    use super::Refusal;
 
     pub const SUPPORTED: bool = true;
 
@@ -151,18 +203,16 @@ mod imp {
         CfString(raw).to_string()
     }
 
-    pub fn set_default_handler(content_type: &str, bundle: &str) -> Result<(), String> {
-        let kind = CfString::new(content_type).ok_or("негодный тип содержимого")?;
-        let handler = CfString::new(bundle).ok_or("негодный идентификатор приложения")?;
+    pub fn set_default_handler(content_type: &str, bundle: &str) -> Result<(), Refusal> {
+        let kind = CfString::new(content_type)
+            .ok_or_else(|| Refusal::BadName(content_type.to_string()))?;
+        let handler = CfString::new(bundle).ok_or_else(|| Refusal::BadName(bundle.to_string()))?;
         // SAFETY: both strings live until the call ends.
         let status = unsafe { LSSetDefaultRoleHandlerForContentType(kind.0, ROLES_ALL, handler.0) };
         match status {
             0 => Ok(()),
-            NOT_FOUND => Err(format!(
-                "система не знает приложение {bundle}: назначить его можно только \
-                 установленному — pnpm install:app"
-            )),
-            other => Err(format!("Launch Services отказали (код {other})")),
+            NOT_FOUND => Err(Refusal::NotInstalled(bundle.to_string())),
+            other => Err(Refusal::Status(other)),
         }
     }
 
@@ -194,7 +244,9 @@ mod imp {
         None
     }
 
-    pub fn set_default_handler(_content_type: &str, _bundle: &str) -> Result<(), String> {
-        Err("назначить программу по умолчанию отсюда можно только на macOS".into())
+    use super::Refusal;
+
+    pub fn set_default_handler(_content_type: &str, _bundle: &str) -> Result<(), Refusal> {
+        Err(Refusal::Unsupported)
     }
 }

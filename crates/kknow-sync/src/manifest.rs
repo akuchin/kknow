@@ -166,7 +166,7 @@ impl Manifest {
     /// Indented JSON: the manifest stays in the cloud for years, and one day a
     /// person will read or fix it by hand.
     pub fn to_json(&self) -> Vec<u8> {
-        let mut bytes = serde_json::to_vec_pretty(self).expect("манифест сериализуем");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("the manifest serializes");
         bytes.push(b'\n');
         bytes
     }
@@ -234,19 +234,19 @@ impl TryFrom<Wire> for Manifest {
     fn try_from(wire: Wire) -> std::result::Result<Self, Self::Error> {
         if wire.format > FORMAT {
             return Err(format!(
-                "манифест версии {}, а эта сборка знает только {FORMAT}",
+                "the manifest has format {}, and this build knows only {FORMAT}: update kknow",
                 wire.format
             ));
         }
 
         let mut notes = BTreeMap::new();
         for (raw, entry) in wire.notes {
-            let id = NoteId::parse(&raw).ok_or_else(|| format!("недопустимый ключ: {raw}"))?;
+            let id = NoteId::parse(&raw).ok_or_else(|| format!("invalid key: {raw}"))?;
             notes.insert(id, entry);
         }
         for key in wire.files.keys() {
             if !crate::shared::is_shared(key) {
-                return Err(format!("недопустимый служебный файл: {key}"));
+                return Err(format!("invalid service file: {key}"));
             }
         }
         Ok(Manifest {

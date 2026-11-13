@@ -143,7 +143,99 @@ pub struct Theme {
     pub variables: BTreeMap<String, String>,
     /// What was dropped and why. The theme still works: one bad value must not
     /// leave the user without a theme.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Warning>,
+}
+
+/// A variable that a theme lost, and why.
+///
+/// It is data, not a ready text: the CLI prints `Display`, and the window
+/// translates `problem.theme.<code>` with the fields, in its own language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeWarning"))]
+pub enum Warning {
+    /// The UI has no such variable.
+    UnknownVariable {
+        variable: String,
+    },
+    EmptyValue {
+        variable: String,
+    },
+    /// Longer than [`MAX_VALUE`]: it is not a colour.
+    TooLong {
+        variable: String,
+        max: u32,
+    },
+    BadCharacter {
+        variable: String,
+        character: String,
+    },
+    /// A function that is not in [`FUNCTIONS`].
+    Function {
+        variable: String,
+        function: String,
+    },
+}
+
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Warning::UnknownVariable { variable } => {
+                write!(f, "{variable}: the interface has no such variable")
+            }
+            Warning::EmptyValue { variable } => write!(f, "{variable}: the value is empty"),
+            Warning::TooLong { variable, max } => {
+                write!(f, "{variable}: longer than {max} bytes, this is not a color")
+            }
+            Warning::BadCharacter {
+                variable,
+                character,
+            } => write!(f, "{variable}: character {character} is not allowed"),
+            Warning::Function { variable, function } => {
+                write!(f, "{variable}: function {function}(…) is not allowed in a theme")
+            }
+        }
+    }
+}
+
+/// Why a manifest is not a theme.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Invalid {
+    /// The file does not read, is not JSON, or is JSON of another shape.
+    Json(String),
+    NoName,
+}
+
+impl Invalid {
+    /// The problem of the file at `path`.
+    fn at(self, path: String) -> Problem {
+        match self {
+            Invalid::Json(detail) => Problem::File { path, detail },
+            Invalid::NoName => Problem::NoName { path },
+        }
+    }
+}
+
+/// A file or a folder that gave no theme.
+///
+/// Like [`Warning`], it is data that each frontend writes in its own language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeProblem"))]
+pub enum Problem {
+    /// The file or the folder does not read, or the file does not parse.
+    File { path: String, detail: String },
+    /// The manifest has no name.
+    NoName { path: String },
+}
+
+impl std::fmt::Display for Problem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Problem::File { path, detail } => write!(f, "{path}: {detail}"),
+            Problem::NoName { path } => write!(f, "{path}: the theme has no name"),
+        }
+    }
 }
 
 /// Themes of a directory and problems with files that are not themes.
@@ -154,7 +246,7 @@ pub struct ThemeSet {
     pub themes: Vec<Theme>,
     /// Files that did not parse. A theme must not disappear silently: its author
     /// expects a result and will look for the cause.
-    pub problems: Vec<String>,
+    pub problems: Vec<Problem>,
 }
 
 /// The manifest as stored in the file.
@@ -173,12 +265,13 @@ struct Manifest {
 impl Theme {
     /// Parses a manifest. It fails only if the file is not a manifest at all;
     /// bad variables become warnings.
-    pub fn parse(id: impl Into<String>, json: &str) -> Result<Self, String> {
-        let manifest: Manifest = serde_json::from_str(json).map_err(|error| error.to_string())?;
+    pub fn parse(id: impl Into<String>, json: &str) -> Result<Self, Invalid> {
+        let manifest: Manifest =
+            serde_json::from_str(json).map_err(|error| Invalid::Json(error.to_string()))?;
 
         let name = manifest.name.trim().to_string();
         if name.is_empty() {
-            return Err("у темы нет имени".to_string());
+            return Err(Invalid::NoName);
         }
 
         let mut variables = BTreeMap::new();
@@ -189,11 +282,11 @@ impl Theme {
             let name = raw_name.trim().trim_start_matches("--").to_string();
 
             if !VARIABLES.contains(&name.as_str()) {
-                warnings.push(format!("{raw_name}: интерфейс не знает такой переменной"));
+                warnings.push(Warning::UnknownVariable { variable: raw_name });
                 continue;
             }
-            if let Err(reason) = check_value(&value) {
-                warnings.push(format!("{raw_name}: {reason}"));
+            if let Err(warning) = check_value(&raw_name, &value) {
+                warnings.push(warning);
                 continue;
             }
 
@@ -219,20 +312,27 @@ impl Theme {
 /// escape from it. The real reason to reject is different: the browser runs
 /// `url(…)` and `image-set(…)`, and a theme is a file from someone else's
 /// directory.
-fn check_value(value: &str) -> Result<(), String> {
+fn check_value(variable: &str, value: &str) -> Result<(), Warning> {
+    let variable = variable.to_string();
     let value = value.trim();
 
     if value.is_empty() {
-        return Err("пустое значение".to_string());
+        return Err(Warning::EmptyValue { variable });
     }
     if value.len() > MAX_VALUE {
-        return Err(format!("длиннее {MAX_VALUE} байт — это не цвет"));
+        return Err(Warning::TooLong {
+            variable,
+            max: MAX_VALUE as u32,
+        });
     }
     if let Some(bad) = value
         .chars()
         .find(|symbol| ";{}<>\\/@".contains(*symbol) || symbol.is_control())
     {
-        return Err(format!("недопустимый символ {bad:?}"));
+        return Err(Warning::BadCharacter {
+            variable,
+            character: format!("{bad:?}"),
+        });
     }
 
     // Parentheses are allowed only for functions, and only for listed ones.
@@ -247,7 +347,10 @@ fn check_value(value: &str) -> Result<(), String> {
         let name = &head[start..];
 
         if !FUNCTIONS.contains(&name.to_ascii_lowercase().as_str()) {
-            return Err(format!("функция {name}(…) в теме запрещена"));
+            return Err(Warning::Function {
+                variable,
+                function: name.to_string(),
+            });
         }
         rest = &rest[open + 1..];
     }
@@ -270,7 +373,7 @@ pub fn load(vault_root: Option<&Path>, global: Option<&Path>) -> ThemeSet {
                 set.themes.push(theme);
             }
             // Tests catch this, but a broken manifest must not hide silently.
-            Err(reason) => set.problems.push(format!("встроенная тема {id}: {reason}")),
+            Err(invalid) => set.problems.push(invalid.at(id.to_string())),
         }
     }
 
@@ -293,7 +396,10 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
         Err(error) => {
-            set.problems.push(format!("{}: {error}", dir.display()));
+            set.problems.push(Problem::File {
+                path: dir.display().to_string(),
+                detail: error.to_string(),
+            });
             return;
         }
     };
@@ -309,7 +415,7 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_default();
 
-        match std::fs::read_to_string(&path).map_err(|error| error.to_string()) {
+        match std::fs::read_to_string(&path).map_err(|error| Invalid::Json(error.to_string())) {
             Ok(json) => match Theme::parse(id, &json) {
                 Ok(mut theme) => {
                     theme.source = source;
@@ -322,9 +428,9 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
                     set.themes.retain(|known| known.id != theme.id);
                     set.themes.push(theme);
                 }
-                Err(reason) => set.problems.push(format!("{}: {reason}", path.display())),
+                Err(invalid) => set.problems.push(invalid.at(path.display().to_string())),
             },
-            Err(reason) => set.problems.push(format!("{}: {reason}", path.display())),
+            Err(invalid) => set.problems.push(invalid.at(path.display().to_string())),
         }
     }
 }
@@ -344,7 +450,7 @@ pub fn share(vault_root: &Path, id: &str, global: &Path) -> std::io::Result<Path
     if !plain {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("«{id}» — не имя темы"),
+            format!("not a theme name: {id}"),
         ));
     }
 
@@ -404,7 +510,10 @@ mod tests {
         assert_eq!(parsed.variables.len(), 1);
         assert_eq!(parsed.warnings.len(), 1);
         assert!(
-            parsed.warnings[0].starts_with("bgg:"),
+            parsed.warnings[0]
+                == Warning::UnknownVariable {
+                    variable: "bgg".into()
+                },
             "{:?}",
             parsed.warnings
         );
@@ -434,7 +543,7 @@ mod tests {
     #[test]
     fn colour_functions_are_allowed() {
         for value in ["rgb(1 2 3)", "rgba(1,2,3,0.5)", "hsl(210 40% 30%)"] {
-            assert!(check_value(value).is_ok(), "{value}");
+            assert!(check_value("bg", value).is_ok(), "{value}");
         }
     }
 
@@ -447,13 +556,13 @@ mod tests {
             "red /* хвост */",
             "",
         ] {
-            assert!(check_value(value).is_err(), "{value}");
+            assert!(check_value("bg", value).is_err(), "{value}");
         }
     }
 
     #[test]
     fn font_stacks_survive_the_check() {
-        assert!(check_value("\"PT Sans\", -apple-system, sans-serif").is_ok());
+        assert!(check_value("font-text", "\"PT Sans\", -apple-system, sans-serif").is_ok());
     }
 
     #[test]
@@ -562,11 +671,7 @@ mod tests {
         let set = load(None, None);
 
         let ids: Vec<&str> = set.themes.iter().map(|theme| theme.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            ["gruvbox-light", "gruvbox"],
-            "по имени: «светлая» < «тёмная»"
-        );
+        assert_eq!(ids, ["gruvbox", "gruvbox-light"], "by name: Dark < Light");
         assert!(set.problems.is_empty(), "{:?}", set.problems);
         for theme in &set.themes {
             assert_eq!(theme.source, Source::BuiltIn);

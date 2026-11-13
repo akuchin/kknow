@@ -34,8 +34,8 @@ pub const THREADS_DIR: &str = ".kknow/threads";
 pub const ME: &str = "me";
 
 /// The author of answers that an agent wrote in the text: the text does not
-/// say which agent it was.
-pub const AGENT: &str = "агент";
+/// say which agent it was. Old threads have "агент" here.
+pub const AGENT: &str = "agent";
 
 /// A claim older than this is free again: the agent that took the task
 /// probably stopped. Thirty minutes is longer than any task of one comment.
@@ -62,12 +62,12 @@ pub enum Status {
 impl Status {
     pub fn word(self) -> &'static str {
         match self {
-            Status::Open => "открыт",
-            Status::InProgress => "в работе",
-            Status::Question => "вопрос",
-            Status::Answered => "есть ответ",
-            Status::Review => "на проверке",
-            Status::Done => "готово",
+            Status::Open => "open",
+            Status::InProgress => "in progress",
+            Status::Question => "question",
+            Status::Answered => "answered",
+            Status::Review => "in review",
+            Status::Done => "done",
         }
     }
 
@@ -87,6 +87,28 @@ pub struct Message {
     pub text: String,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub at: u64,
+    /// A message that kknow wrote, not a person or an agent. `text` is for the
+    /// agent; the window shows the event in its own language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub event: Option<Event>,
+}
+
+/// What happened to the proposal of a thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThreadEvent"))]
+pub enum Event {
+    /// The agent proposed an edit for the task.
+    Proposed { proposal: String, reason: String },
+    /// The person rejected the edit.
+    Rejected { proposal: String, feedback: String },
+    /// The person accepted the edit, fully or partly.
+    Accepted {
+        proposal: String,
+        partly: bool,
+        feedback: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,12 +138,17 @@ pub struct Thread {
 
 impl Thread {
     fn say(&mut self, from: &str, text: &str) {
+        self.say_event(from, text, None);
+    }
+
+    fn say_event(&mut self, from: &str, text: &str, event: Option<Event>) {
         let text = text.trim();
         if !text.is_empty() {
             self.messages.push(Message {
                 from: from.to_string(),
                 text: text.to_string(),
                 at: now(),
+                event,
             });
         }
         self.updated = now();
@@ -284,7 +311,7 @@ impl Workspace {
     }
 
     fn thread_value(&self, note: &NoteId, comment: &AgentComment) -> Thread {
-        let id = comment.id.clone().expect("у комментария уже есть ID");
+        let id = comment.id.clone().expect("the comment already has an ID");
         let time = now();
         Thread {
             id,
@@ -296,6 +323,7 @@ impl Workspace {
                 from: ME.to_string(),
                 text: comment.text.clone(),
                 at: time,
+                event: None,
             }],
             proposal: None,
             created: time,
@@ -317,7 +345,7 @@ impl Workspace {
             Status::Open | Status::Answered => false,
         };
         if busy {
-            return Err(Error::CommentBusy(thread.id.clone(), thread.status.word()));
+            return Err(Error::CommentBusy(thread.id.clone(), thread.status));
         }
         thread.status = Status::InProgress;
         // The claim is not a message: it only moves the time of the thread,
@@ -344,7 +372,7 @@ impl Workspace {
         }
         let mut thread = self.open_thread(target)?;
         if thread.status == Status::Done {
-            return Err(Error::CommentBusy(thread.id.clone(), thread.status.word()));
+            return Err(Error::CommentBusy(thread.id.clone(), thread.status));
         }
         thread.say(from, text);
         thread.status = if from == ME {
@@ -368,6 +396,17 @@ impl Workspace {
         target: &CommentRef,
         from: &str,
         summary: Option<&str>,
+    ) -> Result<String> {
+        self.resolve_with_event(target, from, summary, None)
+    }
+
+    /// [`Self::resolve_comment`], with the event of the last message.
+    fn resolve_with_event(
+        &mut self,
+        target: &CommentRef,
+        from: &str,
+        summary: Option<&str>,
+        event: Option<Event>,
     ) -> Result<String> {
         let (note, changed) = match target {
             CommentRef::Id(id) => {
@@ -406,7 +445,7 @@ impl Workspace {
         self.save(&note, &changed)?;
 
         if let Some(mut thread) = thread_id.and_then(|id| self.thread(&id).ok().flatten()) {
-            thread.say(from, summary.unwrap_or(""));
+            thread.say_event(from, summary.unwrap_or(""), event);
             thread.status = Status::Done;
             thread.proposal = None;
             self.put_thread(&thread)?;
@@ -422,9 +461,13 @@ impl Workspace {
         proposal: &Proposal,
     ) -> Result<Thread> {
         let mut thread = self.open_thread(target)?;
-        thread.say(
+        thread.say_event(
             agent,
-            &format!("предложил правку {}: {}", proposal.id, proposal.reason),
+            &format!("proposed edit {}: {}", proposal.id, proposal.reason),
+            Some(Event::Proposed {
+                proposal: proposal.id.clone(),
+                reason: proposal.reason.clone(),
+            }),
         );
         thread.status = Status::Review;
         thread.proposal = Some(proposal.id.clone());
@@ -451,11 +494,15 @@ impl Workspace {
         let feedback = proposal.feedback.as_deref().unwrap_or("");
         if status == ProposalStatus::Rejected {
             let text = if feedback.is_empty() {
-                format!("правка {} отклонена", proposal.id)
+                format!("edit {} rejected", proposal.id)
             } else {
-                format!("правка {} отклонена: {feedback}", proposal.id)
+                format!("edit {} rejected: {feedback}", proposal.id)
             };
-            thread.say(ME, &text);
+            let event = Event::Rejected {
+                proposal: proposal.id.clone(),
+                feedback: feedback.to_string(),
+            };
+            thread.say_event(ME, &text, Some(event));
             thread.status = Status::Answered;
             thread.proposal = None;
             self.put_thread(&thread)?;
@@ -464,13 +511,27 @@ impl Workspace {
         // Accepted, fully or partly: the task is done. The comment may be gone
         // already (the accepted edit removed it), and that is fine.
         let target = CommentRef::Id(id.to_string());
-        let text = if feedback.is_empty() {
-            format!("правка {}: {}", proposal.id, status.word())
+        let partly = status == ProposalStatus::Partial;
+        let word = if partly {
+            "partly accepted"
         } else {
-            format!("правка {}: {}; {feedback}", proposal.id, status.word())
+            "accepted"
         };
-        if self.resolve_comment(&target, ME, Some(&text)).is_err() {
-            thread.say(ME, &text);
+        let text = if feedback.is_empty() {
+            format!("edit {}: {word}", proposal.id)
+        } else {
+            format!("edit {}: {word}; {feedback}", proposal.id)
+        };
+        let event = Event::Accepted {
+            proposal: proposal.id.clone(),
+            partly,
+            feedback: feedback.to_string(),
+        };
+        if self
+            .resolve_with_event(&target, ME, Some(&text), Some(event.clone()))
+            .is_err()
+        {
+            thread.say_event(ME, &text, Some(event));
             thread.status = Status::Done;
             thread.proposal = None;
             self.put_thread(&thread)?;

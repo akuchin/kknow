@@ -59,10 +59,12 @@ The labels are in the `locales/` folder of the repository, one i18next JSON
 file per language. To add a language:
 
 1. Copy `locales/ru.json` to `locales/<code>.json` and translate it.
-2. Add the code to `LOCALES` in `src-tauri/src/menu.rs`.
+2. Add the code to `LOCALES` in `src-tauri/src/i18n.rs`.
 3. Run `pnpm ui:test`. It checks that the file has all keys and placeholders.
 
-Error messages from the core and the CLI output stay in Russian.
+The window also translates the messages of the core: errors, problems in
+the themes, keys and commands files, and the names of the built-in themes and
+commands. The CLI output is in English.
 
 ## Keyboard shortcuts
 

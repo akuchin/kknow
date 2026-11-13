@@ -309,6 +309,12 @@ The app has two windows: the main window and the settings. Both read
 `settings.json` and get each change as an event. kknow does not use
 `localStorage`, because each window has its own browser storage.
 
+The core sends no ready text to the window. An error is a code with values,
+and a problem in a themes, keys or commands file is an enum with a `code`. The
+window translates them with the keys in `locales/<language>.json`, and a code
+without a key is a TypeScript error. The CLI prints the text of the same
+types.
+
 ## Where the data is
 
 ```text

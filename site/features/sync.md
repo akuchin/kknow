@@ -86,7 +86,7 @@ Move the files to the root of the storage, or sync into a new prefix.
 If both devices changed the same note, kknow keeps both versions by default:
 
 - your version stays in place;
-- the other version goes next to it as `Note (конфликт 88b6a2d6).md`.
+- the other version goes next to it as `Note (conflict 88b6a2d6).md`.
 
 The copy is an ordinary note. It syncs to other devices too, and you can merge
 it anywhere. A repeated sync does not make new copies.

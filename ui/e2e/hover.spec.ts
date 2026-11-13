@@ -21,7 +21,7 @@ test("⌘ and hover on a preview link show the note, Esc hides it", async ({ pag
   await hoverWithKey(page, page.locator("#preview a", { hasText: "Projects/kknow" }));
   await expect(popup(page)).toBeVisible();
   await expect(popup(page).locator(".hover-preview-head")).toContainText("kknow");
-  await expect(popup(page).locator(".hover-preview-body")).toContainText("Планы");
+  await expect(popup(page).locator(".hover-preview-body")).toContainText("Plans");
   await page.keyboard.up("ControlOrMeta");
 
   await page.keyboard.press("Escape");
@@ -37,7 +37,7 @@ test("a hover without the key shows nothing", async ({ page }) => {
 test("⌘ and hover on a link in the editor show the note too", async ({ page }) => {
   await hoverWithKey(page, editorText(page).getByText("Projects/kknow"));
   await expect(popup(page)).toBeVisible();
-  await expect(popup(page).locator(".hover-preview-body")).toContainText("Проект на");
+  await expect(popup(page).locator(".hover-preview-body")).toContainText("A project in");
 
   // The title opens the note.
   await popup(page).locator(".hover-preview-head .link").click();
@@ -48,7 +48,7 @@ test("⌘ and hover on a link in the editor show the note too", async ({ page })
 
 test("a link to a missing note says so", async ({ page }) => {
   await noteRow(page, "Index").click();
-  await hoverWithKey(page, page.locator("#preview a", { hasText: "Призрак" }));
-  await expect(popup(page)).toContainText(t("hover.missing", { name: "Призрак" }));
+  await hoverWithKey(page, page.locator("#preview a", { hasText: "Ghost" }));
+  await expect(popup(page)).toContainText(t("hover.missing", { name: "Ghost" }));
   await page.keyboard.up("ControlOrMeta");
 });

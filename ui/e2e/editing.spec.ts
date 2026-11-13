@@ -60,12 +60,12 @@ test("[[ offers notes, and the pick closes the link", async ({ page }) => {
 });
 
 test("[[note# offers the headings of that note", async ({ page }) => {
-  await typeAtEnd(page, "[[kknow#Пл");
-  await pick(page, "Планы");
-  await expect(editorText(page)).toContainText("kknow#Планы");
+  await typeAtEnd(page, "[[kknow#Pl");
+  await pick(page, "Plans");
+  await expect(editorText(page)).toContainText("kknow#Plans");
   // The pick closed the link: the next word goes after it.
   await page.keyboard.type(" next");
-  await expect(liveLink(page, "kknow#Планы")).toBeVisible();
+  await expect(liveLink(page, "kknow#Plans")).toBeVisible();
 });
 
 test("#ta offers the tags of the vault", async ({ page }) => {
@@ -91,8 +91,8 @@ test("⌘-click on a link opens its note, a plain click edits it", async ({ page
 });
 
 test("⌘-click on a link to a missing note creates the note", async ({ page }) => {
-  await liveLink(page, "Призрак").click({ modifiers: ["ControlOrMeta"] });
-  await expect(page.locator("#note-title")).toHaveText("Призрак");
+  await liveLink(page, "Ghost").click({ modifiers: ["ControlOrMeta"] });
+  await expect(page.locator("#note-title")).toHaveText("Ghost");
   await expect(page.locator("#status-message")).toHaveText(t("status.created"));
 });
 

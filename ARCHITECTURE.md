@@ -630,7 +630,7 @@ a `README.md` from a repository, a draft on the desktop.
   (`save_if_unchanged`).
 
   If the file changed, the other version stays on disk.
-  kknow saves our version as a copy `README (конфликт <hash>).md`, and the copy
+  kknow saves our version as a copy `README (conflict <hash>).md`, and the copy
   appears in the list. The write goes through a temporary `.kknow-tmp` and
   `rename`, and it copies the permissions of the old file. Without this, a file
   that only you can read would silently become readable by others.
@@ -1195,10 +1195,10 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 
   Links follow the moved notes: see "Core: parsing, graph, files". The
   `rename_note` and `rename_folder` commands return the number of notes with
-  changed links. The status bar shows it after "renamed": "переименовано ·
-  обновлены ссылки в 3 заметках". A duplicate goes next to the original:
+  changed links. The status bar shows it after "renamed": "renamed ·
+  updated links in 3 notes". A duplicate goes next to the original:
   `Name copy`, `Name copy 2`, the first free name.
-- Each vault tree ends with the trash node, "Корзина" (`trashItem`).
+- Each vault tree ends with the trash node, "Trash" (`trashItem`).
   - `loadNotes` reads the trash entries (`list_trash`) with the notes and the
     folders. Thus each reload of a tree updates the trash: after a delete,
     a restore and an edit in a different vault. A broken trash folder gives
@@ -1210,8 +1210,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   - The entries are the newest first: the latest delete is the one to undo.
     An entry row shows the deleted path and the age in days. The tooltip adds
     the note count and the delete time.
-  - The menu of an entry ("⋯" or a right click) has "Восстановить" and
-    "Удалить навсегда". The menu of the node has "Очистить корзину".
+  - The menu of an entry ("⋯" or a right click) has "Restore" and
+    "Delete for good". The menu of the node has "Empty the trash".
   - A click on a deleted note opens it read-only (`viewTrashNote`). A deleted
     folder expands to its notes (`TrashEntry::notes`), and a click on one of
     them does the same.
@@ -1224,7 +1224,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
       the note as it was. Opening any note closes the view.
     - The view paints code and diagrams. It does not load images: they load
       through the open note (`setImageOwner`), and this note is not open.
-    - "Восстановить" in the view header puts back the whole entry. For a note
+    - "Restore" in the view header puts back the whole entry. For a note
       of a deleted folder, the button names the folder.
   - A restore goes through `Workspace::restore`, so the index and the graph
     follow. A single note then opens; a folder only returns to the tree. A
@@ -1301,7 +1301,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   (`src-tauri/src/menu.rs`). The menu is the system default with one more
   item, so Edit (copy, paste) and Quit stay as they were. The menu takes ⌘,
   before the webview, so the key also works in the settings window. The item
-  text follows the UI language: `set_settings` changes it.
+  text follows the UI language: `set_settings` changes it. The title of the
+  settings window follows it too (`src-tauri/src/i18n.rs`).
 - Sections:
   - General — language, whether to open the last note.
   - Appearance — theme, errors in the themes of the active vault, and what
@@ -1366,8 +1367,8 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   purpose. The message has `role="status"`, and the chip has `aria-haspopup`.
 - All labels are in `locales/<locale>.json` at the repository root: one flat
   file per language, in the i18next JSON v4 format. The code uses only keys.
-  The window (`ui/src/i18n.ts`) and the macOS menu (`src-tauri/src/menu.rs`)
-  read the same files. We do not use the i18next library: the format is
+  The window (`ui/src/i18n.ts`) and the Rust side (`src-tauri/src/i18n.rs`:
+  the macOS menu, the settings window title) read the same files. We do not use the i18next library: the format is
   enough for translation tools (Weblate, Crowdin, Lokalise, i18n Ally), and
   our `t()` is 20 lines.
 
@@ -1390,8 +1391,27 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   bar and in the settings. Each file has its own name in its own language
   (`locale.name`), so "Русский" stays "Русский" in the English list.
 - To add a language, add `locales/<code>.json` and one line in `LOCALES` in
-  `src-tauri/src/menu.rs`. The window finds the file itself
+  `src-tauri/src/i18n.rs`. The window finds the file itself
   (`import.meta.glob`). A Rust test fails if a file is not in `LOCALES`.
+- The core does not send ready text to the window. An error is a code with
+  values (`src-tauri/src/errors.rs`). A problem of a hand-edited file (themes,
+  `keybindings.json`, `commands.json`) and an event of a thread are enums with
+  `#[serde(tag = "code")]`: `ThemeProblem`, `ThemeWarning`, `KeyProblem`,
+  `CommandProblem`, `ThreadEvent`. `ui/src/core-text.ts` translates them as
+  `problem.<file>.<code>` and `thread.event.<code>`. The key comes from the
+  type of the code, so a code without a translation is a TypeScript error. The
+  CLI prints the `Display` text of the same enums.
+
+  A thread message keeps its `text` for the agent and gets an `event` when
+  kknow wrote it. The window shows the event, so the old text in another
+  language does not matter. An agent without a name is `agent` (old threads
+  have `агент`; the window shows both as `thread.agent`).
+
+  Built-in themes and the default commands have English names in the core.
+  The window shows `theme.builtIn.<id>` for a built-in theme and
+  `command.shipped.<id>` for a default command while its name is still the
+  English one of `locales/en.json`: a name that the person changed is theirs.
+  Rust tests check that these English names match the core.
 
 ### Window code
 
@@ -2402,8 +2422,8 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   `isError: true`, not a JSON-RPC error. The agent reads the reason and tries
   again. A call with an unknown tool or method is a JSON-RPC error.
 - Tool descriptions are in English: they are for the agent, as the protocol
-  is. The results are CLI output, so they are in Russian and use the same
-  rows as `kknow tasks` and `kknow backlinks` (`kknow_app::text`).
+  is. The results are CLI output, so they are in English too and use the
+  same rows as `kknow tasks` and `kknow backlinks` (`kknow_app::text`).
 - Agent comments come from the parse (`ParsedNote::agent_comments`), not from
   a text search. The parser gives a comment as one HTML event, so a comment in
   code is an example, as for tasks. `Workspace::resolve_agent_comment` works
@@ -2485,7 +2505,7 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
     `Workspace::save_if_unchanged` writes only if the file did not change.
   - Something can change the note outside the window in the meantime: an agent,
     a different editor, git. Then kknow does not touch the disk. It saves the
-    text of the window as a copy `Note (конфликт <hash>)`, as sync does.
+    text of the window as a copy `Note (conflict <hash>)`, as sync does.
   - Saves go one at a time (a promise chain). If not, the second save would see
     the first one as an edit by someone else.
   - On window focus, kknow compares the open note with the disk again, because
@@ -2861,10 +2881,11 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
     command takes separate arguments) and `NoteView`, which joins a vault note
     and a standalone file.
 - **An error goes to the window as a code, not as a text.** The core writes
-  its errors in Russian, because the CLI prints them as they are. The window
-  has a second language, so a command fails with `{ code, params, message }`
+  its errors in English, because the CLI and the MCP server print them as
+  they are, and English is the language that every user and agent can read.
+  The window has two languages, so a command fails with `{ code, params, message }`
   (`src-tauri/src/errors.rs`), and `describeError` (`ui/src/i18n.ts`) shows
-  the `error.<code>` text from `locales/`. The Russian `message` is the
+  the `error.<code>` text from `locales/`. The English `message` is the
   fallback for a code without a text.
   - The map from the error types to codes lives in `src-tauri`, not in the
     crates: the codes are a contract with the window.

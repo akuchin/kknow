@@ -23,10 +23,10 @@ pub enum Operation {
 impl fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Operation::Get => "чтение",
-            Operation::Put => "запись",
-            Operation::Delete => "удаление",
-            Operation::List => "перечисление",
+            Operation::Get => "read",
+            Operation::Put => "write",
+            Operation::Delete => "delete",
+            Operation::List => "list",
         })
     }
 }
@@ -55,6 +55,9 @@ pub enum Cause {
     /// The folder and its parent do not exist: a disk that is not
     /// connected, or a cloud drive that is not installed.
     FolderMissing(PathBuf),
+    /// A cloud drive keeps the file in the cloud only: it is not on the disk
+    /// yet.
+    NotDownloaded,
 }
 
 /// Storage error.
@@ -94,7 +97,7 @@ impl Error {
     fn text(&self) -> String {
         match &self.cause {
             Cause::Other => format!(
-                "{} «{}» не удалось: {}",
+                "{} \"{}\" failed: {}",
                 self.operation, self.key, self.source
             ),
             Cause::KeysRefused(code) => format!(
@@ -106,6 +109,10 @@ impl Error {
             Cause::Unreachable(address) => {
                 format!("{address} does not answer. Check the address and the network connection")
             }
+            Cause::NotDownloaded => format!(
+                "the cloud has not downloaded \"{}\" yet. Open the folder and wait for the download",
+                self.key
+            ),
             Cause::FolderDenied(path) => format!(
                 "no access to the folder {}. Check its permissions; on macOS, also System Settings → Privacy & Security → Files and Folders",
                 path.display()
@@ -219,7 +226,7 @@ impl MemoryProvider {
     }
 
     fn objects(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Vec<u8>>> {
-        self.objects.lock().expect("хранилище в памяти испорчено")
+        self.objects.lock().expect("the memory storage is poisoned")
     }
 }
 

@@ -55,7 +55,7 @@ pub fn watch<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
         let watcher = match slot.read(|workspace| Ok(workspace.watch()?)) {
             Ok(watcher) => watcher,
             Err(error) => {
-                eprintln!("не удалось следить за каталогом: {error}");
+                eprintln!("cannot watch the folder: {error}");
                 return;
             }
         };
@@ -73,7 +73,7 @@ pub fn watch<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
                     let _ = app.emit(EVENT, VaultChanged::new(&slot.entry.id, changes));
                 }
                 Ok(_) => {}
-                Err(error) => eprintln!("не удалось применить изменения: {error}"),
+                Err(error) => eprintln!("cannot apply the changes: {error}"),
             }
         }
     });

@@ -6,6 +6,7 @@
 // import.
 
 import { api, type AppSettings, type Theme } from "../api";
+import { themeName, themeProblemText } from "../core-text";
 import { setDiagramBase } from "../diagram";
 import { LOCALE_NAMES, locale, locales, setLocale, t } from "../i18n";
 import { openMenu } from "../menu";
@@ -64,7 +65,8 @@ export function applyTheme(id: string, options: { remember?: boolean } = {}): vo
   if (options.remember !== false) void saveSettings({ theme: id });
 
   if (theme && theme.warnings.length > 0) {
-    setStatus(t("status.themeWarning", { name: theme.name, warning: theme.warnings[0] }), "error");
+    const warning = themeProblemText(theme.warnings[0]);
+    setStatus(t("status.themeWarning", { name: themeName(theme), warning }), "error");
   }
 }
 
@@ -73,7 +75,7 @@ export async function refreshThemes(): Promise<void> {
   try {
     const set = await api.listThemes();
     themes = set.themes;
-    if (set.problems.length > 0) setStatus(set.problems[0], "error");
+    if (set.problems.length > 0) setStatus(themeProblemText(set.problems[0]), "error");
   } catch (error) {
     themes = [];
     fail(error);
@@ -83,7 +85,7 @@ export async function refreshThemes(): Promise<void> {
 
 /** Available themes: built-in ones and the ones in the vault folder. */
 function themeList(): [string, string][] {
-  return [...BUILT_IN, ...themes.map((theme): [string, string] => [theme.id, theme.name])];
+  return [...BUILT_IN, ...themes.map((theme): [string, string] => [theme.id, themeName(theme)])];
 }
 
 /** Applies the theme from settings. It can be gone: the file was deleted or the vault changed. */

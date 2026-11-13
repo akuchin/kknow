@@ -21,12 +21,12 @@ test("a new store has the empty values", () => {
 
 test("a setter keeps the value and the getter returns it", () => {
   const state = createState();
-  const open = note("Заметка");
+  const open = note("Note");
   state.setNote(open);
-  state.setVault(vault("личное"));
+  state.setVault(vault("personal"));
   state.setMode("read");
   assert.equal(state.note, open);
-  assert.equal(state.vault?.id, "личное");
+  assert.equal(state.vault?.id, "personal");
   assert.equal(state.mode, "read");
 });
 
@@ -35,28 +35,28 @@ test("a setter calls the handlers of its event with the new value", () => {
   const seen: (string | null)[] = [];
   state.on("note", (value) => seen.push(value?.id ?? null));
 
-  state.setNote(note("а"));
+  state.setNote(note("a"));
   state.setNote(null);
   // Other events do not reach the "note" handlers.
-  state.setVault(vault("б"));
-  assert.deepEqual(seen, ["а", null]);
+  state.setVault(vault("b"));
+  assert.deepEqual(seen, ["a", null]);
 });
 
 test("the handler sees the new value in the store", () => {
   const state = createState();
   let inside: string | undefined;
   state.on("vault", () => (inside = state.vault?.id));
-  state.setVault(vault("работа"));
-  assert.equal(inside, "работа");
+  state.setVault(vault("work"));
+  assert.equal(inside, "work");
 });
 
 test("handlers run in the order they subscribed", () => {
   const state = createState();
   const order: string[] = [];
-  state.on("mode", () => order.push("дерево"));
-  state.on("mode", () => order.push("команды"));
+  state.on("mode", () => order.push("tree"));
+  state.on("mode", () => order.push("commands"));
   state.setMode("edit");
-  assert.deepEqual(order, ["дерево", "команды"]);
+  assert.deepEqual(order, ["tree", "commands"]);
 });
 
 test("a setter emits also when the value is the same", () => {
@@ -82,19 +82,19 @@ test("a handler can unsubscribe during the event", () => {
   const state = createState();
   const order: string[] = [];
   const off = state.on("settings", () => {
-    order.push("первый");
+    order.push("first");
     off();
   });
-  state.on("settings", () => order.push("второй"));
+  state.on("settings", () => order.push("second"));
 
   state.setSettings(null);
   state.setSettings(null);
-  assert.deepEqual(order, ["первый", "второй", "второй"]);
+  assert.deepEqual(order, ["first", "second", "second"]);
 });
 
 test("stores from createState do not share values", () => {
   const one = createState();
   const two = createState();
-  one.setVaults([{ id: "а" } as never]);
+  one.setVaults([{ id: "a" } as never]);
   assert.equal(two.vaults.length, 0);
 });

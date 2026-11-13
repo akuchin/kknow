@@ -4,6 +4,7 @@
 // The module does not touch the DOM on import.
 
 import { api, type CommandTarget, type CommandView, type RunLine, type RunOutcome } from "../api";
+import { commandProblemText } from "../core-text";
 import { t } from "../i18n";
 import type { MenuItem, MenuSection } from "../menu";
 import { el } from "./dom";
@@ -40,7 +41,7 @@ export async function commandItems(target: CommandTarget): Promise<MenuItem[] | 
     commands = listed.commands;
     // Report a typo in the commands file. Else the command just does not
     // appear in the menu, and kknow looks broken.
-    if (listed.problems.length > 0) setStatus(listed.problems[0], "error");
+    if (listed.problems.length > 0) setStatus(commandProblemText(listed.problems[0]), "error");
   } catch (error) {
     fail(error);
     return null;

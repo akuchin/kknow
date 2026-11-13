@@ -76,7 +76,7 @@ impl RecordDir {
         fs::create_dir_all(&self.dir).map_err(|source| Error::io(&self.dir, source))?;
         let path = self.file(id);
         let temp = path.with_extension("json.tmp");
-        let mut bytes = serde_json::to_vec_pretty(record).expect("запись сериализуема");
+        let mut bytes = serde_json::to_vec_pretty(record).expect("the record serializes");
         bytes.push(b'\n');
         fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
         fs::rename(&temp, &path).map_err(|source| Error::io(&path, source))
@@ -124,7 +124,7 @@ pub fn fresh_id() -> String {
     let mut id = String::new();
     for _ in 0..6 {
         let digit = (value % 36) as u32;
-        id.push(char::from_digit(digit, 36).expect("цифра base-36"));
+        id.push(char::from_digit(digit, 36).expect("a base-36 digit"));
         value /= 36;
     }
     id

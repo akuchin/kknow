@@ -160,7 +160,7 @@ impl Bookmarks {
                 Ok(Loaded {
                     bookmarks: Bookmarks::default(),
                     problem: Some(format!(
-                        "закладки не разобрать ({error}); файл отложен в {}",
+                        "cannot parse the bookmarks ({error}); the file is moved to {}",
                         broken.display()
                     )),
                 })
@@ -174,7 +174,7 @@ impl Bookmarks {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("закладки сериализуемы");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("bookmarks serialize");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");

@@ -6,6 +6,7 @@
 
 import type { AgentNote } from "../agent-notes";
 import { api, type NoteView, type Thread } from "../api";
+import { messageAuthor, messageText } from "../core-text";
 import { bindDraft, clearDraft, hasDraft, keepFocus } from "../drafts";
 import { t, type Key } from "../i18n";
 import { PreviewNotes } from "../preview-notes";
@@ -182,8 +183,8 @@ function threadMessages(thread: Thread): HTMLElement {
     row.dataset.from = message.from === "me" ? "me" : "agent";
     const who = document.createElement("span");
     who.className = "thread-author";
-    who.textContent = message.from === "me" ? t("thread.me") : message.from;
-    row.append(who, message.text);
+    who.textContent = messageAuthor(message);
+    row.append(who, messageText(message));
     list.append(row);
   }
   return list;

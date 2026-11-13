@@ -141,8 +141,14 @@ export function initPalette(): void {
  */
 export async function resolveConflicts(id: string): Promise<void> {
   await switchVault(id);
-  palette.open(t("statusbar.chip.query"));
+  palette.open(CONFLICT_QUERY);
 }
+
+/**
+ * The word in the names of conflict copies (`Note (conflict 3f9a1c2b).md`).
+ * It is part of the file name, not UI text, so it is the same in every language.
+ */
+const CONFLICT_QUERY = "conflict";
 
 /** The open vault note, or `null` for a standalone file and an empty window. */
 function vaultNote(): string | null {

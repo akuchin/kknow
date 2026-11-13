@@ -20,7 +20,7 @@ const words: SyncWords = {
   },
   shortcut: (action) => `<${action}>`,
   withShortcut: (text, action) => `${text} <${action}>`,
-  describeError: () => "ошибка",
+  describeError: () => "error",
 };
 
 const NOW = 1_800_000_000_000;
@@ -35,8 +35,8 @@ function report(counts: Partial<Omit<SyncReport, "conflicts">>, conflicts = 0): 
     pushed: 0,
     ...counts,
     conflicts: Array.from({ length: conflicts }, (_, index) => ({
-      id: `Заметка ${index}`,
-      copy: `Заметка ${index} (конфликт)`,
+      id: `Note ${index}`,
+      copy: `Note ${index} (conflict)`,
     })) as SyncReport["conflicts"],
   };
 }
@@ -69,7 +69,7 @@ test("a report without changes says that all is up to date", () => {
 });
 
 test("shortLocation keeps the last segment of a folder or a bucket", () => {
-  assert.equal(shortLocation("/Users/me/Dropbox/Заметки/", words), "Заметки");
+  assert.equal(shortLocation("/Users/me/Dropbox/Notes/", words), "Notes");
   assert.equal(shortLocation("s3://bucket", words), "bucket");
   assert.equal(shortLocation("///", words), "///");
   assert.equal(shortLocation(null, words), "statusbar.sync.off");
@@ -102,11 +102,11 @@ test("a running sync shows its progress when the total is known", () => {
 });
 
 test("an error shows the error text as the title", () => {
-  const message = { code: "sync.failed", params: {}, message: "Сбой" };
+  const message = { code: "sync.failed", params: {}, message: "Failure" };
   assert.deepEqual(syncSegment(status({ state: "error", message }), words, NOW), {
     text: "statusbar.sync.error",
     tone: "error",
-    title: "ошибка",
+    title: "error",
   });
   assert.equal(syncSegment(status({ state: "error" }), words, NOW).title, "");
 });

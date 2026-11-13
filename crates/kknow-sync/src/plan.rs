@@ -57,11 +57,11 @@ impl Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Action::Upload(id) => write!(f, "выгрузить        {id}"),
-            Action::Download(id) => write!(f, "загрузить        {id}"),
-            Action::RemoveLocal(id) => write!(f, "удалить локально {id}"),
-            Action::RemoveRemote(id) => write!(f, "удалить в облаке {id}"),
-            Action::KeepBoth { id, copy } => write!(f, "конфликт         {id} → {copy}"),
+            Action::Upload(id) => write!(f, "upload         {id}"),
+            Action::Download(id) => write!(f, "download       {id}"),
+            Action::RemoveLocal(id) => write!(f, "delete locally {id}"),
+            Action::RemoveRemote(id) => write!(f, "delete remotely {id}"),
+            Action::KeepBoth { id, copy } => write!(f, "conflict       {id} → {copy}"),
         }
     }
 }
@@ -231,11 +231,11 @@ pub enum FileAction {
 impl fmt::Display for FileAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FileAction::Upload(key) => write!(f, "выгрузить        {key}"),
-            FileAction::Download(key) => write!(f, "загрузить        {key}"),
-            FileAction::RemoveLocal(key) => write!(f, "удалить локально {key}"),
-            FileAction::RemoveRemote(key) => write!(f, "удалить в облаке {key}"),
-            FileAction::Merge(key) => write!(f, "объединить       {key}"),
+            FileAction::Upload(key) => write!(f, "upload         {key}"),
+            FileAction::Download(key) => write!(f, "download       {key}"),
+            FileAction::RemoveLocal(key) => write!(f, "delete locally {key}"),
+            FileAction::RemoveRemote(key) => write!(f, "delete remotely {key}"),
+            FileAction::Merge(key) => write!(f, "merge          {key}"),
         }
     }
 }
@@ -276,11 +276,14 @@ pub(crate) fn diff_files(
 ///
 /// It is a separate constant because the list of conflicts to resolve comes
 /// from the files in the directory: a copy is a file and needs no other state.
-pub const CONFLICT_MARK: &str = " (конфликт ";
+pub const CONFLICT_MARK: &str = " (conflict ";
+
+/// The mark of older versions. Copies with it are still conflict copies.
+const LEGACY_CONFLICT_MARK: &str = " (конфликт ";
 
 pub fn is_conflict_copy(id: &NoteId) -> bool {
     let name = id.name();
-    name.contains(CONFLICT_MARK) && name.ends_with(')')
+    (name.contains(CONFLICT_MARK) || name.contains(LEGACY_CONFLICT_MARK)) && name.ends_with(')')
 }
 
 /// Name of the copy for a conflict version: the note ID, [`CONFLICT_MARK`],
@@ -290,7 +293,7 @@ pub fn is_conflict_copy(id: &NoteId) -> bool {
 /// repeated sync does not make more copies, it reuses the existing one.
 fn conflict_copy(id: &NoteId, short_hash: &str) -> NoteId {
     NoteId::parse(&format!("{id}{CONFLICT_MARK}{short_hash})"))
-        .expect("имя копии отличается от исходного только суффиксом")
+        .expect("the copy name differs from the original only by a suffix")
 }
 
 #[cfg(test)]
@@ -383,8 +386,15 @@ mod tests {
             panic!("ожидался конфликт, а не {:?}", actions[0]);
         };
         assert_eq!(note, &id("Index"));
-        assert!(copy.name().starts_with("Index (конфликт "), "{copy}");
+        assert!(copy.name().starts_with("Index (conflict "), "{copy}");
         assert_eq!(actions.len(), 1);
+    }
+
+    #[test]
+    fn a_copy_with_the_old_mark_is_still_a_conflict_copy() {
+        assert!(is_conflict_copy(&id("Index (conflict 3f9a1c2b)")));
+        assert!(is_conflict_copy(&id("Index (конфликт 3f9a1c2b)")));
+        assert!(!is_conflict_copy(&id("Index")));
     }
 
     #[test]

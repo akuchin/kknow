@@ -104,9 +104,9 @@ test("the command form adds, edits and removes a command", async ({ page }) => {
   await expect(name).toHaveValue(t("settings.commands.new"));
 
   // Typed text saves on `change` and updates the list on the left.
-  await name.fill("Сборка");
+  await name.fill("Build");
   await name.press("Tab");
-  await expect(added).toContainText("Сборка");
+  await expect(added).toContainText("Build");
 
   // A target chip rebuilds the form: the note variable goes away with it.
   const vars = page.locator("details.settings-vars");
@@ -118,7 +118,7 @@ test("the command form adds, edits and removes a command", async ({ page }) => {
   page.once("dialog", (dialog) => void dialog.accept());
   await tools.locator("button", { hasText: t("settings.commands.remove") }).click();
   await expect(commands).toHaveCount(before);
-  await expect(page.locator(".settings-command-list")).not.toContainText("Сборка");
+  await expect(page.locator(".settings-command-list")).not.toContainText("Build");
 });
 
 test("the vault page renames, recolors and sets up sync", async ({ page }) => {
@@ -127,9 +127,9 @@ test("the vault page renames, recolors and sets up sync", async ({ page }) => {
   await expect(picked).toHaveCount(1);
 
   const name = page.locator("#settings-body input.settings-name");
-  await name.fill("Мои заметки");
+  await name.fill("My notes");
   await name.press("Tab");
-  await expect(picked).toContainText("Мои заметки");
+  await expect(picked).toContainText("My notes");
 
   await page.locator('.settings-color[data-color="red"]').click();
   await expect(page.locator('.settings-color[data-color="red"]')).toHaveAttribute("aria-pressed", "true");
@@ -140,7 +140,7 @@ test("the vault page renames, recolors and sets up sync", async ({ page }) => {
     .locator(".settings-row", { hasText: t("settings.vaults.provider") })
     .locator("select");
   await provider.selectOption("s3");
-  // The bucket is the first field; "Префикс в бакете" also has its name in it.
+  // The bucket is the first field; the prefix field also has the word "bucket" in its name.
   const bucket = page.locator(".settings-s3 label").first().locator("input");
   await expect(page.locator(".settings-s3 label").first()).toContainText(t("dialog.sync.bucket"));
   await expect(bucket).toHaveValue("kknow");

@@ -63,10 +63,10 @@ impl Status {
     /// The word for the CLI and the agent.
     pub fn word(self) -> &'static str {
         match self {
-            Status::Pending => "ждёт",
-            Status::Accepted => "принято",
-            Status::Rejected => "отклонено",
-            Status::Partial => "принято частично",
+            Status::Pending => "pending",
+            Status::Accepted => "accepted",
+            Status::Rejected => "rejected",
+            Status::Partial => "partly accepted",
         }
     }
 }
@@ -135,16 +135,16 @@ impl Proposal {
         );
         for (number, edit) in self.edits.iter().enumerate() {
             let state = match edit.state {
-                EditState::Pending => "ждёт",
-                EditState::Accepted => "принято",
-                EditState::Rejected => "отклонено",
+                EditState::Pending => "pending",
+                EditState::Accepted => "accepted",
+                EditState::Rejected => "rejected",
             };
             let old = short(&edit.old);
             let new = short(&edit.new);
             text.push_str(&format!("\n    {}. {state}: «{old}» → «{new}»", number + 1));
         }
         if let Some(feedback) = &self.feedback {
-            text.push_str(&format!("\n    отзыв человека: {feedback}"));
+            text.push_str(&format!("\n    human feedback: {feedback}"));
         }
         text
     }
@@ -207,9 +207,9 @@ fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
         .filter(|(at, _)| !comments.iter().any(|span| span.contains(at)));
     match (matches.next(), matches.next()) {
         (Some((at, _)), None) => Ok(at),
-        (None, _) => Err("этого текста нет в заметке"),
+        (None, _) => Err("the note does not have this text"),
         (Some(_), Some(_)) => {
-            Err("этот текст встречается в заметке несколько раз, возьми больше слов вокруг")
+            Err("this text occurs more than once in the note; take more words around it")
         }
     }
 }
@@ -218,25 +218,25 @@ fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
 /// the error at once, not the person at review.
 fn check(text: &str, edits: &[(String, String)]) -> std::result::Result<(), String> {
     if edits.is_empty() {
-        return Err("нужна хотя бы одна правка".to_string());
+        return Err("at least one edit is required".to_string());
     }
     let mut spans = Vec::new();
     for (index, (old, new)) in edits.iter().enumerate() {
         let number = index + 1;
         if old.is_empty() {
-            return Err(format!("правка {number}: пустой old"));
+            return Err(format!("edit {number}: old is empty"));
         }
         if old == new {
-            return Err(format!("правка {number}: old и new одинаковые"));
+            return Err(format!("edit {number}: old and new are the same"));
         }
-        let at = locate(text, old).map_err(|why| format!("правка {number}: {why}"))?;
+        let at = locate(text, old).map_err(|why| format!("edit {number}: {why}"))?;
         spans.push((at, at + old.len(), number));
     }
     spans.sort();
     for pair in spans.windows(2) {
         if pair[1].0 < pair[0].1 {
             return Err(format!(
-                "правки {} и {} задевают один и тот же текст: объедини их",
+                "edits {} and {} change the same text: merge them",
                 pair[0].2, pair[1].2
             ));
         }
@@ -529,8 +529,8 @@ mod tests {
         let twice = workspace.propose(&id, vec![pair("да", "нет")], "", None, None);
         let missing = workspace.propose(&id, vec![pair("может", "нет")], "", None, None);
 
-        assert!(matches!(twice, Err(Error::BadProposal(text)) if text.contains("несколько раз")));
-        assert!(matches!(missing, Err(Error::BadProposal(text)) if text.contains("нет в заметке")));
+        assert!(matches!(twice, Err(Error::BadProposal(text)) if text.contains("more than once")));
+        assert!(matches!(missing, Err(Error::BadProposal(text)) if text.contains("does not have this text")));
         assert!(workspace.proposals().unwrap().is_empty());
     }
 
@@ -570,7 +570,7 @@ mod tests {
             None,
         );
 
-        assert!(matches!(result, Err(Error::BadProposal(text)) if text.contains("объедини")));
+        assert!(matches!(result, Err(Error::BadProposal(text)) if text.contains("merge them")));
     }
 
     #[test]

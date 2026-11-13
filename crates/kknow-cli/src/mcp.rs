@@ -48,7 +48,7 @@ impl Vaults {
             };
             let events = watcher.try_recv();
             if let Err(error) = vault.workspace.apply(&events) {
-                eprintln!("предупреждение: {}: {error}", vault.vault.name);
+                eprintln!("warning: {}: {error}", vault.vault.name);
             }
         }
     }

@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use kknow_run::spec::Problem;
 use kknow_run::{CommandSpec, Manifest, Outcome, Stream, Target, TargetKind, Watch};
 use serde::Serialize;
 use tauri::State;
@@ -36,7 +37,7 @@ pub struct CommandList {
     /// Problems in the commands file. Users edit it by hand, so we must report
     /// a typo. Otherwise the command silently does not appear, and kknow looks
     /// broken.
-    problems: Vec<String>,
+    problems: Vec<Problem>,
 }
 
 /// Resolves the target the window named.
@@ -196,7 +197,7 @@ pub struct ManifestView {
     commands: Vec<CommandSpec>,
     /// Environment shared by all commands in the file.
     env: BTreeMap<String, String>,
-    problems: Vec<String>,
+    problems: Vec<Problem>,
     /// Available runners. The core owns this list. If the window kept its own
     /// copy, the "Run it with" field could one day offer what the core cannot
     /// run.
@@ -372,7 +373,7 @@ mod tests {
 
         assert_eq!(listed.problems.len(), 1);
         assert!(
-            listed.problems[0].contains("phyton"),
+            matches!(&listed.problems[0], Problem::UnknownKind { kind, .. } if kind == "phyton"),
             "{:?}",
             listed.problems
         );

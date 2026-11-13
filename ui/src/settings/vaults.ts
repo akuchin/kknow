@@ -423,8 +423,10 @@ async function renderVaultStats(page: HTMLElement, vault: VaultView): Promise<vo
 /** Human-readable size: bytes become KB and MB. */
 function formatSize(bytes: number): string {
   if (bytes < 1024) return t("settings.vaults.bytes", { count: bytes });
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  const value = (size: number) =>
+    size.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if (bytes < 1024 * 1024) return t("settings.vaults.kilobytes", { value: value(bytes / 1024) });
+  return t("settings.vaults.megabytes", { value: value(bytes / (1024 * 1024)) });
 }
 
 async function refreshVaults(): Promise<void> {

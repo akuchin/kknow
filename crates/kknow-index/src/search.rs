@@ -18,10 +18,10 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("ошибка поискового индекса: {0}")]
+    #[error("search index error: {0}")]
     Tantivy(#[from] tantivy::TantivyError),
 
-    #[error("не удалось разобрать запрос: {0}")]
+    #[error("cannot parse the query: {0}")]
     Query(#[from] tantivy::query::QueryParserError),
 }
 

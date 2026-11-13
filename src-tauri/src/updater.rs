@@ -181,7 +181,7 @@ impl Updates {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
-        self.inner.lock().expect("состояние обновлений испорчено")
+        self.inner.lock().expect("the update state is poisoned")
     }
 }
 
@@ -211,7 +211,7 @@ pub async fn check<R: Runtime>(app: &AppHandle<R>) -> UpdateStatus {
         }
         Ok(None) => publish(app, UpdateStatus::Idle),
         Err(error) => {
-            eprintln!("не удалось проверить обновления: {error}");
+            eprintln!("cannot check for updates: {error}");
             publish(
                 app,
                 UpdateStatus::Failed {
@@ -270,7 +270,7 @@ pub fn install_on_exit<R: Runtime>(app: &AppHandle<R>) {
     }
     if let Some((update, bytes)) = app.state::<Updates>().take() {
         if let Err(error) = update.install(bytes) {
-            eprintln!("не удалось установить обновление: {error}");
+            eprintln!("cannot install the update: {error}");
         }
     }
 }

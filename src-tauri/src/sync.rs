@@ -898,7 +898,7 @@ mod tests {
 
         // A conflict copy is a file in the folder; the list comes from files.
         fs::write(
-            dir.path().join("Index (конфликт 3f9a1c2b).md"),
+            dir.path().join("Index (conflict 3f9a1c2b).md"),
             "# чужая версия\n",
         )
         .unwrap();

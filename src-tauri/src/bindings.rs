@@ -117,7 +117,7 @@ fn bindings_match_the_rust_types() {
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
         lines(&current) == lines(&fresh),
-        "ui/src/bindings.ts устарел: KKNOW_BLESS=1 cargo test -p kknow-desktop bindings"
+        "ui/src/bindings.ts is stale: KKNOW_BLESS=1 cargo test -p kknow-desktop bindings"
     );
 }
 

@@ -25,7 +25,7 @@ different note or window. <kbd>⌘S</kbd> saves now.
 The save checks the disk first. Another program can change the note while you
 type, for example an agent, git or a different editor. Then kknow does not
 overwrite that version. It writes your text next to it as a copy
-`Note (конфликт 3f9a1c2b).md`. You lose neither version.
+`Note (conflict 3f9a1c2b).md`. You lose neither version.
 
 ## Links
 

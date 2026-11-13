@@ -411,7 +411,11 @@ pub fn activate_vault(state: State<'_, AppState>, id: String) -> Result<VaultInf
 /// The command is async. On Windows a sync command runs on the main thread.
 /// WebView2 then waits for that thread, and the new window stays blank.
 #[tauri::command(async)]
-pub fn open_settings<R: Runtime>(app: AppHandle<R>, section: Option<String>) -> Result<()> {
+pub fn open_settings<R: Runtime>(
+    app: AppHandle<R>,
+    settings: State<'_, crate::settings::SettingsState>,
+    section: Option<String>,
+) -> Result<()> {
     let section = section.unwrap_or_else(|| "general".to_string());
 
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW) {
@@ -422,7 +426,10 @@ pub fn open_settings<R: Runtime>(app: AppHandle<R>, section: Option<String>) -> 
 
     let url = WebviewUrl::App(format!("settings.html#{section}").into());
     WebviewWindowBuilder::new(&app, SETTINGS_WINDOW, url)
-        .title("Настройки — kknow")
+        .title(crate::i18n::label(
+            &settings.get().locale,
+            crate::i18n::SETTINGS_TITLE,
+        ))
         .inner_size(880.0, 580.0)
         .min_inner_size(720.0, 480.0)
         .build()
@@ -550,7 +557,7 @@ pub fn search_all(
         let slot = match state.slot(Some(&entry.id)) {
             Ok(slot) => slot,
             Err(error) => {
-                eprintln!("хранилище {} не открылось: {error}", entry.name);
+                eprintln!("vault {} did not open: {error}", entry.name);
                 continue;
             }
         };

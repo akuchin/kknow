@@ -8,18 +8,18 @@ test.beforeEach(async ({ page }) => {
 
 test("the vault switches from the status bar menu", async ({ page }) => {
   const vault = page.locator("#status-vault");
-  await expect(vault).toContainText("notes (мок)");
+  await expect(vault).toContainText("notes (mock)");
 
   await vault.click();
   await expect(page.locator(".menu .menu-title").first()).toHaveText(t("menu.vaults"));
   // An unavailable vault is in the list but cannot be picked.
-  await expect(menuItem(page, "Архив 2024")).toBeDisabled();
+  await expect(menuItem(page, "Archive 2024")).toBeDisabled();
   await menuItem(page, "Work — ASW").click();
 
   await expect(vault).toContainText("Work — ASW");
-  await expect(page.locator("#note-title")).toHaveText("Смета");
+  await expect(page.locator("#note-title")).toHaveText("Budget");
   await expect(page.locator('.vault-row[data-vault="work-asw"]')).toHaveAttribute("data-active", "true");
-  await expect(noteRow(page, "Смета", "work-asw")).toHaveClass(/active/);
+  await expect(noteRow(page, "Budget", "work-asw")).toHaveClass(/active/);
 });
 
 test("⌘1…⌘9 switch the vault and return to the note left there", async ({ page }) => {
@@ -28,10 +28,10 @@ test("⌘1…⌘9 switch the vault and return to the note left there", async ({ 
 
   await page.keyboard.press("ControlOrMeta+2");
   await expect(page.locator("#status-vault")).toContainText("Work — ASW");
-  await expect(page.locator("#note-title")).toHaveText("Смета");
+  await expect(page.locator("#note-title")).toHaveText("Budget");
 
   await page.keyboard.press("ControlOrMeta+1");
-  await expect(page.locator("#status-vault")).toContainText("notes (мок)");
+  await expect(page.locator("#status-vault")).toContainText("notes (mock)");
   await expect(page.locator("#note-title")).toHaveText("Rust");
 });
 
@@ -39,12 +39,12 @@ test("a note of another vault opens from the tree and switches the vault", async
   // Other vaults start collapsed; the first expand loads their notes.
   const work = page.locator('.vault-row[data-vault="work-asw"] button.vault');
   await expect(work).toHaveAttribute("aria-expanded", "false");
-  await expect(noteRow(page, "Смета", "work-asw")).toHaveCount(0);
+  await expect(noteRow(page, "Budget", "work-asw")).toHaveCount(0);
   await work.click();
   await expect(work).toHaveAttribute("aria-expanded", "true");
-  await noteRow(page, "Встречи/Ретро", "work-asw").click();
+  await noteRow(page, "Meetings/Retro", "work-asw").click();
   await expect(page.locator("#status-vault")).toContainText("Work — ASW");
-  await expect(page.locator("#note-title")).toHaveText("Ретро");
+  await expect(page.locator("#note-title")).toHaveText("Retro");
 });
 
 test("the palette finds notes in all vaults and opens one", async ({ page }) => {
@@ -56,14 +56,14 @@ test("the palette finds notes in all vaults and opens one", async ({ page }) => 
   const rows = palette.locator("#palette-results .palette-row");
   // The active vault comes first; a hit in another vault carries its label.
   await expect(rows.first()).toContainText("Rust");
-  await expect(palette.locator(".palette-row", { hasText: "Ретро" })).toContainText("Work — ASW");
+  await expect(palette.locator(".palette-row", { hasText: "Retro" })).toContainText("Work — ASW");
 
-  await page.locator("#palette-input").fill("Ретро");
+  await page.locator("#palette-input").fill("Retro");
   await expect(rows).toHaveCount(1);
   await page.keyboard.press("Enter");
   await expect(palette).toBeHidden();
   await expect(page.locator("#status-vault")).toContainText("Work — ASW");
-  await expect(page.locator("#note-title")).toHaveText("Ретро");
+  await expect(page.locator("#note-title")).toHaveText("Retro");
 
   // The keys open it too, and Escape closes it.
   await page.keyboard.press("ControlOrMeta+k");
@@ -96,7 +96,7 @@ test("sync from the status bar shows the report and the conflict", async ({ page
   const panel = page.locator("#sync-panel");
   await expect(panel).toBeVisible();
   await expect(page.locator("#sync-summary")).toContainText(t("sync.report.uploaded"));
-  await expect(page.locator("#sync-list")).toContainText("Index (конфликт 3f9a1c2b)");
+  await expect(page.locator("#sync-list")).toContainText("Index (conflict 3f9a1c2b)");
   await expect(sync).toHaveAttribute("data-tone", "conflict");
 
   await page.locator("#sync-hide").click();
@@ -122,16 +122,16 @@ test("a git vault opens its changes, stages, commits and pushes", async ({ page 
   await expect(panel).toBeVisible();
   const staged = panel.locator('.git-group[data-side="staged"]');
   const changed = panel.locator('.git-group[data-side="unstaged"]');
-  await expect(staged).toContainText("Идеи/Новая мысль.md");
+  await expect(staged).toContainText("Ideas/New thought.md");
   await expect(changed).toContainText("Index.md");
 
   // The first file shows its diff at once; a click picks another one.
   const diff = page.locator("#git-diff-body");
-  await expect(page.locator("#git-diff-head")).toContainText("Идеи/Новая мысль.md");
-  await expect(diff.locator(".add")).toContainText(["+# Новая мысль"]);
+  await expect(page.locator("#git-diff-head")).toContainText("Ideas/New thought.md");
+  await expect(diff.locator(".add")).toContainText(["+# New thought"]);
   await changed.getByRole("button", { name: "Index.md", exact: true }).click();
   await expect(page.locator("#git-diff-head")).toContainText("Index.md");
-  await expect(diff.locator(".del")).toContainText(["-Старая строка."]);
+  await expect(diff.locator(".del")).toContainText(["-Old line."]);
   await expect(diff.locator(".hunk")).toHaveCount(1);
 
   await changed.getByRole("button", { name: `${t("panel.git.stage")}: Index.md` }).click();
@@ -141,7 +141,7 @@ test("a git vault opens its changes, stages, commits and pushes", async ({ page 
 
   const commit = panel.getByRole("button", { name: t("panel.git.commit") });
   await expect(commit).toBeDisabled();
-  await panel.getByPlaceholder(t("panel.git.message")).fill("заметки за неделю");
+  await panel.getByPlaceholder(t("panel.git.message")).fill("notes of the week");
   await commit.click();
   await expect(statusMessage(page)).toHaveText(t("status.committed"));
   await expect(page.locator("#git-summary")).toContainText(t("panel.git.ahead", { count: 1 }));
@@ -149,7 +149,7 @@ test("a git vault opens its changes, stages, commits and pushes", async ({ page 
   // A discard asks first; the untracked picture was the last change.
   page.once("dialog", (dialog) => void dialog.accept());
   await changed
-    .getByRole("button", { name: `${t("panel.git.discard")}: картинки/схема.png` })
+    .getByRole("button", { name: `${t("panel.git.discard")}: images/diagram.png` })
     .click();
   await expect(statusMessage(page)).toHaveText(t("status.discarded"));
   await expect(page.locator("#git-body")).toHaveText(t("panel.git.clean"));
@@ -179,7 +179,7 @@ test("the row of a git vault has a button for its changes", async ({ page }) => 
   const own = page.locator('.vault-row[data-vault="notes"]');
   await expect(page.locator(".vault-row .row-git")).toHaveCount(1);
   await own.hover();
-  await own.getByRole("button", { name: t("sidebar.vault.git", { name: "notes (мок)" }) }).click();
+  await own.getByRole("button", { name: t("sidebar.vault.git", { name: "notes (mock)" }) }).click();
   await expect(page.locator("#git-view")).toBeVisible();
   await expect(page.locator('.git-group[data-side="unstaged"]')).toContainText("Index.md");
 });
@@ -198,7 +198,7 @@ test("sync without settings opens the vault settings", async ({ page, context })
 
 test("the chip reports a conflict in another vault and leads to it", async ({ page }) => {
   const chip = page.locator("#status-chip");
-  await expect(chip).toHaveText(t("statusbar.chip.conflicts", { name: "Архив 2024", count: 2 }));
+  await expect(chip).toHaveText(t("statusbar.chip.conflicts", { name: "Archive 2024", count: 2 }));
   await expect(chip).toHaveAttribute("data-tone", "warning");
 
   await chip.click();
@@ -206,9 +206,9 @@ test("the chip reports a conflict in another vault and leads to it", async ({ pa
   await menuItem(page, t("statusbar.chip.resolve")).click();
 
   // "Resolve" switches to that vault and searches for the conflict copies.
-  await expect(page.locator("#status-vault")).toContainText("Архив 2024");
+  await expect(page.locator("#status-vault")).toContainText("Archive 2024");
   await expect(page.locator("#palette")).toBeVisible();
-  await expect(page.locator("#palette-input")).toHaveValue(t("statusbar.chip.query"));
+  await expect(page.locator("#palette-input")).toHaveValue("conflict");
 });
 
 test("the MCP lamp shows the server and its setup for the active vault", async ({ page }) => {
@@ -219,7 +219,7 @@ test("the MCP lamp shows the server and its setup for the active vault", async (
   await lamp.click();
   const float = page.locator("#mcp-float");
   await expect(float).toBeVisible();
-  await expect(float.locator(".mcp-state")).toHaveText("работает: http://127.0.0.1:7377/mcp");
+  await expect(float.locator(".mcp-state")).toHaveText(t("panel.mcp.listening", { url: "http://127.0.0.1:7377/mcp" }));
   const token = "0123456789abcdef0123456789abcdef";
   await expect(float.locator("pre").first()).toHaveText(
     `claude mcp add --transport http kknow 'http://127.0.0.1:7377/mcp?vault=notes' --header 'Authorization: Bearer ${token}'`,
@@ -231,17 +231,17 @@ test("the MCP lamp shows the server and its setup for the active vault", async (
   await expect(float.locator("pre").first()).toContainText(
     "kknow-work-ai 'http://127.0.0.1:7377/mcp?label=work&label=ai'",
   );
-  await expect(float.locator(".mcp-scope p")).toContainText("notes (мок), Work — ASW");
+  await expect(float.locator(".mcp-scope p")).toContainText("notes (mock), Work — ASW");
 
   // A new port goes to the server and into the snippets.
   await float.locator(".mcp-port input").fill("8123");
   await float.locator(".mcp-port input").press("Enter");
-  await expect(float.locator(".mcp-state")).toHaveText("работает: http://127.0.0.1:8123/mcp");
+  await expect(float.locator(".mcp-state")).toHaveText(t("panel.mcp.listening", { url: "http://127.0.0.1:8123/mcp" }));
   await expect(float.locator("pre").first()).toContainText("127.0.0.1:8123");
 
   // Off: the lamp goes gray.
   await float.getByRole("switch").click();
-  await expect(float.locator(".mcp-state")).toHaveText("выключен");
+  await expect(float.locator(".mcp-state")).toHaveText(t("panel.mcp.off"));
   await expect(lamp).toHaveAttribute("data-tone", "off");
 
   await page.keyboard.press("Escape");
@@ -264,7 +264,7 @@ test("the MCP float offers the labels of all vaults, the active ones first", asy
     "#ai",
   ]);
   await float.getByRole("checkbox", { name: "#ai" }).click();
-  await expect(float.locator(".mcp-scope p")).toContainText("notes (мок)");
+  await expect(float.locator(".mcp-scope p")).toContainText("notes (mock)");
 });
 
 test("the labels of a vault are chips, and labels of other vaults are offered", async ({ context }) => {
@@ -276,17 +276,17 @@ test("the labels of a vault are chips, and labels of other vaults are offered", 
   await expect(labels.locator(".settings-label-offer")).toHaveText(["+#ai"]);
 
   await labels.locator(".settings-label-offer").click();
-  await labels.locator("input").fill("личное");
+  await labels.locator("input").fill("personal");
   await labels.locator("input").press("Enter");
   await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText([
     "#work",
     "#ai",
-    "#личное",
+    "#personal",
   ]);
   await expect(labels.locator("input")).toBeFocused();
 
   await labels.getByRole("button", { name: t("settings.vaults.labels.remove", { label: "work" }) }).click();
-  await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText(["#ai", "#личное"]);
+  await expect(labels.locator(".settings-label:not(.settings-label-offer)")).toHaveText(["#ai", "#personal"]);
   // #work stays on the other vault, so it is offered back.
   await expect(labels.locator(".settings-label-offer")).toHaveText(["+#work"]);
   await settings.close();
@@ -298,15 +298,15 @@ test("the label filter narrows the tree and the search, and survives a reload", 
   const vaultRows = page.locator(".vault-row");
   await expect(vaultRows).toHaveCount(3);
 
-  // Only notes (мок) has #ai; Work — ASW goes away from the tree.
+  // Only notes (mock) has #ai; Work — ASW goes away from the tree.
   await filter.getByRole("checkbox", { name: "#ai" }).click();
   await expect(vaultRows).toHaveCount(1);
   await expect(page.locator('.vault-row[data-vault="work-asw"]')).toHaveCount(0);
 
   // The palette searches the same vaults and says so.
   await page.locator("#open-palette").click();
-  await page.locator("#palette-input").fill("Ретро");
-  await expect(page.locator("#palette")).toContainText(t("palette.results.labels", { query: "Ретро", labels: "#ai" }));
+  await page.locator("#palette-input").fill("Retro");
+  await expect(page.locator("#palette")).toContainText(t("palette.results.labels", { query: "Retro", labels: "#ai" }));
   await expect(page.locator("#palette-results .palette-row")).toHaveCount(0);
   await page.keyboard.press("Escape");
 

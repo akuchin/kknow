@@ -32,29 +32,29 @@ function shape(folder: Folder): unknown[] {
 }
 
 test("a note path becomes folders and a leaf", () => {
-  const root = buildTree([note("Проекты/Архив/Идеи")], [], collator);
-  assert.deepEqual(shape(root), [{ "Проекты/": [{ "Архив/": ["Идеи"] }] }]);
-  assert.equal(root.folders[0].folders[0].path, "Проекты/Архив");
+  const root = buildTree([note("Projects/Archive/Ideas")], [], collator);
+  assert.deepEqual(shape(root), [{ "Projects/": [{ "Archive/": ["Ideas"] }] }]);
+  assert.equal(root.folders[0].folders[0].path, "Projects/Archive");
 });
 
 test("notes without a folder stay at the root", () => {
-  const root = buildTree([note("Входящие")], [], collator);
+  const root = buildTree([note("Inbox")], [], collator);
   assert.equal(root.path, "");
-  assert.deepEqual(shape(root), ["Входящие"]);
+  assert.deepEqual(shape(root), ["Inbox"]);
 });
 
 test("an empty folder from the folder list is in the tree", () => {
-  const root = buildTree([note("Заметка")], ["Пусто", "Работа/Новое"], collator);
+  const root = buildTree([note("Note")], ["Empty", "Work/New"], collator);
   assert.deepEqual(shape(root), [
-    { "Пусто/": [] },
-    { "Работа/": [{ "Новое/": [] }] },
-    "Заметка",
+    { "Empty/": [] },
+    { "Work/": [{ "New/": [] }] },
+    "Note",
   ]);
 });
 
 test("a folder from both lists appears once", () => {
-  const root = buildTree([note("Работа/План")], ["Работа"], collator);
-  assert.deepEqual(shape(root), [{ "Работа/": ["План"] }]);
+  const root = buildTree([note("Work/Plan")], ["Work"], collator);
+  assert.deepEqual(shape(root), [{ "Work/": ["Plan"] }]);
 });
 
 test("folders come first, then notes, each in collator order", () => {
@@ -74,8 +74,8 @@ test("folders come first, then notes, each in collator order", () => {
 });
 
 test("notes sort by file name, not by title", () => {
-  const root = buildTree([note("б", "Альфа"), note("а", "Омега")], [], collator);
-  assert.deepEqual(shape(root), ["а", "б"]);
+  const root = buildTree([note("b", "Alpha"), note("a", "Omega")], [], collator);
+  assert.deepEqual(shape(root), ["a", "b"]);
 });
 
 test("fileName is the last segment of the id", () => {
@@ -93,11 +93,11 @@ test("descend reuses existing folders and creates missing ones", () => {
 
 test("sortFolder sorts nested folders too", () => {
   const root: Folder = { path: "", name: "", folders: [], notes: [] };
-  descend(root, "в/я");
-  descend(root, "в/а");
-  descend(root, "б");
+  descend(root, "c/z");
+  descend(root, "c/a");
+  descend(root, "b");
   sortFolder(root, collator);
-  assert.deepEqual(shape(root), [{ "б/": [] }, { "в/": [{ "а/": [] }, { "я/": [] }] }]);
+  assert.deepEqual(shape(root), [{ "b/": [] }, { "c/": [{ "a/": [] }, { "z/": [] }] }]);
 });
 
 test("path helpers split and join folder paths", () => {

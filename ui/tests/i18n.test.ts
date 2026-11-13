@@ -40,31 +40,31 @@ function placeholders(text: string): string[] {
   return [...text.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]).sort();
 }
 
-test("эталонный словарь на месте", () => {
+test("the reference dictionary is there", () => {
   assert.ok(REFERENCE in locales);
   assert.ok(Object.keys(locales).length > 1);
 });
 
 for (const [name, dict] of Object.entries(locales)) {
-  test(`${name}: только строки и имя языка`, () => {
+  test(`${name}: only strings and the language name`, () => {
     for (const [key, value] of Object.entries(dict)) {
       assert.equal(typeof value, "string", key);
     }
-    assert.ok(dict["locale.name"], "нет locale.name");
+    assert.ok(dict["locale.name"], "no locale.name");
   });
 
-  test(`${name}: формы множественного числа из правил языка`, () => {
+  test(`${name}: plural forms come from the language rules`, () => {
     const allowed = new Intl.PluralRules(name).resolvedOptions().pluralCategories;
     for (const [base, forms] of shape(dict)) {
       if (forms.size === 0) continue;
-      assert.ok(forms.has("other"), `${base}: нет _other`);
+      assert.ok(forms.has("other"), `${base}: no _other`);
       for (const form of forms) {
         assert.ok(allowed.includes(form as Intl.LDMLPluralRule), `${base}_${form}`);
       }
     }
   });
 
-  test(`${name}: без сочетаний клавиш`, () => {
+  test(`${name}: no key shortcuts`, () => {
     // Keys belong to actions (`src/actions.ts`): the code adds them as this
     // system writes them. A text gets a key through a placeholder.
     for (const [key, value] of Object.entries(dict)) {
@@ -74,16 +74,16 @@ for (const [name, dict] of Object.entries(locales)) {
 
   if (name === REFERENCE) continue;
 
-  test(`${name}: те же ключи и подстановки, что в ${REFERENCE}`, () => {
+  test(`${name}: the same keys and placeholders as ${REFERENCE}`, () => {
     const reference = shape(locales[REFERENCE]);
     const own = shape(dict);
     const missing = [...reference.keys()].filter((key) => !own.has(key));
     const extra = [...own.keys()].filter((key) => !reference.has(key));
-    assert.deepEqual(missing, [], "ключей не хватает");
-    assert.deepEqual(extra, [], "лишние ключи");
+    assert.deepEqual(missing, [], "keys are missing");
+    assert.deepEqual(extra, [], "extra keys");
 
     for (const [base, forms] of reference) {
-      assert.equal(own.get(base)!.size === 0, forms.size === 0, `${base}: строка или формы`);
+      assert.equal(own.get(base)!.size === 0, forms.size === 0, `${base}: a string or forms`);
       const want = placeholders(locales[REFERENCE][forms.size ? `${base}_other` : base]);
       const ownForms = own.get(base)!;
       for (const key of ownForms.size ? [...ownForms].map((f) => `${base}_${f}`) : [base]) {

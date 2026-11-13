@@ -7,22 +7,22 @@ import { test } from "node:test";
 import { setTaskBox, taskBox } from "../src/tasks.ts";
 
 test("a box comes after any list marker", () => {
-  assert.deepEqual(taskBox("- [ ] купить молоко"), { at: 3, done: false });
-  assert.deepEqual(taskBox("  * [x] вложенная"), { at: 5, done: true });
-  assert.deepEqual(taskBox("12. [X] по номеру"), { at: 5, done: true });
-  assert.deepEqual(taskBox("> - [ ] в цитате"), { at: 5, done: false });
+  assert.deepEqual(taskBox("- [ ] buy milk"), { at: 3, done: false });
+  assert.deepEqual(taskBox("  * [x] nested"), { at: 5, done: true });
+  assert.deepEqual(taskBox("12. [X] numbered"), { at: 5, done: true });
+  assert.deepEqual(taskBox("> - [ ] in a quote"), { at: 5, done: false });
 });
 
 test("a line without a list marker has no box", () => {
-  assert.equal(taskBox("[ ] без маркера"), null);
-  assert.equal(taskBox("- обычный пункт"), null);
-  assert.equal(taskBox("-[ ] без пробела"), null);
-  assert.equal(taskBox("- [y] не галочка"), null);
+  assert.equal(taskBox("[ ] no marker"), null);
+  assert.equal(taskBox("- a plain item"), null);
+  assert.equal(taskBox("-[ ] no space"), null);
+  assert.equal(taskBox("- [y] not a check"), null);
 });
 
 test("only the character in the brackets changes", () => {
-  assert.equal(setTaskBox("  - [ ] шаг [ ] два", true), "  - [x] шаг [ ] два");
-  assert.equal(setTaskBox("- [X] готово", false), "- [ ] готово");
-  assert.equal(setTaskBox("- [x] готово", true), "- [x] готово");
-  assert.equal(setTaskBox("просто текст", true), null);
+  assert.equal(setTaskBox("  - [ ] step [ ] two", true), "  - [x] step [ ] two");
+  assert.equal(setTaskBox("- [X] done", false), "- [ ] done");
+  assert.equal(setTaskBox("- [x] done", true), "- [x] done");
+  assert.equal(setTaskBox("just text", true), null);
 });

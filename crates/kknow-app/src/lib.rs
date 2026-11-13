@@ -11,10 +11,10 @@ pub mod lines;
 pub mod lock;
 pub mod mcp;
 pub mod mentions;
-pub mod sections;
 pub mod merge;
 pub mod meta;
 pub mod proposals;
+pub mod sections;
 pub mod settings;
 pub mod text;
 pub mod theme;
@@ -71,40 +71,40 @@ pub enum Error {
     #[error(transparent)]
     Run(#[from] kknow_run::Error),
 
-    #[error("не удалось следить за каталогом: {0}")]
+    #[error("cannot watch the folder: {0}")]
     Watch(#[from] notify::Error),
 
-    #[error("некорректное имя заметки: {0}")]
+    #[error("invalid note name: {0}")]
     InvalidName(String),
 
-    #[error("заметка уже существует: {0}")]
+    #[error("the note already exists: {0}")]
     AlreadyExists(NoteId),
 
-    #[error("в {0} на строке {1} нет задачи: заметка изменилась")]
+    #[error("{0} has no task on line {1}: the note changed")]
     NotATask(NoteId, usize),
 
     #[error("{0} has no mention on line {1}: the note changed")]
     NotAMention(NoteId, usize),
 
-    #[error("в {0} на строке {1} нет комментария «{2}»: заметка изменилась")]
+    #[error("{0} has no comment \"{2}\" on line {1}: the note changed")]
     NotAnAgentComment(NoteId, usize, String),
 
-    #[error("правка {0} не найдена")]
+    #[error("proposal {0} is not found")]
     UnknownProposal(String),
 
     #[error("{0}")]
     BadProposal(String),
 
-    #[error("в правке {0} изменение {1} больше не находит свой текст: заметка изменилась")]
+    #[error("edit {1} of proposal {0} no longer finds its text: the note changed")]
     StaleEdit(String, usize),
 
-    #[error("комментарий {0} не найден")]
+    #[error("comment {0} is not found")]
     UnknownComment(String),
 
-    #[error("комментарий {0} занят: {1}")]
-    CommentBusy(String, &'static str),
+    #[error("comment {0} is busy: {word}", word = .1.word())]
+    CommentBusy(String, threads::Status),
 
-    #[error("пустое сообщение")]
+    #[error("the message is empty")]
     EmptyMessage,
 
     #[error("the note {0} is locked")]
@@ -125,22 +125,22 @@ pub enum Error {
     #[error("the note {0} is already locked")]
     AlreadyLocked(NoteId),
 
-    #[error("хранилище не найдено: {0}")]
+    #[error("vault is not found: {0}")]
     UnknownVault(String),
 
-    #[error("не заметка и не папка этого хранилища: {0}")]
+    #[error("not a note or a folder of this vault: {0}")]
     UnknownTarget(String),
 
-    #[error("это не каталог: {0}")]
+    #[error("not a folder: {0}")]
     NotADirectory(PathBuf),
 
-    #[error("это не markdown-файл: {0}")]
+    #[error("not a markdown file: {0}")]
     NotAMarkdownFile(PathBuf),
 
-    #[error("этот каталог уже в списке хранилищ: {0}")]
+    #[error("this folder is already in the vault list: {0}")]
     DuplicateVault(PathBuf),
 
-    #[error("хранилища не могут лежать одно в другом: {0} внутри {1}")]
+    #[error("a vault cannot be inside another vault: {0} is inside {1}")]
     NestedVault(PathBuf, PathBuf),
 
     #[error("{}", kknow_core::io_text(path, source))]
@@ -997,7 +997,7 @@ impl Workspace {
                 return Ok(candidate);
             }
         }
-        unreachable!("бесконечный перебор имён закончился")
+        unreachable!("the endless name search ended")
     }
 
     /// Vault folders, including empty ones: notes alone cannot give them.
@@ -1185,7 +1185,7 @@ fn heading_line(headings: &[Heading], wanted: &str) -> Option<usize> {
 fn conflict_copy(id: &NoteId, content: &str) -> NoteId {
     let short = format!("{:016x}", hash(content));
     NoteId::parse(&format!("{id}{CONFLICT_MARK}{})", &short[..8]))
-        .expect("имя копии отличается от исходного только суффиксом")
+        .expect("the copy name differs from the original only by a suffix")
 }
 
 pub(crate) fn hash(content: &str) -> u64 {

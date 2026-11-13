@@ -174,27 +174,95 @@ impl CommandSpec {
     }
 
     /// Problems in the command. Empty means the command can run.
-    fn problems(&self) -> Vec<String> {
+    fn problems(&self) -> Vec<Problem> {
+        let id = || self.id.clone();
         let mut problems = Vec::new();
 
         if self.name.trim().is_empty() {
-            problems.push("нет подписи (name)".to_string());
+            problems.push(Problem::NoName { id: id() });
         }
         if self.script.trim().is_empty() {
-            problems.push("пустой скрипт".to_string());
+            problems.push(Problem::EmptyScript { id: id() });
         }
         if crate::runner::for_kind(&self.kind).is_none() {
-            problems.push(format!(
-                "неизвестный вид «{}»; известны: {}",
-                self.kind,
-                crate::runner::kinds().join(", ")
-            ));
+            problems.push(Problem::UnknownKind {
+                id: id(),
+                kind: self.kind.clone(),
+                known: crate::runner::kinds().join(", "),
+            });
         }
         if self.targets.is_empty() {
-            problems.push("пустой targets: команде не на чем появиться".to_string());
+            problems.push(Problem::NoTargets { id: id() });
         }
 
         problems
+    }
+}
+
+/// What is wrong with the commands file or with one of its entries.
+///
+/// It is data, not a ready text: the CLI prints `Display`, and the window
+/// translates `problem.command.<code>` with the fields, in its own language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "CommandProblem"))]
+pub enum Problem {
+    /// The file does not parse.
+    File {
+        path: String,
+        detail: String,
+    },
+    /// An entry without an ID is skipped.
+    NoId,
+    /// A second entry with a known ID is skipped.
+    DuplicateId {
+        id: String,
+    },
+    NoName {
+        id: String,
+    },
+    EmptyScript {
+        id: String,
+    },
+    UnknownKind {
+        id: String,
+        kind: String,
+        known: String,
+    },
+    NoTargets {
+        id: String,
+    },
+}
+
+impl Problem {
+    /// The command that the problem is about, if it has an ID.
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Problem::File { .. } | Problem::NoId => None,
+            Problem::DuplicateId { id }
+            | Problem::NoName { id }
+            | Problem::EmptyScript { id }
+            | Problem::UnknownKind { id, .. }
+            | Problem::NoTargets { id } => Some(id),
+        }
+    }
+}
+
+impl std::fmt::Display for Problem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Problem::File { path, detail } => write!(f, "{path}: {detail}"),
+            Problem::NoId => write!(f, "a command without id is skipped"),
+            Problem::DuplicateId { id } => write!(f, "{id}: this id is already used, the entry is skipped"),
+            Problem::NoName { id } => write!(f, "{id}: no name"),
+            Problem::EmptyScript { id } => write!(f, "{id}: the script is empty"),
+            Problem::UnknownKind { id, kind, known } => {
+                write!(f, "{id}: unknown kind \"{kind}\"; known kinds: {known}")
+            }
+            Problem::NoTargets { id } => {
+                write!(f, "{id}: targets is empty, so the command shows nowhere")
+            }
+        }
     }
 }
 
@@ -262,7 +330,7 @@ impl Manifest {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("манифест сериализуем");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("the manifest serializes");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");
@@ -274,7 +342,7 @@ impl Manifest {
     ///
     /// The form shows each problem next to its field. It keeps and edits the
     /// invalid entry instead of losing it.
-    pub fn problems(&self) -> Vec<String> {
+    pub fn problems(&self) -> Vec<Problem> {
         sift(&self.commands).1
     }
 }
@@ -283,7 +351,7 @@ impl Manifest {
 ///
 /// This is the only place in the crate for it: the set takes the commands, the
 /// settings form takes the problems, so the two cannot disagree.
-fn sift(commands: &[CommandSpec]) -> (Vec<&CommandSpec>, Vec<String>) {
+fn sift(commands: &[CommandSpec]) -> (Vec<&CommandSpec>, Vec<Problem>) {
     let mut good: Vec<&CommandSpec> = Vec::new();
     let mut problems = Vec::new();
 
@@ -291,13 +359,15 @@ fn sift(commands: &[CommandSpec]) -> (Vec<&CommandSpec>, Vec<String>) {
         let issues = spec.problems();
 
         if spec.id.trim().is_empty() {
-            problems.push("команда без id пропущена".to_string());
+            problems.push(Problem::NoId);
         } else if good.iter().any(|other| other.id == spec.id) {
-            problems.push(format!("{}: такой id уже был, запись пропущена", spec.id));
+            problems.push(Problem::DuplicateId {
+                id: spec.id.clone(),
+            });
         } else if issues.is_empty() {
             good.push(spec);
         } else {
-            problems.push(format!("{}: {}", spec.id, issues.join("; ")));
+            problems.extend(issues);
         }
     }
 
@@ -317,7 +387,7 @@ pub struct CommandSet {
     pub env: BTreeMap<String, String>,
     /// What was dropped and why. A command must not disappear silently: a
     /// person wrote it and will look for it.
-    pub problems: Vec<String>,
+    pub problems: Vec<Problem>,
 }
 
 /// Keeps the valid commands; invalid entries become problems.
@@ -350,7 +420,10 @@ impl CommandSet {
             // the app and the CLI must keep working, and the author fixes the
             // file.
             Err(Error::Manifest { path, reason }) => Ok(CommandSet {
-                problems: vec![format!("{}: {reason}", path.display())],
+                problems: vec![Problem::File {
+                    path: path.display().to_string(),
+                    detail: reason,
+                }],
                 ..CommandSet::default()
             }),
             Err(other) => Err(other),
@@ -565,7 +638,7 @@ At the end, write a short list: each proposal, each question, and each comment t
     claude_tools="Read,mcp__kknow"
     copilot_tool="kknow"
     ;;
-  *) echo "MODE=«${MODE}»: укажите edit или propose" >&2; exit 2 ;;
+  *) echo "MODE=\"${MODE}\": set edit or propose" >&2; exit 2 ;;
 esac
 
 # The threads are in the vault root, above the folder of the note.
@@ -575,7 +648,7 @@ if [ -n "$KKNOW_VAULT" ]; then set -- --add-dir "$KKNOW_VAULT"; fi
 case "$AGENT" in
   claude) exec claude -p "$prompt" --allowedTools "$claude_tools" "$@" ;;
   copilot) exec copilot -p "$prompt" --silent --allow-tool "$copilot_tool" "$@" ;;
-  *) echo "AGENT=«${AGENT}»: укажите claude или copilot" >&2; exit 2 ;;
+  *) echo "AGENT=\"${AGENT}\": set claude or copilot" >&2; exit 2 ;;
 esac
 "#;
 
@@ -695,7 +768,7 @@ mod tests {
         assert_eq!(ids, ["e"], "живой осталась только годная команда");
         assert_eq!(parsed.problems.len(), 5, "{:?}", parsed.problems);
         assert!(
-            parsed.problems[0].contains("phyton"),
+            matches!(&parsed.problems[0], Problem::UnknownKind { kind, .. } if kind == "phyton"),
             "{:?}",
             parsed.problems
         );
@@ -808,7 +881,7 @@ mod tests {
         let (ok, text) = run_agent("yolo");
 
         assert!(!ok);
-        assert!(text.contains("MODE=«yolo»"), "{text}");
+        assert!(text.contains(r#"MODE="yolo""#), "{text}");
     }
 
     #[test]

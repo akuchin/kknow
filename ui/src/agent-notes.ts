@@ -19,7 +19,7 @@
  * a paragraph is about the whole paragraph. The user leaves one with the
  * cursor in the paragraph and nothing selected.
  *
- * The UI calls these notes "comments" ("заметки"); the marker stays `@agent`,
+ * The UI calls these notes "comments"; the marker stays `@agent`,
  * because agents look for it.
  *
  * This file has the parser, the live preview highlight (called from

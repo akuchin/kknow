@@ -235,7 +235,7 @@ impl RemoteConfig {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("настройка сериализуема");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("the config serializes");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");

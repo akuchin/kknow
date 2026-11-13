@@ -53,7 +53,7 @@ fn join<T: Serialize + DeserializeOwned>(
 }
 
 fn to_bytes<T: Serialize>(value: &T) -> Vec<u8> {
-    let mut bytes = serde_json::to_vec_pretty(value).expect("запись сериализуема");
+    let mut bytes = serde_json::to_vec_pretty(value).expect("the record serializes");
     bytes.push(b'\n');
     bytes
 }
@@ -113,6 +113,7 @@ mod tests {
                     from: "me".to_string(),
                     text: text.to_string(),
                     at: *at,
+                    event: None,
                 })
                 .collect(),
             proposal: None,

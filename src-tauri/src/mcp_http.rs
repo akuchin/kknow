@@ -104,7 +104,7 @@ impl McpServer {
         let path = config_dir.map(McpConfig::path);
         let config = match &path {
             Some(path) => McpConfig::load_or_create(path).unwrap_or_else(|error| {
-                eprintln!("не удалось прочитать настройки MCP: {error}");
+                eprintln!("cannot read the MCP settings: {error}");
                 McpConfig::default()
             }),
             None => McpConfig::default(),
@@ -257,7 +257,7 @@ fn answer<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, mut request: t
         .take(MAX_BODY + 1)
         .read_to_end(&mut body);
     let reply = if read.is_err() || body.len() as u64 > MAX_BODY {
-        Reply::refuse(413, "тело запроса слишком большое")
+        Reply::refuse(413, "the request body is too large")
     } else {
         let parsed = Request {
             method: request.method().as_str().to_string(),
@@ -287,7 +287,7 @@ fn answer<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, mut request: t
 }
 
 fn header(name: &str, value: &str) -> tiny_http::Header {
-    tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("заголовок из ASCII")
+    tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("an ASCII header")
 }
 
 /// The reply to one request. The checks go from the cheapest to the most
@@ -295,10 +295,10 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
 pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &Request) -> Reply {
     let (path, query) = request.url.split_once('?').unwrap_or((&request.url, ""));
     if path != "/mcp" {
-        return Reply::refuse(404, "адрес сервера: /mcp");
+        return Reply::refuse(404, "the server address is /mcp");
     }
     if !ours(request.header("Host"), port, false) || !ours(request.header("Origin"), port, true) {
-        return Reply::refuse(403, "запрос не с этого компьютера");
+        return Reply::refuse(403, "the request is not from this computer");
     }
     if request.method != "POST" {
         return Reply::empty(405);
@@ -310,7 +310,7 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
     if !mcp::same_token(given.trim(), token) {
         return Reply::refuse(
             401,
-            "нужен заголовок Authorization: Bearer <токен из kknow>",
+            "the Authorization: Bearer <token from kknow> header is required",
         );
     }
 
@@ -340,7 +340,7 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
     match (message.is_array(), replies.len()) {
         // Only notifications and replies of the client: nothing to answer.
         (_, 0) => Reply::empty(202),
-        (false, _) => Reply::json(200, replies.into_iter().next().expect("один ответ")),
+        (false, _) => Reply::json(200, replies.into_iter().next().expect("one reply")),
         (true, _) => Reply::json(200, Value::Array(replies)),
     }
 }
@@ -419,7 +419,7 @@ fn scope(entries: Vec<VaultEntry>, query: &str) -> std::result::Result<Vec<Vault
             .into_iter()
             .find(|entry| entry.id == wanted || entry.name.to_lowercase() == lower)
             .map(|entry| vec![entry])
-            .ok_or_else(|| format!("хранилище не найдено: {wanted}"));
+            .ok_or_else(|| format!("vault is not found: {wanted}"));
     }
     if labels.is_empty() {
         return Ok(entries);
@@ -623,7 +623,7 @@ mod tests {
             ),
         );
 
-        assert_eq!(text(&reply), "комментарий План:1 снят");
+        assert_eq!(text(&reply), "comment План:1 removed");
         assert_eq!(
             fs::read_to_string(dirs[0].path().join("План.md")).unwrap(),
             "- [ ] отчёт\n"

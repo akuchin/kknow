@@ -80,7 +80,7 @@ pub fn handle(host: &mut impl Host, message: &Value) -> Option<Value> {
         return Some(failure(
             message.get("id").cloned().unwrap_or(Value::Null),
             INVALID_REQUEST,
-            "нет поля method",
+            "no method field",
         ));
     };
     let id = message.get("id")?.clone();
@@ -91,7 +91,7 @@ pub fn handle(host: &mut impl Host, message: &Value) -> Option<Value> {
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools() })),
         "tools/call" => call(host, &params),
-        _ => Err((METHOD_NOT_FOUND, format!("неизвестный метод: {method}"))),
+        _ => Err((METHOD_NOT_FOUND, format!("unknown method: {method}"))),
     };
     Some(match result {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
@@ -339,7 +339,7 @@ fn tools() -> Value {
         },
     ]);
     // Each tool but `list_vaults` gets the optional `vault`: one place for all.
-    for tool in tools.as_array_mut().expect("список").iter_mut().skip(1) {
+    for tool in tools.as_array_mut().expect("a list").iter_mut().skip(1) {
         tool["inputSchema"]["properties"]["vault"] = vault.clone();
     }
     tools
@@ -361,7 +361,7 @@ fn call(host: &mut impl Host, params: &Value) -> Result<Value, (i64, String)> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
-        .ok_or((INVALID_PARAMS, "нет имени инструмента".to_string()))?;
+        .ok_or((INVALID_PARAMS, "no tool name".to_string()))?;
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
     let args = Args(&args);
 
@@ -383,7 +383,7 @@ fn call(host: &mut impl Host, params: &Value) -> Result<Value, (i64, String)> {
         "proposal_status" => proposal_status(host, &args),
         "list_proposals" => list_proposals(host, &args),
         "withdraw_proposal" => withdraw_proposal(host, &args),
-        _ => return Err((INVALID_PARAMS, format!("неизвестный инструмент: {name}"))),
+        _ => return Err((INVALID_PARAMS, format!("unknown tool: {name}"))),
     };
     let (text, is_error) = match outcome {
         Ok(text) => (text, false),
@@ -400,7 +400,7 @@ impl Args<'_> {
         self.0
             .get(key)
             .and_then(Value::as_str)
-            .ok_or_else(|| format!("нужен строковый аргумент {key}"))
+            .ok_or_else(|| format!("string argument {key} is required"))
     }
 
     fn opt_str(&self, key: &str) -> Option<&str> {
@@ -412,7 +412,7 @@ impl Args<'_> {
             .get(key)
             .and_then(Value::as_u64)
             .map(|value| value as usize)
-            .ok_or_else(|| format!("нужен числовой аргумент {key}"))
+            .ok_or_else(|| format!("number argument {key} is required"))
     }
 
     fn bool(&self, key: &str) -> Option<bool> {
@@ -432,7 +432,7 @@ impl Args<'_> {
             .map(|index| vec![index])
             .ok_or_else(|| {
                 let names: Vec<&str> = vaults.iter().map(|vault| vault.name.as_str()).collect();
-                format!("хранилище не найдено: {wanted}; есть: {}", names.join(", "))
+                format!("vault is not found: {wanted}; available: {}", names.join(", "))
             })
     }
 
@@ -449,7 +449,7 @@ impl Args<'_> {
             }
         }
         match found.as_slice() {
-            [] => Err(format!("заметка не найдена: {raw}")),
+            [] => Err(format!("note is not found: {raw}")),
             [one] => Ok(one.clone()),
             many => {
                 let names: Vec<&str> = many
@@ -457,7 +457,7 @@ impl Args<'_> {
                     .map(|(index, _)| host.vaults()[*index].name.as_str())
                     .collect();
                 Err(format!(
-                    "заметка {raw} есть в нескольких хранилищах: {}; укажите vault",
+                    "note {raw} is in more than one vault: {}; set vault",
                     names.join(", ")
                 ))
             }
@@ -513,7 +513,7 @@ fn list_vaults(host: &impl Host) -> Outcome {
         let (count, root) = host.read(index, |workspace| {
             (workspace.len(), workspace.root().display().to_string())
         })?;
-        let mut line = format!("{}  заметок: {count}  {root}", vault.name);
+        let mut line = format!("{}  notes: {count}  {root}", vault.name);
         if !vault.labels.is_empty() {
             let labels: Vec<String> = vault
                 .labels
@@ -524,7 +524,7 @@ fn list_vaults(host: &impl Host) -> Outcome {
         }
         rows.push(line);
     }
-    Ok(rows_or(rows, "хранилищ нет"))
+    Ok(rows_or(rows, "no vaults"))
 }
 
 /// Each vault has its own index, and their scores cannot be compared. So the
@@ -545,7 +545,7 @@ fn search(host: &impl Host, args: &Args) -> Outcome {
             });
         }
     }
-    Ok(rows_or(rows, "ничего не найдено"))
+    Ok(rows_or(rows, "nothing found"))
 }
 
 fn list_notes(host: &impl Host, args: &Args) -> Outcome {
@@ -570,7 +570,7 @@ fn list_notes(host: &impl Host, args: &Args) -> Outcome {
         })?;
         rows.extend(texts.into_iter().map(|text| row(host, index, text)));
     }
-    Ok(rows_or(rows, "заметок нет"))
+    Ok(rows_or(rows, "no notes"))
 }
 
 fn read_note(host: &impl Host, args: &Args) -> Outcome {
@@ -578,7 +578,7 @@ fn read_note(host: &impl Host, args: &Args) -> Outcome {
     host.read(index, |workspace| {
         let content = workspace.read(&id).map_err(text)?;
         Ok(format!(
-            "путь: {}\n\n{content}",
+            "path: {}\n\n{content}",
             workspace.path_for(&id).display()
         ))
     })?
@@ -599,7 +599,7 @@ fn backlinks(host: &impl Host, args: &Args) -> Outcome {
         .collect();
     Ok(rows_or(
         rows,
-        &format!("{id}: на эту заметку никто не ссылается"),
+        &format!("{id}: no notes link here"),
     ))
 }
 
@@ -616,7 +616,7 @@ fn links(host: &impl Host, args: &Args) -> Outcome {
         .into_iter()
         .map(|text| row(host, index, text))
         .collect();
-    Ok(rows_or(rows, &format!("{id}: исходящих ссылок нет")))
+    Ok(rows_or(rows, &format!("{id}: no outgoing links")))
 }
 
 fn tasks(host: &impl Host, args: &Args) -> Outcome {
@@ -639,9 +639,9 @@ fn tasks(host: &impl Host, args: &Args) -> Outcome {
     Ok(rows_or(
         rows,
         if all {
-            "задач нет"
+            "no tasks"
         } else {
-            "открытых задач нет"
+            "no open tasks"
         },
     ))
 }
@@ -649,16 +649,16 @@ fn tasks(host: &impl Host, args: &Args) -> Outcome {
 fn set_task(host: &mut impl Host, args: &Args) -> Outcome {
     let (index, id) = args.note(host)?;
     let line = args.uint("line")?;
-    let done = args.bool("done").ok_or("нужен логический аргумент done")?;
+    let done = args.bool("done").ok_or("boolean argument done is required")?;
     host.write(index, |workspace| workspace.set_task(&id, line, done))?
         .map_err(text)?;
     host.changed(index, &id);
     let state = if done {
-        "выполнена"
+        "done"
     } else {
-        "открыта"
+        "open"
     };
-    Ok(row(host, index, format!("задача {id}:{line} {state}")))
+    Ok(row(host, index, format!("task {id}:{line} {state}")))
 }
 
 fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
@@ -694,14 +694,14 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                     };
                     let place = format!("{id}:{}{key}{state}", comment.line);
                     let mut text = if comment.anchor.is_empty() {
-                        format!("{place}  (на абзац): {}", comment.text)
+                        format!("{place}  (on the paragraph): {}", comment.text)
                     } else {
-                        format!("{place}  «{}»: {}", comment.anchor, comment.text)
+                        format!("{place}  \"{}\": {}", comment.anchor, comment.text)
                     };
                     // The first message is the task itself, already in the row.
                     for message in thread.iter().flat_map(|t| t.messages.iter().skip(1)) {
                         let who = if message.from == ME {
-                            "человек"
+                            "human"
                         } else {
                             &message.from
                         };
@@ -713,7 +713,7 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
         })?;
         rows.extend(texts.into_iter().map(|text| row(host, index, text)));
     }
-    Ok(rows_or(rows, "комментариев нет"))
+    Ok(rows_or(rows, "no comments"))
 }
 
 /// The name an agent gave, or a neutral word.
@@ -721,7 +721,7 @@ fn agent_name<'a>(args: &'a Args) -> &'a str {
     args.opt_str("agent")
         .map(str::trim)
         .filter(|name| !name.is_empty() && *name != ME)
-        .unwrap_or("агент")
+        .unwrap_or(crate::threads::AGENT)
 }
 
 /// The vault and the comment of a tool call: by `id` in any vault, or by
@@ -740,7 +740,7 @@ fn comment_ref(host: &impl Host, args: &Args) -> Result<(usize, CommentRef), Str
                 return Ok((index, CommentRef::Id(key.to_string())));
             }
         }
-        return Err(format!("комментарий {key} не найден"));
+        return Err(format!("comment {key} is not found"));
     }
     let (index, note) = args.note(host)?;
     let line = args.uint("line")?;
@@ -766,7 +766,7 @@ fn claim_comment(host: &mut impl Host, args: &Args) -> Outcome {
     Ok(row(
         host,
         index,
-        format!("комментарий {} взят в работу", thread.id),
+        format!("comment {} is in progress", thread.id),
     ))
 }
 
@@ -784,14 +784,14 @@ fn reply_comment(host: &mut impl Host, args: &Args) -> Outcome {
         host.changed(index, &note);
     }
     let tail = if question {
-        "вопрос задан, ждите ответа человека; эту задачу пока не продолжайте"
+        "question asked; wait for the human to answer and do not continue this task yet"
     } else {
-        "ответ записан"
+        "reply saved"
     };
     Ok(row(
         host,
         index,
-        format!("комментарий {}: {tail}", thread.id),
+        format!("comment {}: {tail}", thread.id),
     ))
 }
 
@@ -820,7 +820,7 @@ fn resolve_comment(host: &mut impl Host, args: &Args) -> Outcome {
     if let Some(note) = note {
         host.changed(index, &note);
     }
-    Ok(row(host, index, format!("комментарий {place} снят")))
+    Ok(row(host, index, format!("comment {place} removed")))
 }
 
 fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
@@ -831,13 +831,13 @@ fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
         .0
         .get("edits")
         .and_then(Value::as_array)
-        .ok_or("нужен массив edits из объектов {old, new}")?
+        .ok_or("edits must be an array of {old, new} objects")?
         .iter()
         .map(|edit| {
             let field = |key| edit.get(key).and_then(Value::as_str).map(String::from);
             field("old")
                 .zip(field("new"))
-                .ok_or_else(|| "у каждой правки нужны строки old и new".to_string())
+                .ok_or_else(|| "each edit needs old and new strings".to_string())
         })
         .collect::<Result<Vec<_>, String>>()?;
     let comment = args.opt_str("comment");
@@ -861,7 +861,7 @@ fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
         host,
         index,
         format!(
-            "правка {} к {note} ждёт проверки человеком, изменений: {}",
+            "proposal {} for {note} waits for human review, edits: {}",
             proposal.id,
             proposal.edits.len()
         ),
@@ -870,13 +870,13 @@ fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
 
 fn propose_note(host: &mut impl Host, args: &Args) -> Outcome {
     let raw = args.str("note")?;
-    let note = NoteId::parse(raw).ok_or_else(|| format!("некорректное имя заметки: {raw}"))?;
+    let note = NoteId::parse(raw).ok_or_else(|| format!("invalid note name: {raw}"))?;
     let content = args.str("content")?;
     let reason = args.str("reason")?;
     let agent = agent_name(args);
-    let index = *args.vaults(host)?.first().ok_or("у сервера нет хранилищ")?;
+    let index = *args.vaults(host)?.first().ok_or("the server has no vaults")?;
     if host.vaults().len() > 1 && args.opt_str("vault").is_none() {
-        return Err("хранилищ несколько: укажите vault".to_string());
+        return Err("there is more than one vault: set vault".to_string());
     }
     let proposal = host
         .write(index, |workspace| {
@@ -887,7 +887,7 @@ fn propose_note(host: &mut impl Host, args: &Args) -> Outcome {
         host,
         index,
         format!(
-            "новая заметка {note} ждёт проверки человеком (правка {})",
+            "new note {note} waits for human review (proposal {})",
             proposal.id
         ),
     ))
@@ -900,7 +900,7 @@ fn proposal_vault(host: &impl Host, args: &Args, key: &str) -> Result<usize, Str
             return Ok(index);
         }
     }
-    Err(format!("правка {key} не найдена"))
+    Err(format!("proposal {key} is not found"))
 }
 
 fn proposal_status(host: &impl Host, args: &Args) -> Outcome {
@@ -928,7 +928,7 @@ fn list_proposals(host: &impl Host, args: &Args) -> Outcome {
                 .map(|p| row(host, index, p.describe())),
         );
     }
-    Ok(rows_or(rows, "правок нет"))
+    Ok(rows_or(rows, "no proposals"))
 }
 
 fn withdraw_proposal(host: &mut impl Host, args: &Args) -> Outcome {
@@ -944,7 +944,7 @@ fn withdraw_proposal(host: &mut impl Host, args: &Args) -> Outcome {
     if let Some(note) = note {
         host.changed(index, &note);
     }
-    Ok(row(host, index, format!("правка {key} отозвана")))
+    Ok(row(host, index, format!("proposal {key} withdrawn")))
 }
 
 /// File of the HTTP server settings in the app config directory.
@@ -1011,7 +1011,7 @@ impl McpConfig {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
-        let mut bytes = serde_json::to_vec_pretty(self).expect("настройки сериализуемы");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("settings serialize");
         bytes.push(b'\n');
         let temp = path.with_extension("json.tmp");
         fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
@@ -1204,7 +1204,7 @@ mod tests {
 
         let (text, is_error) = tool(&mut host, "read_note", json!({ "note": "Нет" }));
         assert!(is_error);
-        assert_eq!(text, "заметка не найдена: Нет");
+        assert_eq!(text, "note is not found: Нет");
     }
 
     #[test]
@@ -1221,7 +1221,7 @@ mod tests {
         let (text, _) = tool(&mut host, "read_note", json!({ "note": "план" }));
         let path = host._dirs[0].path().canonicalize().unwrap().join("План.md");
         assert!(
-            text.starts_with(&format!("путь: {}\n\n# План", path.display())),
+            text.starts_with(&format!("path: {}\n\n# План", path.display())),
             "{text}"
         );
 
@@ -1326,9 +1326,9 @@ mod tests {
         let key = host.workspaces[0].threads().unwrap()[0].id.clone();
         let (waiting, _) = tool(&mut host, "agent_comments", json!({}));
         let (everything, _) = tool(&mut host, "agent_comments", json!({ "all": true }));
-        assert_eq!(waiting, "комментариев нет");
+        assert_eq!(waiting, "no comments");
         assert!(
-            everything.contains(&format!("План:1 [{key}] (вопрос)")),
+            everything.contains(&format!("План:1 [{key}] (question)")),
             "{everything}"
         );
         assert!(everything.contains("claude: 12 или 14?"), "{everything}");
@@ -1370,7 +1370,7 @@ mod tests {
             .unwrap();
         let (status, _) = tool(&mut host, "proposal_status", json!({ "id": proposal }));
 
-        assert!(status.contains("(принято)"), "{status}");
+        assert!(status.contains("(accepted)"), "{status}");
         assert_eq!(
             host.workspaces[0]
                 .read(&NoteId::parse("План").unwrap())
@@ -1394,7 +1394,7 @@ mod tests {
         );
 
         assert!(error);
-        assert!(reply.contains("несколько раз"), "{reply}");
+        assert!(reply.contains("more than once"), "{reply}");
     }
 
     #[test]
@@ -1407,7 +1407,7 @@ mod tests {
         let (found, _) = tool(&mut host, "agent_comments", json!({}));
         assert_eq!(
             found,
-            "План:3  «быстрый»: замерить\nПлан:5  (на абзац): сократить"
+            "План:3  \"быстрый\": замерить\nПлан:5  (on the paragraph): сократить"
         );
 
         let (text, is_error) = tool(
@@ -1421,7 +1421,7 @@ mod tests {
             "# План\n\nПоиск быстрый.\n\nАбзац.<!-- @agent: сократить -->\n"
         );
         let (found, _) = tool(&mut host, "agent_comments", json!({ "note": "План" }));
-        assert_eq!(found, "План:5  (на абзац): сократить");
+        assert_eq!(found, "План:5  (on the paragraph): сократить");
     }
 
     fn two_vaults() -> TestHost {
@@ -1445,9 +1445,9 @@ mod tests {
 
         let (list, _) = tool(&mut host, "list_vaults", json!({}));
         let lines: Vec<&str> = list.lines().collect();
-        assert!(lines[0].starts_with("Работа  заметок: 1  "), "{list}");
+        assert!(lines[0].starts_with("Работа  notes: 1  "), "{list}");
         assert!(lines[0].ends_with("  #work"), "{list}");
-        assert!(lines[1].starts_with("Дом  заметок: 2  "), "{list}");
+        assert!(lines[1].starts_with("Дом  notes: 2  "), "{list}");
 
         let (tasks, _) = tool(&mut host, "tasks", json!({}));
         assert_eq!(tasks, "[Работа] План:1  отчёт\n[Дом] План:1  купить");
@@ -1455,7 +1455,7 @@ mod tests {
         assert_eq!(tasks, "[Дом] План:1  купить");
 
         let (comments, _) = tool(&mut host, "agent_comments", json!({}));
-        assert_eq!(comments, "[Работа] План:1  (на абзац): проверить цифры");
+        assert_eq!(comments, "[Работа] План:1  (on the paragraph): проверить цифры");
     }
 
     #[test]
@@ -1466,7 +1466,7 @@ mod tests {
         assert!(is_error);
         assert_eq!(
             text,
-            "заметка План есть в нескольких хранилищах: Работа, Дом; укажите vault"
+            "note План is in more than one vault: Работа, Дом; set vault"
         );
 
         let (text, is_error) = tool(
@@ -1483,7 +1483,7 @@ mod tests {
 
         let (text, is_error) = tool(&mut host, "tasks", json!({ "vault": "Офис" }));
         assert!(is_error);
-        assert_eq!(text, "хранилище не найдено: Офис; есть: Работа, Дом");
+        assert_eq!(text, "vault is not found: Офис; available: Работа, Дом");
     }
 
     #[test]

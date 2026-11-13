@@ -236,7 +236,7 @@ impl Vault {
         }
         fs::rename(&source, &target).map_err(|source| Error::io(&target, source))?;
 
-        let moved = self.notes.remove(from).expect("заметка найдена выше");
+        let moved = self.notes.remove(from).expect("the note was found above");
         let note = Note {
             id: to.clone(),
             path: target,
@@ -313,9 +313,9 @@ impl Vault {
 
         let mut moved = Vec::with_capacity(inside.len());
         for old in inside {
-            let note = self.notes.remove(&old).expect("собрано из ключей выше");
+            let note = self.notes.remove(&old).expect("collected from the keys above");
             let renamed = format!("{to_key}/{}", &old.as_str()[from_prefix.len()..]);
-            let new = NoteId::parse(&renamed).expect("части были корректными");
+            let new = NoteId::parse(&renamed).expect("the parts were valid");
             self.notes.insert(
                 new.clone(),
                 Note {

@@ -583,7 +583,7 @@ impl Git {
                 (Some(ours), Some(theirs))
                     if crate::shared::is_shared(path) && self.merge.is_some() =>
                 {
-                    let merge = self.merge.expect("проверено выше");
+                    let merge = self.merge.expect("checked above");
                     let joined = merge(path, &ours, &theirs).unwrap_or(ours);
                     write(&file, &joined)?;
                     self.run(&["add", "--", path])?;
@@ -752,7 +752,7 @@ fn is_empty(root: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// The path of the copy for the remote version: `dir/Note (конфликт 3f9a1c2b).md`.
+/// The path of the copy for the remote version: `dir/Note (conflict 3f9a1c2b).md`.
 ///
 /// The same mark as the other providers use, so the window finds the copies in
 /// the same way. The hash makes the name stable: the same version gives the
@@ -788,7 +788,7 @@ fn failure_text(stderr: &[u8]) -> String {
         .filter(|line| !line.is_empty() && !line.starts_with("hint:"))
         .collect();
     if lines.is_empty() {
-        "git завершился с ошибкой".to_string()
+        "git failed".to_string()
     } else {
         lines.join("\n")
     }
@@ -1068,7 +1068,7 @@ mod tests {
             panic!("ожидался один конфликт: {report:?}");
         };
         assert_eq!(conflict.path, "Дневник/Сегодня.md");
-        assert!(conflict.copy.starts_with("Дневник/Сегодня (конфликт "));
+        assert!(conflict.copy.starts_with("Дневник/Сегодня (conflict "));
         assert!(conflict.copy.ends_with(").md"));
         assert_eq!(read(&desk, "Дневник/Сегодня.md"), "со стола\n");
         assert_eq!(read(&desk, &conflict.copy), "с ноутбука\n");
@@ -1472,7 +1472,7 @@ mod tests {
     #[test]
     fn conflict_copies_keep_the_folder_and_the_extension() {
         let copy = conflict_copy("Папка/Заметка.md", b"x");
-        assert!(copy.starts_with("Папка/Заметка (конфликт "), "{copy}");
+        assert!(copy.starts_with("Папка/Заметка (conflict "), "{copy}");
         assert!(copy.ends_with(").md"), "{copy}");
         assert_eq!(
             copy,

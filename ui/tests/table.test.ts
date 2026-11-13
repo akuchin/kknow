@@ -18,41 +18,41 @@ import {
   transpose,
 } from "../src/table.ts";
 
-test("форматирует таблицу и выравнивает колонки", () => {
+test("formats a table and aligns the columns", () => {
   const text = serializeTable(
     [
-      ["Имя", "Возраст"],
-      ["Аня", "7"],
+      ["Who", "Lessons"],
+      ["Ann", "7"],
     ],
     [null, "right"],
   );
-  assert.equal(text, ["| Имя | Возраст |", "| --- | ------: |", "| Аня |       7 |"].join("\n"));
+  assert.equal(text, ["| Who | Lessons |", "| --- | ------: |", "| Ann |       7 |"].join("\n"));
 });
 
-test("центрирует текст и сохраняет отступ таблицы в списке", () => {
+test("centers text and keeps the indent of a table in a list", () => {
   const text = serializeTable([["a", "b"], ["ccccc", "d"]], ["center"], "  ");
   assert.equal(text, ["  |   a   | b   |", "  | :---: | --- |", "  | ccccc | d   |"].join("\n"));
 });
 
-test("широкие символы занимают две клетки", () => {
+test("wide characters take two cells", () => {
   assert.equal(textWidth("表"), 2);
-  assert.equal(textWidth("й"), 1);
-  assert.equal(textWidth("й"), 1);
+  assert.equal(textWidth("\u00e9"), 1);
+  assert.equal(textWidth("e\u0301"), 1);
   const text = serializeTable([["表格", "x"], ["abcd", "y"]], []);
   assert.equal(text.split("\n")[0], "| 表格 | x   |");
 });
 
-test("таблица из одного заголовка — без разделителя", () => {
-  const table = parseTable("| Имя | Возраст", 10)!;
+test("a table of only a header has no delimiter", () => {
+  const table = parseTable("| Who | Lessons", 10)!;
   assert.equal(table.delimiter, false);
   assert.deepEqual(
     table.rows[0].map((cell) => cell.text),
-    ["Имя", "Возраст"],
+    ["Who", "Lessons"],
   );
   assert.deepEqual(table.lines, [0]);
 });
 
-test("разбор: позиции ячеек, выравнивание, экранированная черта", () => {
+test("parsing: cell positions, alignment, an escaped pipe", () => {
   const source = "| a | b \\| c |\n|:--|--:|\n| 1 |   |";
   const table = parseTable(source, 100)!;
   assert.equal(table.delimiter, true);
@@ -64,14 +64,14 @@ test("разбор: позиции ячеек, выравнивание, экр�
   assert.equal(table.rows[1][1].from, table.rows[1][1].to);
 });
 
-test("разделитель отличается от строки с текстом", () => {
+test("a delimiter differs from a text row", () => {
   assert.equal(isDelimiter("| --- | :-: |"), true);
   assert.equal(isDelimiter("--- | ---"), true);
   assert.equal(isDelimiter("| a | b |"), false);
   assert.equal(isDelimiter("|  |"), false);
 });
 
-test("колонка под курсором считается по чертам", () => {
+test("the column under the cursor is counted by pipes", () => {
   const line = "| a | b |";
   assert.equal(columnAt(line, 0), 0);
   assert.equal(columnAt(line, 2), 0);
@@ -82,7 +82,7 @@ test("колонка под курсором считается по черта�
   assert.equal(columnAt("| a \\| b | c", 10), 1);
 });
 
-test("строки двигаются, заголовок остаётся на месте", () => {
+test("rows move, the header stays in place", () => {
   const rows = [["h"], ["1"], ["2"], ["3"]];
   assert.deepEqual(moveRows(rows, 2, 3, -1), [["h"], ["2"], ["3"], ["1"]]);
   assert.equal(moveRows(rows, 1, 1, -1), null);
@@ -90,42 +90,42 @@ test("строки двигаются, заголовок остаётся на 
   assert.equal(moveRows(rows, 0, 0, 1), null);
 });
 
-test("колонки двигаются вместе с выравниванием", () => {
+test("columns move together with their alignment", () => {
   const moved = moveColumns([["a", "b", "c"]], ["left"], 0, 0, 1)!;
   assert.deepEqual(moved.rows, [["b", "a", "c"]]);
   assert.deepEqual(moved.aligns, [null, "left", null]);
   assert.equal(moveColumns([["a", "b"]], [], 1, 1, 1), null);
 });
 
-test("повторное выравнивание снимает его", () => {
+test("the same alignment again removes it", () => {
   assert.deepEqual(setAlign([], 2, 1, 1, "center"), [null, "center"]);
   assert.deepEqual(setAlign([null, "center"], 2, 1, 1, "center"), [null, null]);
 });
 
-test("сортировка: числа как числа, пустые в конце, заголовок первый", () => {
-  const rows = [["Имя", "Сумма"], ["Боря", "10"], ["", "2"], ["Аня", ""], ["Вера", "2,5"]];
+test("sorting: numbers as numbers, empty cells last, the header first", () => {
+  const rows = [["Name", "Sum"], ["Bob", "10"], ["", "2"], ["Ann", ""], ["Vera", "2,5"]];
   assert.deepEqual(
     sortRows(rows, 1, false).map((row) => row[1]),
-    ["Сумма", "2", "2,5", "10", ""],
+    ["Sum", "2", "2,5", "10", ""],
   );
   assert.deepEqual(
     sortRows(rows, 1, true).map((row) => row[1]),
-    ["Сумма", "10", "2,5", "2", ""],
+    ["Sum", "10", "2,5", "2", ""],
   );
   assert.deepEqual(
     sortRows(rows, 0, false).map((row) => row[0]),
-    ["Имя", "Аня", "Боря", "Вера", ""],
+    ["Name", "Ann", "Bob", "Vera", ""],
   );
 });
 
-test("транспонирование", () => {
+test("transposing", () => {
   assert.deepEqual(transpose([["a", "b"], ["1", "2"], ["3"]]), [
     ["a", "1", "3"],
     ["b", "2", ""],
   ]);
 });
 
-test("действия панели возвращают новое место выделения", () => {
+test("toolbar actions return the new place of the selection", () => {
   const rows = [["h1", "h2"], ["a", "b"], ["c", "d"]];
   const cell = (row: number, column: number) => ({ top: row, left: column, bottom: row, right: column });
 

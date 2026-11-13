@@ -125,10 +125,18 @@ fn app(error: &kknow_app::Error) -> Coded {
             vec![("value", id.clone()), ("line", index.to_string())],
         ),
         E::UnknownComment(id) => value("unknownComment", id),
-        E::CommentBusy(id, state) => (
-            "commentBusy",
-            vec![("value", id.clone()), ("other", state.to_string())],
-        ),
+        E::CommentBusy(id, state) => {
+            use kknow_app::threads::Status;
+            let code = match state {
+                Status::Open => "commentBusy",
+                Status::InProgress => "commentBusyInProgress",
+                Status::Question => "commentBusyQuestion",
+                Status::Answered => "commentBusyAnswered",
+                Status::Review => "commentBusyReview",
+                Status::Done => "commentBusyDone",
+            };
+            value(code, id)
+        }
         E::EmptyMessage => ("emptyMessage", vec![]),
         E::UnknownVault(id) => value("unknownVault", id),
         E::UnknownTarget(id) => value("unknownTarget", id),
@@ -191,6 +199,7 @@ fn sync(error: &kknow_sync::Error) -> Coded {
                 Cause::FolderMissing(path) => {
                     return ("folderMissing", vec![("path", path.display().to_string())]);
                 }
+                Cause::NotDownloaded => return value("notDownloaded", &error.key),
                 Cause::Other => {}
             }
             let code = match error.operation {
@@ -337,7 +346,10 @@ mod tests {
         let view = ErrorView::from(&io(ErrorKind::PermissionDenied));
         assert_eq!(view.code, "noAccess");
         assert_eq!(view.params["path"], "/notes");
-        assert_eq!(ErrorView::from(&io(ErrorKind::NotFound)).code, "pathMissing");
+        assert_eq!(
+            ErrorView::from(&io(ErrorKind::NotFound)).code,
+            "pathMissing"
+        );
         assert_eq!(ErrorView::from(&io(ErrorKind::Interrupted)).code, "io");
 
         let storage = |cause| {
@@ -346,9 +358,15 @@ mod tests {
             ))
         };
         let cases = [
-            (Cause::KeysRefused("InvalidAccessKeyId".into()), "storageKeys"),
+            (
+                Cause::KeysRefused("InvalidAccessKeyId".into()),
+                "storageKeys",
+            ),
             (Cause::NoBucket("notes".into()), "noSuchBucket"),
-            (Cause::Unreachable("http://localhost:9000".into()), "storageUnreachable"),
+            (
+                Cause::Unreachable("http://localhost:9000".into()),
+                "storageUnreachable",
+            ),
             (Cause::FolderDenied("/x".into()), "folderDenied"),
             (Cause::FolderMissing("/x".into()), "folderMissing"),
             (Cause::Other, "storageList"),

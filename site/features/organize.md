@@ -57,12 +57,12 @@ kknow tasks --all    # also the done ones
 A delete does not remove a note for good. The note or the folder goes to the
 trash of the vault, `.kknow/trash`. A note that sync removes also goes there.
 
-- Each vault tree ends with the **Корзина** (Trash) node. The number is the
+- Each vault tree ends with the **Trash** node. The number is the
   number of entries.
-- Click a deleted note to read it. **Восстановить** (Restore) in its header
+- Click a deleted note to read it. **Restore** in its header
   puts it back.
-- The entry menu has **Удалить навсегда** (Delete forever). The trash node has
-  **Очистить корзину** (Empty trash).
+- The entry menu has **Delete for good**. The trash node has
+  **Empty the trash**.
 
 kknow removes entries older than 30 days on the next delete. A restore never
 overwrites a note: if the old path is taken, nothing moves.

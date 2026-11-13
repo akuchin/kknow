@@ -52,7 +52,80 @@ pub struct Keymap(pub BTreeMap<String, Vec<String>>);
 pub struct Loaded {
     pub keymap: Keymap,
     /// Entries that were skipped, or the whole file if it does not parse.
-    pub problems: Vec<String>,
+    pub problems: Vec<Problem>,
+}
+
+/// Why an entry of the file, or the whole file, was skipped.
+///
+/// It is data, not a ready text: the window translates `problem.key.<code>`
+/// with the fields, in its own language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "KeyProblem"))]
+pub enum Problem {
+    /// The file does not parse or does not read.
+    File {
+        path: String,
+        detail: String,
+    },
+    /// The value of the action is not a list of keys.
+    NotAList {
+        action: String,
+    },
+    NotAString {
+        action: String,
+    },
+    NoKey {
+        action: String,
+        key: String,
+    },
+    UnknownModifier {
+        action: String,
+        key: String,
+        modifier: String,
+    },
+    RepeatedModifier {
+        action: String,
+        key: String,
+        modifier: String,
+    },
+    UnknownKey {
+        action: String,
+        key: String,
+        name: String,
+    },
+}
+
+impl std::fmt::Display for Problem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Problem::File { path, detail } => write!(f, "{path}: {detail}"),
+            Problem::NotAList { action } => {
+                write!(
+                    f,
+                    "{action}: needs a list of keys, for example [\"Mod-Shift-n\"]"
+                )
+            }
+            Problem::NotAString { action } => write!(f, "{action}: a key must be a string"),
+            Problem::NoKey { action, key } => write!(f, "{action}: \"{key}\" has no key"),
+            Problem::UnknownModifier {
+                action,
+                key,
+                modifier,
+            } => write!(f, "{action}: \"{key}\": unknown modifier \"{modifier}\""),
+            Problem::RepeatedModifier {
+                action,
+                key,
+                modifier,
+            } => write!(
+                f,
+                "{action}: \"{key}\": the modifier \"{modifier}\" is twice"
+            ),
+            Problem::UnknownKey { action, key, name } => {
+                write!(f, "{action}: \"{key}\": unknown key \"{name}\"")
+            }
+        }
+    }
 }
 
 impl Keymap {
@@ -79,18 +152,21 @@ impl Keymap {
             Err(error) => {
                 return Ok(Loaded {
                     keymap: Keymap::default(),
-                    problems: vec![format!("{} не разобрать: {error}", path.display())],
+                    problems: vec![Problem::File {
+                        path: path.display().to_string(),
+                        detail: error.to_string(),
+                    }],
                 });
             }
         };
 
         let mut loaded = Loaded::default();
         for (action, value) in raw {
-            match keys_of(&value) {
+            match keys_of(&action, &value) {
                 Ok(keys) => {
                     loaded.keymap.0.insert(action, keys);
                 }
-                Err(problem) => loaded.problems.push(format!("{action}: {problem}")),
+                Err(problem) => loaded.problems.push(problem),
             }
         }
         Ok(loaded)
@@ -108,7 +184,7 @@ impl Keymap {
             }
         }
 
-        let mut bytes = serde_json::to_vec_pretty(self).expect("клавиши сериализуемы");
+        let mut bytes = serde_json::to_vec_pretty(self).expect("keys serialize");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");
@@ -119,14 +195,17 @@ impl Keymap {
 
 /// The keys of one entry: a list of valid keys. One bad key skips the entry,
 /// not only the key: half of a list is not what the person wrote.
-fn keys_of(value: &serde_json::Value) -> std::result::Result<Vec<String>, String> {
+fn keys_of(action: &str, value: &serde_json::Value) -> std::result::Result<Vec<String>, Problem> {
+    let action = || action.to_string();
     let list = value
         .as_array()
-        .ok_or_else(|| "нужен список клавиш, например [\"Mod-Shift-n\"]".to_string())?;
+        .ok_or_else(|| Problem::NotAList { action: action() })?;
     list.iter()
         .map(|item| {
-            let key = item.as_str().ok_or("клавиша должна быть строкой")?;
-            check_key(key)?;
+            let key = item
+                .as_str()
+                .ok_or_else(|| Problem::NotAString { action: action() })?;
+            check_key(&action(), key)?;
             Ok(key.to_string())
         })
         .collect()
@@ -136,19 +215,32 @@ fn keys_of(value: &serde_json::Value) -> std::result::Result<Vec<String>, String
 ///
 /// The UI checks the same rules when it parses the key; the check here gives
 /// the person a message instead of a key that silently does nothing.
-pub fn check_key(key: &str) -> std::result::Result<(), String> {
+pub fn check_key(action: &str, key: &str) -> std::result::Result<(), Problem> {
     let (modifiers, name) = split(key);
+    let action = action.to_string();
+    let key_text = key.to_string();
     if name.is_empty() {
-        return Err(format!("«{key}»: нет клавиши"));
+        return Err(Problem::NoKey {
+            action,
+            key: key_text,
+        });
     }
 
     let mut seen = Vec::new();
     for modifier in modifiers {
         if !MODIFIERS.contains(&modifier) {
-            return Err(format!("«{key}»: неизвестный модификатор «{modifier}»"));
+            return Err(Problem::UnknownModifier {
+                action,
+                key: key_text,
+                modifier: modifier.to_string(),
+            });
         }
         if seen.contains(&modifier) {
-            return Err(format!("«{key}»: модификатор «{modifier}» дважды"));
+            return Err(Problem::RepeatedModifier {
+                action,
+                key: key_text,
+                modifier: modifier.to_string(),
+            });
         }
         seen.push(modifier);
     }
@@ -166,7 +258,11 @@ pub fn check_key(key: &str) -> std::result::Result<(), String> {
     if valid {
         Ok(())
     } else {
-        Err(format!("«{key}»: неизвестная клавиша «{name}»"))
+        Err(Problem::UnknownKey {
+            action,
+            key: key_text,
+            name: name.to_string(),
+        })
     }
 }
 
@@ -268,8 +364,15 @@ mod tests {
             "неизвестное действие остаётся: его знает новая версия"
         );
         assert_eq!(loaded.problems.len(), 3, "{:?}", loaded.problems);
-        assert!(loaded.problems[0].starts_with("note.find:"));
-        assert!(loaded.problems[0].contains("Super"));
+        assert!(
+            matches!(
+                &loaded.problems[0],
+                Problem::UnknownModifier { action, modifier, .. }
+                    if action == "note.find" && modifier == "Super"
+            ),
+            "{:?}",
+            loaded.problems
+        );
     }
 
     #[test]
@@ -316,7 +419,7 @@ mod tests {
             "Enter",
             "-",
         ] {
-            assert_eq!(check_key(key), Ok(()), "{key}");
+            assert_eq!(check_key("note.new", key), Ok(()), "{key}");
         }
     }
 
@@ -331,7 +434,7 @@ mod tests {
             "Mod-arrowLeft",
             "Mod-Arrow Left",
         ] {
-            assert!(check_key(key).is_err(), "{key}");
+            assert!(check_key("note.new", key).is_err(), "{key}");
         }
     }
 }

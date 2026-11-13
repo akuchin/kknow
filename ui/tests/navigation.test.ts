@@ -22,57 +22,57 @@ function walker(missing: string[] = []) {
 test("back and forward walk the opened notes", async () => {
   const history = new History();
   const window = walker();
-  for (const id of ["а", "б", "в"]) {
+  for (const id of ["a", "b", "c"]) {
     window.set(note(id));
     history.remember(note(id));
   }
 
   await history.travel(-1, window.open, window.here);
-  assert.deepEqual(window.here(), note("б"));
+  assert.deepEqual(window.here(), note("b"));
   assert.ok(history.canBack && history.canForward);
 
   await history.travel(1, window.open, window.here);
-  assert.deepEqual(window.here(), note("в"));
+  assert.deepEqual(window.here(), note("c"));
   assert.ok(!history.canForward);
 });
 
 test("an open during travel is not a new step", async () => {
   const history = new History();
-  history.remember(note("а"));
-  history.remember(note("б"));
+  history.remember(note("a"));
+  history.remember(note("b"));
 
-  await history.travel(-1, async (place) => void history.remember(place), () => note("а"));
+  await history.travel(-1, async (place) => void history.remember(place), () => note("a"));
 
-  assert.ok(history.canForward, "шаг назад не стёр шаг вперёд");
+  assert.ok(history.canForward, "the step back did not erase the step forward");
 });
 
 test("a new step after back drops the forward entries", async () => {
   const history = new History();
   const window = walker();
-  history.remember(note("а"));
-  history.remember(note("б"));
+  history.remember(note("a"));
+  history.remember(note("b"));
   await history.travel(-1, window.open, window.here);
 
-  history.remember(note("в"));
+  history.remember(note("c"));
 
   assert.ok(!history.canForward);
 });
 
 test("a deleted note leaves the history", async () => {
   const history = new History();
-  const window = walker(["б"]);
-  for (const id of ["а", "б", "в"]) history.remember(note(id));
-  window.set(note("в"));
+  const window = walker(["b"]);
+  for (const id of ["a", "b", "c"]) history.remember(note(id));
+  window.set(note("c"));
 
   await history.travel(-1, window.open, window.here);
-  assert.deepEqual(window.here(), note("в"), "удалённая не открылась");
+  assert.deepEqual(window.here(), note("c"), "the deleted note did not open");
 
   await history.travel(-1, window.open, window.here);
-  assert.deepEqual(window.here(), note("а"), "следующий шаг идёт мимо неё");
+  assert.deepEqual(window.here(), note("a"), "the next step goes past it");
 });
 
 test("the history keeps at most `limit` places", () => {
   const history = new History(2);
-  for (const id of ["а", "б", "в"]) history.remember(note(id));
+  for (const id of ["a", "b", "c"]) history.remember(note(id));
   assert.ok(history.canBack);
 });

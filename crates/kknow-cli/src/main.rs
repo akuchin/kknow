@@ -83,7 +83,7 @@ enum Command {
     /// Add or remove a bookmark on a note line: `kknow bookmark plan 12`.
     ///
     /// With `--name`, names the bookmark instead and sets it if needed:
-    /// `kknow bookmark plan 12 --name "итоги"`. An empty name removes the name.
+    /// `kknow bookmark plan 12 --name "summary"`. An empty name removes the name.
     Bookmark {
         note: String,
         /// Line number, starting from 1.
@@ -348,7 +348,7 @@ fn destination(
 
     RemoteConfig::load(&RemoteConfig::path(workspace.root()))
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| "не задано хранилище: --bucket, --folder или настройка каталога".to_string())
+        .ok_or_else(|| "no storage is set: use --bucket, --folder or the folder settings".to_string())
 }
 
 fn main() -> ExitCode {
@@ -356,7 +356,7 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("ошибка: {error}");
+            eprintln!("error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -420,7 +420,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Render { note } => render(&workspace, &note)?,
         Command::New { name } => {
             let id = workspace.create(&name).map_err(|error| error.to_string())?;
-            println!("создана заметка {id}");
+            println!("created note {id}");
         }
         Command::Lock { note } => lock(&mut workspace, &note)?,
         Command::Unlock { note } => unlock(&mut workspace, &note)?,
@@ -504,10 +504,10 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
 /// The shared vault list and its path. The window reads the same file.
 fn load_registry() -> Result<(VaultRegistry, PathBuf), String> {
     let dir = kknow_app::vaults::config_dir()
-        .ok_or("не найден каталог настроек: в окружении нет HOME")?;
+        .ok_or("cannot find the settings folder: HOME is not set")?;
     let loaded = kknow_app::vaults::open(&dir).map_err(|error| error.to_string())?;
     if let Some(problem) = loaded.problem {
-        eprintln!("предупреждение: {problem}");
+        eprintln!("warning: {problem}");
     }
     Ok((loaded.registry, VaultRegistry::path(dir)))
 }
@@ -526,7 +526,7 @@ fn vault_path(wanted: &str) -> Result<PathBuf, String> {
     registry
         .find(wanted)
         .map(|entry| entry.path.clone())
-        .ok_or_else(|| format!("не каталог и не хранилище из списка: {wanted}"))
+        .ok_or_else(|| format!("not a folder and not a vault from the list: {wanted}"))
 }
 
 /// ID and name of the open directory.
@@ -565,14 +565,14 @@ fn vaults(action: VaultAction) -> Result<(), String> {
             let added = registry
                 .add(&folder, name)
                 .map_err(|error| error.to_string())?;
-            println!("добавлено хранилище {} ({})", added.name, added.id);
+            println!("added vault {} ({})", added.name, added.id);
             registry.save(&path).map_err(|error| error.to_string())?;
         }
         VaultAction::Rm { vault } => {
             let id = id_of(&registry, &vault)?;
             let removed = registry.remove(&id).map_err(|error| error.to_string())?;
             println!(
-                "хранилище {} забыто; файлы остались в {}",
+                "vault {} is removed from the list; the files stay in {}",
                 removed.name,
                 removed.path.display()
             );
@@ -616,7 +616,7 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
         let found = registry.with_labels(labels.iter().map(String::as_str));
         if found.is_empty() {
             return Err(format!(
-                "нет хранилищ с ярлыком {}: kknow vaults label <хранилище> <ярлык>",
+                "no vaults with label {}: kknow vaults label <vault> <label>",
                 labels.join(", ")
             ));
         }
@@ -626,7 +626,7 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
             .filter(|entry| {
                 let available = entry.available();
                 if !available {
-                    eprintln!("предупреждение: каталог недоступен: {}", entry.name);
+                    eprintln!("warning: the folder is not available: {}", entry.name);
                 }
                 available
             })
@@ -646,7 +646,7 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
         let workspace = Workspace::open(&path).map_err(|error| format!("{name}: {error}"))?;
         let watcher = workspace
             .watch()
-            .inspect_err(|error| eprintln!("предупреждение: {name}: {error}"))
+            .inspect_err(|error| eprintln!("warning: {name}: {error}"))
             .ok();
         served.push(mcp::Served {
             vault: kknow_app::mcp::VaultRef { id, name, labels },
@@ -674,12 +674,12 @@ fn id_of(registry: &VaultRegistry, wanted: &str) -> Result<String, String> {
     registry
         .find(wanted)
         .map(|entry| entry.id.clone())
-        .ok_or_else(|| format!("хранилище не найдено: {wanted}"))
+        .ok_or_else(|| format!("vault is not found: {wanted}"))
 }
 
 fn show_vaults(registry: &VaultRegistry) {
     if registry.is_empty() {
-        println!("список хранилищ пуст: kknow vaults add <каталог>");
+        println!("the vault list is empty: kknow vaults add <folder>");
         return;
     }
 
@@ -699,7 +699,7 @@ fn show_vaults(registry: &VaultRegistry) {
         let state = if entry.available() {
             ""
         } else {
-            "  (каталог недоступен)"
+            "  (folder not available)"
         };
 
         let labels: String = entry
@@ -718,7 +718,7 @@ fn show_vaults(registry: &VaultRegistry) {
 fn find<'a>(workspace: &'a Workspace, raw: &str) -> Result<&'a NoteId, String> {
     workspace
         .find(raw)
-        .ok_or_else(|| format!("заметка не найдена: {raw}"))
+        .ok_or_else(|| format!("note is not found: {raw}"))
 }
 
 fn list(workspace: &Workspace) {
@@ -736,13 +736,13 @@ fn stats(workspace: &Workspace) {
     let stats = workspace.stats();
 
     println!("vault:          {}", workspace.root().display());
-    println!("заметок:        {}", graph.note_count());
-    println!("папок:          {}", stats.folders);
-    println!("ссылок:         {}", graph.edge_count());
-    println!("битых ссылок:   {}", graph.broken().len());
-    println!("тегов:          {tag_count}");
-    println!("без бэклинков:  {}", graph.orphans().count());
-    println!("размер:         {}", human_size(stats.bytes));
+    println!("notes:            {}", graph.note_count());
+    println!("folders:          {}", stats.folders);
+    println!("links:            {}", graph.edge_count());
+    println!("broken links:     {}", graph.broken().len());
+    println!("tags:             {tag_count}");
+    println!("no backlinks:     {}", graph.orphans().count());
+    println!("size:             {}", human_size(stats.bytes));
 
     let mut popular: Vec<(&NoteId, usize)> = workspace
         .notes()
@@ -752,7 +752,7 @@ fn stats(workspace: &Workspace) {
     popular.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
 
     if !popular.is_empty() {
-        println!("\nчаще всего ссылаются:");
+        println!("\nmost linked:");
         for (id, count) in popular.iter().take(5) {
             println!("  {count:>3}  {id}");
         }
@@ -766,10 +766,10 @@ fn stats(workspace: &Workspace) {
 /// macOS: a kilobyte here is the memory kilobyte, not the marketing one.
 fn human_size(bytes: u64) -> String {
     const STEP: f64 = 1024.0;
-    const UNITS: [&str; 3] = ["КБ", "МБ", "ГБ"];
+    const UNITS: [&str; 3] = ["KB", "MB", "GB"];
 
     if (bytes as f64) < STEP {
-        return format!("{bytes} Б");
+        return format!("{bytes} B");
     }
 
     let mut value = bytes as f64 / STEP;
@@ -787,7 +787,7 @@ fn human_size(bytes: u64) -> String {
 fn bookmarks(workspace: &Workspace) {
     let bookmarks = workspace.bookmarks();
     if bookmarks.is_empty() {
-        println!("закладок нет");
+        println!("no bookmarks");
         return;
     }
     for bookmark in bookmarks {
@@ -808,9 +808,9 @@ fn tasks(workspace: &Workspace, all: bool) {
         .collect();
     if tasks.is_empty() {
         let empty = if all {
-            "задач нет"
+            "no tasks"
         } else {
-            "открытых задач нет"
+            "no open tasks"
         };
         println!("{empty}");
         return;
@@ -831,7 +831,7 @@ fn proposals(workspace: &mut Workspace, action: Option<ProposalAction>) -> Resul
                 .filter(|proposal| all || proposal.status() == ProposalStatus::Pending)
                 .collect();
             if list.is_empty() {
-                println!("правок нет");
+                println!("no proposals");
             }
             for proposal in list {
                 println!("{}", proposal.describe());
@@ -888,7 +888,7 @@ fn bookmark(
         .lines()
         .count();
     if line == 0 || line > lines {
-        return Err(format!("в {id} нет строки {line}: строк всего {lines}"));
+        return Err(format!("{id} has no line {line}: it has {lines} lines"));
     }
     if let Some(name) = name {
         return name_bookmark(workspace, &id, line, name);
@@ -897,9 +897,9 @@ fn bookmark(
         .toggle_bookmark(&id, line)
         .map_err(|error| error.to_string())?;
     if set {
-        println!("закладка поставлена: {id}:{line}");
+        println!("bookmark added: {id}:{line}");
     } else {
-        println!("закладка снята: {id}:{line}");
+        println!("bookmark removed: {id}:{line}");
     }
     Ok(())
 }
@@ -923,8 +923,8 @@ fn name_bookmark(
             .map_err(error)?;
     }
     match clean_name(Some(name)) {
-        Some(name) => println!("закладка {id}:{line} названа «{name}»"),
-        None => println!("у закладки {id}:{line} больше нет имени"),
+        Some(name) => println!("bookmark {id}:{line} is named \"{name}\""),
+        None => println!("bookmark {id}:{line} no longer has a name"),
     }
     Ok(())
 }
@@ -934,11 +934,11 @@ fn links(workspace: &Workspace, note: &str) -> Result<(), String> {
 
     let edges = workspace.outgoing(id);
     if edges.is_empty() {
-        println!("{id}: исходящих ссылок нет");
+        println!("{id}: no outgoing links");
         return Ok(());
     }
 
-    println!("{id} ссылается на:");
+    println!("{id} links to:");
     for edge in edges {
         println!("  {}", describe(edge, &edge.to));
     }
@@ -950,11 +950,11 @@ fn backlinks(workspace: &Workspace, note: &str) -> Result<(), String> {
 
     let lines = workspace.backlink_lines(id);
     if lines.is_empty() {
-        println!("{id}: на эту заметку никто не ссылается");
+        println!("{id}: no notes link here");
         return Ok(());
     }
 
-    println!("на {id} ссылаются:");
+    println!("notes that link to {id}:");
     for line in &lines {
         println!("  {}", backlink_row(line));
     }
@@ -993,18 +993,18 @@ fn show(workspace: &Workspace, note: &str) -> Result<(), String> {
     let id = find(workspace, note)?;
     let parsed = workspace
         .parsed(id)
-        .expect("заметка разобрана при открытии");
+        .expect("the note is parsed on open");
 
     println!("id:        {id}");
-    println!("заголовок: {}", parsed.title().unwrap_or("—"));
-    println!("файл:      {}", workspace.path_for(id).display());
+    println!("title: {}", parsed.title().unwrap_or("—"));
+    println!("file:  {}", workspace.path_for(id).display());
 
     if parsed.frontmatter.is_some() {
-        println!("frontmatter: есть");
+        println!("frontmatter: yes");
     }
 
     if !parsed.headings.is_empty() {
-        println!("\nструктура:");
+        println!("\noutline:");
         for heading in &parsed.headings {
             let indent = "  ".repeat(heading.level.saturating_sub(1) as usize);
             println!("  {indent}{}", heading.text);
@@ -1012,14 +1012,14 @@ fn show(workspace: &Workspace, note: &str) -> Result<(), String> {
     }
 
     if !parsed.wiki_links.is_empty() {
-        println!("\nссылки:");
+        println!("\nlinks:");
         for link in &parsed.wiki_links {
             println!("  [[{}]]", link.display_text());
         }
     }
 
     if !parsed.tags.is_empty() {
-        println!("\nтеги:");
+        println!("\ntags:");
         for tag in &parsed.tags {
             println!("  #{}", tag.name);
         }
@@ -1042,7 +1042,7 @@ fn search(workspace: &Workspace, query: &str, limit: usize) -> Result<(), String
         .map_err(|error| error.to_string())?;
 
     if hits.is_empty() {
-        println!("ничего не найдено");
+        println!("nothing found");
         return Ok(());
     }
 
@@ -1065,27 +1065,27 @@ fn themes(workspace: &Workspace) {
     if set.themes.is_empty() && set.problems.is_empty() {
         match &global {
             Some(global) => println!(
-                "тем нет: положите манифест в {} или в {}",
+                "no themes: put a manifest in {} or in {}",
                 theme::THEMES_DIR,
                 global.display()
             ),
-            None => println!("тем нет: положите манифест в {}", theme::THEMES_DIR),
+            None => println!("no themes: put a manifest in {}", theme::THEMES_DIR),
         }
         return;
     }
 
     for theme in &set.themes {
         let base = match theme.base {
-            Base::Light => "светлая",
-            Base::Dark => "тёмная",
+            Base::Light => "light",
+            Base::Dark => "dark",
         };
         let source = match theme.source {
-            Source::Vault => "хранилище",
-            Source::Global => "общая",
-            Source::BuiltIn => "встроенная",
+            Source::Vault => "vault",
+            Source::Global => "shared",
+            Source::BuiltIn => "built-in",
         };
         println!(
-            "{}  «{}» ({base}, {source}), переменных: {}",
+            "{}  \"{}\" ({base}, {source}), variables: {}",
             theme.id,
             theme.name,
             theme.variables.len()
@@ -1096,7 +1096,7 @@ fn themes(workspace: &Workspace) {
     }
 
     for problem in &set.problems {
-        println!("не тема: {problem}");
+        println!("not a theme: {problem}");
     }
 }
 
@@ -1108,27 +1108,27 @@ fn themes(workspace: &Workspace) {
 /// window.
 fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     let path = kknow_app::commands::config_path()
-        .ok_or("не найден каталог настроек: в окружении нет HOME")?;
+        .ok_or("cannot find the settings folder: HOME is not set")?;
 
     if example {
         if path.exists() {
-            return Err(format!("файл уже есть: {}", path.display()));
+            return Err(format!("the file already exists: {}", path.display()));
         }
         kknow_run::spec::defaults()
             .save(&path)
             .map_err(|error| error.to_string())?;
-        println!("команды по умолчанию записаны: {}", path.display());
+        println!("default commands written: {}", path.display());
     }
 
     let set = CommandSet::load(&path).map_err(|error| error.to_string())?;
 
     let picked: Vec<&CommandSpec> = if let Some(target) = &target {
         let kind = if target.standalone() {
-            "файл вне хранилища"
+            "file outside a vault"
         } else {
             of(target.kind)
         };
-        println!("цель: {} ({kind})", target.path.display());
+        println!("target: {} ({kind})", target.path.display());
         set.for_target(target)
     } else {
         set.commands.iter().collect()
@@ -1139,13 +1139,13 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     // user must check the command scope.
     if picked.is_empty() && set.problems.is_empty() {
         if set.is_empty() {
-            println!("команд нет: файл {} пуст", path.display());
+            println!("no commands: file {} is empty", path.display());
         } else {
             println!(
-                "к этой цели не относится ни одна из {} команд файла",
+                "none of the {} commands in the file apply to this target",
                 set.commands.len()
             );
-            println!("что и куда навешено, покажет `kknow commands` без цели");
+            println!("`kknow commands` without a target shows which command applies where");
         }
         return Ok(());
     }
@@ -1156,7 +1156,7 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     }
 
     for problem in &set.problems {
-        println!("не команда: {problem}");
+        println!("not a command: {problem}");
     }
     Ok(())
 }
@@ -1164,25 +1164,25 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
 /// Command scope as one line.
 fn scope(spec: &CommandSpec) -> String {
     let kinds: Vec<&str> = spec.targets.iter().map(|kind| of(*kind)).collect();
-    let mut parts = vec![format!("цели: {}", kinds.join(", "))];
+    let mut parts = vec![format!("targets: {}", kinds.join(", "))];
 
     if !spec.vaults.is_empty() {
-        parts.push(format!("хранилища: {}", spec.vaults.join(", ")));
+        parts.push(format!("vaults: {}", spec.vaults.join(", ")));
     }
     if !spec.patterns.is_empty() {
-        parts.push(format!("пути: {}", spec.patterns.join(", ")));
+        parts.push(format!("paths: {}", spec.patterns.join(", ")));
     }
     if !spec.requires.is_empty() {
-        parts.push(format!("требует полей: {}", spec.requires.join(", ")));
+        parts.push(format!("requires fields: {}", spec.requires.join(", ")));
     }
     parts.join(" · ")
 }
 
 fn of(kind: TargetKind) -> &'static str {
     match kind {
-        TargetKind::Note => "заметка",
-        TargetKind::Folder => "папка",
-        TargetKind::Vault => "хранилище",
+        TargetKind::Note => "note",
+        TargetKind::Folder => "folder",
+        TargetKind::Vault => "vault",
     }
 }
 
@@ -1195,7 +1195,7 @@ fn run_command(command: &str, target: &Target) -> Result<ExitCode, String> {
     let set = kknow_app::commands::load().map_err(|error| error.to_string())?;
     if set.get(command).is_none() {
         return Err(format!(
-            "команда не найдена: {command}; список — `kknow commands`"
+            "command is not found: {command}; `kknow commands` lists them"
         ));
     }
 
@@ -1212,12 +1212,12 @@ fn report(outcome: &Outcome) -> Result<ExitCode, String> {
     eprint!("{}", outcome.stderr);
 
     if outcome.truncated {
-        eprintln!("(вывод обрезан: показано начало)");
+        eprintln!("(output is cut: only the start is shown)");
     }
     if outcome.timed_out {
         // 124 is the code of `timeout(1)`: calling scripts already can tell
         // "timed out" from "failed".
-        eprintln!("команда не уложилась в отпущенное время и была прервана");
+        eprintln!("the command ran out of time and was stopped");
         return Ok(ExitCode::from(124));
     }
 
@@ -1226,12 +1226,12 @@ fn report(outcome: &Outcome) -> Result<ExitCode, String> {
         // An exit code is a byte: `exit 256` in a shell also becomes zero, and
         // a negative code is not possible here.
         Some(code) => Ok(ExitCode::from(u8::try_from(code).unwrap_or(1))),
-        None => Err("команда прервана сигналом".to_string()),
+        None => Err("the command was stopped by a signal".to_string()),
     }
 }
 
 fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> Result<(), String> {
-    println!("хранилище: {}", config.location());
+    println!("storage: {}", config.location());
 
     if let Provider::Git(settings) = &config.provider {
         return sync_git(workspace, settings, dry_run);
@@ -1266,7 +1266,7 @@ fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> R
             .sync_plan(&engine)
             .map_err(|error| error.to_string())?;
         if plan.is_empty() {
-            println!("всё синхронизировано");
+            println!("everything is in sync");
         } else {
             print!("{plan}");
         }
@@ -1275,15 +1275,15 @@ fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> R
 
     let report = workspace.sync(&engine).map_err(|error| error.to_string())?;
     if report.is_empty() {
-        println!("всё синхронизировано");
+        println!("everything is in sync");
         return Ok(());
     }
 
     let counts = [
-        ("выгружено", report.uploaded.len()),
-        ("загружено", report.downloaded.len()),
-        ("перемещено в корзину", report.removed_local.len()),
-        ("удалено в облаке", report.removed_remote.len()),
+        ("uploaded", report.uploaded.len()),
+        ("downloaded", report.downloaded.len()),
+        ("moved to trash", report.removed_local.len()),
+        ("deleted in the cloud", report.removed_remote.len()),
     ];
     for (label, count) in counts.iter().filter(|(_, count)| *count > 0) {
         println!("{label}: {count}");
@@ -1291,7 +1291,7 @@ fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> R
 
     for conflict in &report.conflicts {
         println!(
-            "конфликт: {} — чужая версия сохранена как {}",
+            "conflict: {}; the other version is saved as {}",
             conflict.id, conflict.copy
         );
     }
@@ -1469,10 +1469,10 @@ fn sync_git(
     if settings.auth != GitAuth::System && token.is_none() {
         return Err(match settings.auth {
             GitAuth::Env => format!(
-                "переменная {} не задана",
-                settings.env.as_deref().unwrap_or("с токеном")
+                "variable {} is not set",
+                settings.env.as_deref().unwrap_or("with the token")
             ),
-            _ => "токен не задан: KKNOW_GIT_TOKEN".to_string(),
+            _ => "no token is set: KKNOW_GIT_TOKEN".to_string(),
         });
     }
     let git = Git::new(program, workspace.root())
@@ -1483,17 +1483,17 @@ fn sync_git(
     if dry_run {
         let status = git.status().map_err(failure)?;
         if let Some(branch) = &status.branch {
-            println!("ветка: {branch}");
+            println!("branch: {branch}");
         }
-        println!("не отправлено коммитов: {}", status.ahead);
+        println!("commits not pushed: {}", status.ahead);
         if status.changes.is_empty() {
-            println!("незакоммиченных изменений нет");
+            println!("no uncommitted changes");
         }
         for change in &status.changes {
             let place = if change.staged.is_some() {
-                "в индексе"
+                "staged"
             } else {
-                "не в индексе"
+                "not staged"
             };
             println!("{place}: {}", change.path);
         }
@@ -1504,17 +1504,17 @@ fn sync_git(
         .git_sync(&git)
         .map_err(|error| error.to_string())?;
     if report.merged.changed.is_empty() && report.pushed == 0 {
-        println!("всё синхронизировано");
+        println!("everything is in sync");
     }
     if !report.merged.changed.is_empty() {
-        println!("изменено файлов: {}", report.merged.changed.len());
+        println!("files changed: {}", report.merged.changed.len());
     }
     if report.pushed > 0 {
-        println!("отправлено коммитов: {}", report.pushed);
+        println!("commits pushed: {}", report.pushed);
     }
     for conflict in &report.merged.conflicts {
         println!(
-            "конфликт: {} — чужая версия сохранена как {}",
+            "conflict: {}; the other version is saved as {}",
             conflict.path, conflict.copy
         );
     }
@@ -1529,13 +1529,13 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
                 .entries()
                 .map_err(|error| error.to_string())?;
             if entries.is_empty() {
-                println!("корзина пуста");
+                println!("the trash is empty");
             }
             let now = SystemTime::now();
             for entry in entries {
                 let age = now.duration_since(entry.deleted).unwrap_or_default();
                 println!(
-                    "{}  {}  ({}, заметок: {})",
+                    "{}  {}  ({}, notes: {})",
                     entry.id,
                     entry.path,
                     days_ago(age),
@@ -1548,7 +1548,7 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
                 .restore(&entry)
                 .map_err(|error| error.to_string())?;
             for id in &restored {
-                println!("восстановлена {id}");
+                println!("restored {id}");
             }
         }
         TrashAction::Empty => {
@@ -1556,7 +1556,7 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
                 .trash()
                 .empty()
                 .map_err(|error| error.to_string())?;
-            println!("удалено из корзины навсегда: {count}");
+            println!("deleted from the trash forever: {count}");
         }
     }
     Ok(())
@@ -1566,15 +1566,15 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
 /// so hours do not matter.
 fn days_ago(age: Duration) -> String {
     match age.as_secs() / (24 * 60 * 60) {
-        0 => "сегодня".to_string(),
-        days => format!("{days} дн. назад"),
+        0 => "today".to_string(),
+        days => format!("{days} d ago"),
     }
 }
 
 fn watch(workspace: &mut Workspace) -> Result<(), String> {
     let watcher = workspace.watch().map_err(|error| error.to_string())?;
     println!(
-        "слежу за {} — Ctrl+C чтобы выйти",
+        "watching {}; press Ctrl+C to stop",
         workspace.root().display()
     );
 
@@ -1583,10 +1583,10 @@ fn watch(workspace: &mut Workspace) -> Result<(), String> {
             .apply(&events)
             .map_err(|error| error.to_string())?;
         for id in &changes.updated {
-            println!("изменена  {id}");
+            println!("changed  {id}");
         }
         for id in &changes.removed {
-            println!("удалена   {id}");
+            println!("deleted  {id}");
         }
     }
 
@@ -1599,20 +1599,20 @@ mod tests {
 
     #[test]
     fn sizes_are_written_the_way_a_file_manager_writes_them() {
-        assert_eq!(human_size(0), "0 Б");
-        assert_eq!(human_size(512), "512 Б");
-        assert_eq!(human_size(1024), "1.0 КБ");
-        assert_eq!(human_size(1536), "1.5 КБ");
-        assert_eq!(human_size(12_900_000), "12.3 МБ");
-        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 ГБ");
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(1024), "1.0 KB");
+        assert_eq!(human_size(1536), "1.5 KB");
+        assert_eq!(human_size(12_900_000), "12.3 MB");
+        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 GB");
     }
 
     #[test]
     fn trash_age_is_in_whole_days() {
-        assert_eq!(days_ago(Duration::from_secs(60)), "сегодня");
+        assert_eq!(days_ago(Duration::from_secs(60)), "today");
         assert_eq!(
             days_ago(Duration::from_secs(3 * 24 * 60 * 60 + 5)),
-            "3 дн. назад"
+            "3 d ago"
         );
     }
 }
