@@ -22,6 +22,7 @@ import {
   bookmarkLines,
   bookmarkMarks,
   bookmarks,
+  goToBookmark,
   goToLine,
   setBookmarkMarks,
   toggleBookmark,
@@ -329,6 +330,8 @@ export interface EditorOptions {
   onNotes?: (notes: AgentNote[]) => void;
   /** The user changed a bookmark; `marks` holds all bookmarks after it. */
   onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
+  /** The `bookmark.next` and `bookmark.previous` keys in the editor. */
+  onBookmarkStep?: (direction: 1 | -1) => void;
   /** Saves a pasted image; without it a paste of an image does nothing special. */
   saveImage?: SaveImage;
   /** Links to other notes: completion and ⌘-click. See `setLinks`. */
@@ -375,6 +378,9 @@ export class Editor {
           ...searchKeymap,
           ...formatKeymap,
           ...listKeymap,
+          // Before the defaults: CodeMirror binds ⌘⌥↑ and ⌘⌥↓ to extra cursors.
+          ...bindings("bookmark.next", () => (options.onBookmarkStep?.(1), true)),
+          ...bindings("bookmark.previous", () => (options.onBookmarkStep?.(-1), true)),
           ...defaultKeymap,
           ...historyKeymap,
         ]),
@@ -518,6 +524,13 @@ export class Editor {
   goToLine(line: number, at: "center" | "start" = "center"): void {
     goToLine(this.view, line, at);
     this.view.focus();
+  }
+
+  /** Goes to the next (`1`) or previous (`-1`) bookmark; returns its line or `null`. */
+  goToBookmark(direction: 1 | -1): number | null {
+    const line = goToBookmark(this.view, direction);
+    if (line !== null) this.view.focus();
+    return line;
   }
 
   /** Calls `listener` after each edit of the text. */

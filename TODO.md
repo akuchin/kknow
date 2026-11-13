@@ -64,8 +64,6 @@ next one to work on.
 - **Tables do not have all of Advanced Tables.** There are no formulas and
   no CSV export. You can copy a selection of cells, but you cannot paste a
   rectangle from the clipboard into cells.
-- **You cannot go from one bookmark to the next.** The editor has no command
-  for the next and the previous bookmark in a note.
 - **The preview does not scroll with the editor** in "Side by side". The line
   markers in the preview (`data-line`) can do this.
 

@@ -12,6 +12,10 @@ A bookmark marks a line in a note.
 A bookmark can have a name. Right-click the bookmark icon and select
 **Add name**.
 
+<kbd>⌘⌥↓</kbd> goes to the next bookmark in the note and <kbd>⌘⌥↑</kbd> to the
+previous one. After the last bookmark, the next one is the first. The palette
+has both commands too ("Next bookmark", "Previous bookmark").
+
 <kbd>⌘⌥B</kbd> shows all bookmarks of the vault in the palette. Type to filter
 them by name, note title, path or line text. Press <kbd>Enter</kbd> to open the
 note at that line.

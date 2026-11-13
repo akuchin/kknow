@@ -231,3 +231,43 @@ test("the copy button of a code block copies the code, in the preview and the ed
   // The click copies; it does not open the block for editing.
   await expect(widget).toBeVisible();
 });
+
+test("next bookmark goes through the bookmarks of the note and wraps", async ({ page }) => {
+  // The editor shows no cursor line, so a typed mark tells where the cursor is.
+  const cursorAt = async (text: string) => {
+    await page.keyboard.type("¶");
+    await expect(page.locator(".cm-line", { hasText: `¶${text}` })).toHaveCount(1);
+    await page.keyboard.press("Backspace");
+  };
+  const next = async () => {
+    await page.locator("#open-palette").click();
+    await page.getByRole("button", { name: t("palette.action.bookmarkNext") }).click();
+  };
+
+  // Rust has bookmarks on lines 3 and 5.
+  await noteRow(page, "Rust").click();
+  await expect(page.locator("#bookmarks-count")).toHaveText("2");
+  await editorText(page).click();
+  await page.keyboard.press("ControlOrMeta+Home");
+  await next();
+  await cursorAt("The language I write");
+  await next();
+  await cursorAt("Ownership and borrowing");
+  await next();
+  await cursorAt("The language I write");
+
+  // The key does the same, and the previous one wraps the other way.
+  await page.keyboard.press("ControlOrMeta+Alt+ArrowDown");
+  await cursorAt("Ownership and borrowing");
+  await page.keyboard.press("ControlOrMeta+Alt+ArrowUp");
+  await cursorAt("The language I write");
+  await page.keyboard.press("ControlOrMeta+Alt+ArrowUp");
+  await cursorAt("Ownership and borrowing");
+
+  // A note without bookmarks: the command does nothing and shows no error.
+  await noteRow(page, "Index").click();
+  await expect(page.locator("#note-title")).toHaveText("Index");
+  await expect(page.locator("#bookmarks-count")).toHaveText("");
+  await next();
+  await expect(statusMessage(page)).not.toHaveClass(/error/);
+});

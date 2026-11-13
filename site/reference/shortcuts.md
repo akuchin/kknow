@@ -16,6 +16,7 @@ same in any keyboard layout, for example in Russian.
 | <kbd>⌘=</kbd>, <kbd>⌘−</kbd>, <kbd>⌘0</kbd> | font: larger, smaller, default |
 | <kbd>⌘⇧M</kbd> | add a comment for the agent |
 | <kbd>⌘⇧B</kbd> | set or remove a bookmark on the cursor line |
+| <kbd>⌘⌥↓</kbd>, <kbd>⌘⌥↑</kbd> | go to the next or the previous bookmark in the note |
 
 ## Editing
 
