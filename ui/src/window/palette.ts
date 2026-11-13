@@ -27,7 +27,7 @@ import { createNote } from "./edits";
 import { editor } from "./editor";
 import { pickFile } from "./files";
 import { canLockAll, lockAll } from "./lock-view";
-import { goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark } from "./marks";
+import { goToAdjacentBookmark, goToHeading, openBookmark, openTask, recentNotes, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, openFound, openNote, setMode, travel } from "./note";
 import { state } from "./state";
 import { fail } from "./status";
@@ -107,6 +107,12 @@ export function initPalette(): void {
       })),
       { label: t("palette.action.bookmark"), action: "bookmark.toggle", run: () => toggleCurrentBookmark() },
       { label: t("palette.action.bookmarks"), action: "bookmark.list", run: () => palette.open("", "bookmarks") },
+      { label: t("palette.action.bookmarkNext"), action: "bookmark.next", run: () => goToAdjacentBookmark(1) },
+      {
+        label: t("palette.action.bookmarkPrevious"),
+        action: "bookmark.previous",
+        run: () => goToAdjacentBookmark(-1),
+      },
       { label: t("palette.action.outline"), action: "note.outline", run: () => palette.openOutline() },
       { label: t("palette.action.tasks"), action: "task.list", run: () => palette.open("", "tasks") },
       { label: t("palette.action.sidebar"), action: "sidebar.toggle", run: () => toggleSidebar() },

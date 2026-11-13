@@ -11,7 +11,7 @@ import { showRunOutput } from "./commands";
 import { el } from "./dom";
 import { editor } from "./editor";
 import { pickFile } from "./files";
-import { toggleCurrentBookmark } from "./marks";
+import { goToAdjacentBookmark, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, flushPendingSave, setMode, travel } from "./note";
 import { previewNotes, showNotesFloat, tableNotes } from "./notes-float";
 import { mcpFloat, showMcpSetup } from "./mcp";
@@ -45,6 +45,8 @@ const windowActions: [Action, () => boolean | void][] = [
   // ⌘⌥← and ⌘⌥→ by convention: the editor uses ⌘[ and ⌘] for indentation.
   ["history.back", () => void travel(-1)],
   ["history.forward", () => void travel(1)],
+  ["bookmark.next", () => goToAdjacentBookmark(1)],
+  ["bookmark.previous", () => goToAdjacentBookmark(-1)],
   // ⌘⇧P is the common command palette key, and users press it by habit.
   // Plain ⌘P stays free: it is print.
   ["palette.open", () => palette.open()],

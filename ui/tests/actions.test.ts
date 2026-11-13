@@ -139,3 +139,10 @@ test("an unknown action from the file is not lost", () => {
     useKeymap({}, false);
   }
 });
+
+test("bookmark keys are free: no other action uses them", () => {
+  assert.deepEqual(keysOf("bookmark.next"), ["Mod-Alt-ArrowDown"]);
+  assert.deepEqual(keysOf("bookmark.previous"), ["Mod-Alt-ArrowUp"]);
+  assert.equal(conflictOf("Mod-Alt-ArrowDown", "bookmark.next", [], true), null);
+  assert.equal(conflictOf("Mod-Alt-ArrowUp", "bookmark.previous", [], true), null);
+});

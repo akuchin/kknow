@@ -96,6 +96,18 @@ export async function openBookmark(id: string, line: number): Promise<void> {
   editor.goToLine(nearest ?? line);
 }
 
+/**
+ * Goes to the next or the previous bookmark of the open note. A note without
+ * bookmarks does nothing, also in "Read" mode. The preview follows the cursor.
+ */
+export function goToAdjacentBookmark(direction: 1 | -1): void {
+  if (editor.getBookmarks().length === 0) return;
+  // "Read" mode hides the editor, but the line must be visible.
+  if (state.mode === "read") setMode("split", { remember: false });
+  const line = editor.goToBookmark(direction);
+  if (line !== null && state.mode !== "edit") scrollToLine(el.preview, line);
+}
+
 /** Opens a task from the palette: the note at the task line. */
 export async function openTask(id: string, line: number): Promise<void> {
   if (state.note?.id !== id || state.note.file) await openNote(id);
