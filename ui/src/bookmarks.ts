@@ -208,6 +208,35 @@ export function toggleBookmark(view: EditorView): void {
   toggleBookmarkAt(view, state.doc.lineAt(state.selection.main.head).number);
 }
 
+/**
+ * The bookmark line to go to from `cursorLine`: the next one (`1`) or the
+ * previous one (`-1`). After the last one it wraps to the first, and the
+ * other way round. A bookmark on the cursor line is neither next nor previous.
+ * `lines` is sorted ascending. Without bookmarks the result is `null`.
+ */
+export function adjacentBookmark(
+  lines: number[],
+  cursorLine: number,
+  direction: 1 | -1,
+): number | null {
+  if (lines.length === 0) return null;
+  if (direction === 1) return lines.find((line) => line > cursorLine) ?? lines[0];
+  const before = lines.filter((line) => line < cursorLine);
+  return before.length > 0 ? before[before.length - 1] : lines[lines.length - 1];
+}
+
+/**
+ * Moves the cursor to the next or the previous bookmark of the note. Returns
+ * the line, or `null` when the note has no bookmarks (nothing changes).
+ */
+export function goToBookmark(view: EditorView, direction: 1 | -1): number | null {
+  const { state } = view;
+  const cursor = state.doc.lineAt(state.selection.main.head).number;
+  const line = adjacentBookmark(bookmarkLines(state), cursor, direction);
+  if (line !== null) goToLine(view, line);
+  return line;
+}
+
 /** Puts the cursor at the line start and scrolls the line to the middle. */
 export function goToLine(view: EditorView, line: number, at: "center" | "start" = "center"): void {
   const target = Math.min(Math.max(line, 1), view.state.doc.lines);

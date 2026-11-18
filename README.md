@@ -803,6 +803,9 @@ A bookmark can have a name. Right-click the bookmark icon to open its menu:
 "Add name" (or "Rename"), "Remove name" and "Remove bookmark". Point to the
 icon to see the name.
 
+⌘⌥↓ goes to the next bookmark in the note, and ⌘⌥↑ to the previous one. After
+the last bookmark, the next one is the first. The palette has both commands too.
+
 ⌘⌥B opens the palette on the "Bookmarks" chip. The palette shows all bookmarks
 in the vault with the line text. A named bookmark shows its name as the title.
 Type to make the list shorter: the palette looks in names, note titles, paths
@@ -1371,6 +1374,7 @@ event, and both windows apply it immediately.
 | ⌘⌥P | hide or show the note panel |
 | ⌘⌥←, ⌘⌥→ | back and forward through opened notes |
 | ⌘⇧B | set or remove a bookmark on the cursor line |
+| ⌘⌥↓, ⌘⌥↑ | next and previous bookmark in the note |
 | ⌘⌥B | palette with the bookmark list |
 | ⌘⌥T | palette with the open tasks |
 | ⌘=, ⌘−, ⌘0 | open note font: larger, smaller, normal |

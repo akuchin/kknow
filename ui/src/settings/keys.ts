@@ -48,6 +48,8 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "aside.toggle": "settings.keys.action.aside.toggle",
   "history.back": "settings.keys.action.history.back",
   "history.forward": "settings.keys.action.history.forward",
+  "bookmark.next": "settings.keys.action.bookmark.next",
+  "bookmark.previous": "settings.keys.action.bookmark.previous",
   "scale.larger": "settings.keys.action.scale.larger",
   "scale.smaller": "settings.keys.action.scale.smaller",
   "scale.reset": "settings.keys.action.scale.reset",

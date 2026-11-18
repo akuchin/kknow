@@ -324,11 +324,23 @@ mod tests {
 
             let remote = dir.path().join("remote.git");
             fs::create_dir_all(&remote).unwrap();
-            std::process::Command::new(&git)
-                .args(["init", "-q", "--bare"])
-                .current_dir(&remote)
-                .status()
-                .unwrap();
+            // Another test thread can fork while the script is still open for
+            // writing. The kernel then answers "Text file busy" for a moment.
+            let mut tries = 0;
+            let status = loop {
+                match std::process::Command::new(&git)
+                    .args(["init", "-q", "--bare"])
+                    .current_dir(&remote)
+                    .status()
+                {
+                    Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
+                        tries += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                    }
+                    other => break other.unwrap(),
+                }
+            };
+            assert!(status.success());
             World { dir, git, remote }
         }
 

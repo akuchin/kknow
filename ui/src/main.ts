@@ -28,7 +28,7 @@ import { initEditor } from "./window/editor";
 import { initFiles, refreshFiles, savePastedImage, takeDrop, takeOpened } from "./window/files";
 import { applyKeymap, initKeys, refreshKeymap } from "./window/keys";
 import { initLockView } from "./window/lock-view";
-import { rememberOpened, saveBookmarks } from "./window/marks";
+import { goToAdjacentBookmark, rememberOpened, saveBookmarks } from "./window/marks";
 import {
   LAST_FILE,
   applyNote,
@@ -73,7 +73,8 @@ async function boot(): Promise<void> {
   initEditor({
     onChange: onEdit,
     onNotes: showNotes,
-    onBookmark: (marks, change) => void saveBookmarks(marks, change),
+    onBookmark: saveBookmarks,
+    onBookmarkStep: goToAdjacentBookmark,
     saveImage: savePastedImage,
   });
   const noteCalls = { apply: applyNote, flush: flushPendingSave };
@@ -166,7 +167,6 @@ async function boot(): Promise<void> {
 
   // Read this before the vault: opening a vault note erases the key.
   const lastFile = localStorage.getItem(LAST_FILE);
-
   try {
     await refreshVaults();
     // The vault list is already the tree: an empty list shows a prompt to add

@@ -42,6 +42,8 @@ const DEFAULTS = {
   "aside.toggle": ["Mod-Alt-p"],
   "history.back": ["Mod-Alt-ArrowLeft"],
   "history.forward": ["Mod-Alt-ArrowRight"],
+  "bookmark.next": ["Mod-Alt-ArrowDown"],
+  "bookmark.previous": ["Mod-Alt-ArrowUp"],
   // ⌘= and ⌘+ are one key (plus needs Shift), so Shift is not required.
   "scale.larger": ["Mod-=", "Mod-Shift-=", "Mod-NumpadAdd"],
   "scale.smaller": ["Mod--", "Mod-NumpadSubtract"],
