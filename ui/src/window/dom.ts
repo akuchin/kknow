@@ -1,8 +1,3 @@
-// The markup of the main window and the elements that the window code uses.
-//
-// The module does not touch the DOM on import: `main.ts` calls `initDom` at
-// the point where it used to build the markup.
-
 import type { ViewMode } from "../api";
 import { shortcut, withShortcut } from "../actions";
 import { iconMarkup, type IconName } from "../icons";
@@ -11,7 +6,6 @@ import { MODES } from "../note-mode";
 
 const MODE_ICONS: Record<ViewMode, IconName> = { edit: "pencil", split: "split", read: "book" };
 
-/** The root of the window: a grid of the bars, the sidebar and the panes. */
 export let app: HTMLDivElement;
 
 function query() {
@@ -104,10 +98,8 @@ function query() {
   };
 }
 
-/** Window elements by role. `initDom` fills it. */
 export const el = {} as ReturnType<typeof query>;
 
-/** Builds the window markup and finds its elements. Call it once, first. */
 export function initDom(): void {
   app = document.querySelector<HTMLDivElement>("#app")!;
   app.innerHTML = `

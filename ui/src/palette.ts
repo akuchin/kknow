@@ -1,45 +1,17 @@
-/**
- * Palette: vault search in a separate overlay.
- *
- * Search used to be a field in the sidebar that replaced the folder tree.
- * While the field had text, the tree was hidden, and you had to clear the
- * field to get it back. The palette separates the two: the tree stays in
- * place, and search opens on top of it and closes on Esc without a trace.
- *
- * The overlay is a native `<dialog>`. It gives Esc, the backdrop, the focus
- * trap and focus return for free. A hand-made version is the same amount of
- * code, plus bugs.
- */
-
 import type { BookmarkView, GlobalResult, NoteSummary, TaskView } from "./api";
 import { iconMarkup } from "./icons";
 import { matches, shortcut, type Action } from "./actions";
 import { t, type Key } from "./i18n";
 import type { Heading } from "./outline";
 
-/** Delay before a query: each keystroke would otherwise call the core. */
 const SEARCH_DELAY = 150;
 
-/** Delay before the "still searching" message, so a fast answer does not show it. */
 const WORKING_DELAY = 250;
 
-/** How many recent notes to show for an empty query. */
 const RECENT_LIMIT = 8;
 
-/**
- * The field to search in.
- *
- * In the mockup the chips split hits by type: notes, blocks, tasks. kknow has
- * one type, the note, so there is nothing to split. But the search index has
- * fields, and the chips narrow the query to one of them: `title:(…)`, `tag:(…)`.
- */
 type Scope = "all" | "title" | "tag" | "bookmarks" | "tasks";
 
-/**
- * "Bookmarks" and "Tasks" are not index fields but separate lists. The
- * palette gets the whole list from the core and filters it itself: a vault
- * has few of them.
- */
 const SCOPES: [Scope, Key][] = [
   ["all", "palette.scope.all"],
   ["title", "palette.scope.title"],
@@ -52,63 +24,40 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** An action at the bottom of the palette: a label and the action with its keys. */
 export interface PaletteAction {
   label: string;
   action?: Action;
   run: () => void;
 }
 
-/** Everything the palette needs from the app: it has no state of its own. */
 export interface PaletteHost {
-  /** Searches all vaults at once; each hit knows its vault. */
   search(query: string): Promise<GlobalResult[]>;
-  /** The labels that narrow the search, as text; empty when nothing does. */
   scope(): string;
-  /** Recently opened notes, shown instead of hits when the field is empty. */
   recent(): NoteSummary[];
-  /** Note count of the active vault: the right number in the footer. */
   total(): number;
-  /** The active vault: its hits get no vault label. */
   activeVault(): string | null;
-  /** Opens a note; pass `vault` if it is in another vault. */
   open(id: string, vault?: string): void;
   bookmarks(): Promise<BookmarkView[]>;
-  /** Opens the note at the bookmark line. */
   openBookmark(id: string, line: number): void;
   tasks(): Promise<TaskView[]>;
-  /** Opens the note at the task line. */
   openTask(id: string, line: number): void;
   create(name: string): void;
-  /** Rebuilt on each open: the labels depend on the window state. */
   actions(): PaletteAction[];
-  /** Headings of the open note, with unsaved edits. */
   headings(): Heading[];
   goToHeading(heading: Heading): void;
 }
 
-/** A result row: recent notes have no snippet, search hits do. */
 interface Row {
   id: string;
   title: string;
   folder: string | null;
   snippet: string | null;
-  /** The vault of the hit; notes of the active vault get no label. */
   vault?: { id: string; name: string; color: string };
-  /** Bookmark or task line: the row then opens this place, not just the note. */
   line?: number;
-  /** A heading of the open note: the row goes to it. */
   heading?: Heading;
-  /** The row is a task, not a bookmark. */
   task?: boolean;
 }
 
-/**
- * Whether to offer a new note with this name.
- *
- * The query is also search syntax: `title:(` would give a file name with a
- * colon and a parenthesis. Offer creation only for plain text.
- */
 function nameable(query: string): boolean {
   return query.length > 0 && !/[:()"*\\]/.test(query);
 }
@@ -126,20 +75,11 @@ export class Palette {
   private readonly count: HTMLSpanElement;
 
   private scope: Scope = "all";
-  /** "Go to heading": the list is the open note outline, not the vault. */
   private outline = false;
   private rows: Row[] = [];
   private selected = 0;
   private timer: number | undefined;
-  /**
-   * Number of the last query.
-   *
-   * Answers come in any order: a short query runs faster than a long one and
-   * can overtake it. Only the answer to the latest query redraws the list; the
-   * others are dropped.
-   */
   private issued = 0;
-  /** Timer for the "searching" message; a fast answer comes before it fires. */
   private working: number | undefined;
 
   constructor(host: PaletteHost) {
@@ -177,8 +117,6 @@ export class Palette {
         <span id="palette-count"></span>
       </footer>
     `;
-    // The palette lives outside #app. While it is open, the window behind it
-    // is blurred, and a blur on the parent would blur the palette too.
     document.body.append(dialog);
 
     this.dialog = dialog;
@@ -200,8 +138,6 @@ export class Palette {
       this.setScope(scope);
     };
 
-    // A click outside the content hits the `<dialog>` itself: its area is the
-    // backdrop.
     dialog.onclick = (event) => {
       if (event.target === dialog) dialog.close();
     };
@@ -213,10 +149,6 @@ export class Palette {
     };
   }
 
-  /**
-   * Opens the palette. `query` is the initial text, for example `tag:rust`;
-   * `scope` is the initial chip, for example bookmarks.
-   */
   open(query = "", scope: Scope = "all"): void {
     this.setOutline(false);
     if (this.dialog.open) {
@@ -229,8 +161,6 @@ export class Palette {
     }
 
     this.input.value = query;
-    // The chip resets on each open. Otherwise the next search would silently
-    // use a field picked long ago. A query like `tag:rust` narrows itself.
     this.setScope(scope, { silent: true });
 
     document.body.dataset.palette = "open";
@@ -240,10 +170,6 @@ export class Palette {
     void this.run();
   }
 
-  /**
-   * Opens "Go to heading": the headings of the open note. The chips and the
-   * actions are about the vault, so they hide.
-   */
   openOutline(): void {
     this.setOutline(true);
     this.input.value = "";
@@ -280,7 +206,6 @@ export class Palette {
     this.timer = window.setTimeout(() => void this.run(), SEARCH_DELAY);
   }
 
-  /** Builds the query for the chosen chip: `word` → `title:(word)`. */
   private query(): string {
     const text = this.input.value.trim();
     if (!text || this.scope === "all") return text;
@@ -305,9 +230,6 @@ export class Palette {
       return;
     }
 
-    // The first search opens vaults that were not opened yet. Reading and
-    // parsing them takes noticeable time. A silent palette looks broken then,
-    // so it tells the user what it is doing.
     if (text) this.working = window.setTimeout(() => this.showWorking(text), WORKING_DELAY);
 
     if (!text) {
@@ -344,19 +266,12 @@ export class Palette {
         "found",
       );
     } catch {
-      // An incomplete query like "title:(" is not an error; there is just
-      // nothing to search. The window status bar is too far from the eyes.
       window.clearTimeout(this.working);
       if (ticket !== this.issued) return;
       this.show([], this.resultsTitle(text), t("palette.broken"), "found");
     }
   }
 
-  /**
-   * Bookmarks filtered by the typed text: name, note title, path and line text.
-   * A named bookmark shows its name as the title, and the note title moves to
-   * the snippet next to the line text.
-   */
   private async runBookmarks(text: string, ticket: number): Promise<void> {
     let bookmarks: BookmarkView[];
     try {
@@ -396,10 +311,6 @@ export class Palette {
     );
   }
 
-  /**
-   * The headings of the open note filtered by the typed text, as bookmarks
-   * are. The indent shows the level.
-   */
   private runOutline(text: string): void {
     const headings = this.host.headings();
     const wanted = text.toLowerCase();
@@ -422,10 +333,6 @@ export class Palette {
     );
   }
 
-  /**
-   * Open tasks filtered by the typed text: task text, note title and path.
-   * The task text is the row title, and the note title is the snippet.
-   */
   private async runTasks(text: string, ticket: number): Promise<void> {
     let tasks: TaskView[];
     try {
@@ -458,7 +365,6 @@ export class Palette {
     );
   }
 
-  /** "Results for …", with the labels of the sidebar filter if it is on. */
   private resultsTitle(text: string): string {
     const labels = this.host.scope();
     return labels
@@ -466,7 +372,6 @@ export class Palette {
       : t("palette.results", { query: text });
   }
 
-  /** Shows that the palette is busy while the core opens vaults. */
   private showWorking(text: string): void {
     this.list.replaceChildren();
     this.message.textContent = t("palette.working");
@@ -475,12 +380,6 @@ export class Palette {
     this.count.textContent = "";
   }
 
-  /**
-   * The footer number depends on what is shown. For recent notes it is about
-   * the vault ("8 of 9"); for hits it counts the hits. Search covers all
-   * vaults, so a comparison with the active vault note count would be wrong.
-   * For the outline it is about the headings of the note.
-   */
   private show(
     rows: Row[],
     label: string,
@@ -511,8 +410,6 @@ export class Palette {
     button.className = "palette-row";
     button.title = row.id;
     button.onclick = () => this.pick(row);
-    // Mouse and keyboard move the same highlight. Otherwise Enter could open a
-    // row other than the one the user looks at.
     button.onmousemove = () => {
       if (this.selected === index) return;
       this.selected = index;
@@ -537,15 +434,12 @@ export class Palette {
     if (row.snippet) {
       const snippet = document.createElement("span");
       snippet.className = "palette-snippet";
-      // Search builds the match highlight; its HTML is already escaped.
       snippet.innerHTML = row.snippet;
       text.append(snippet);
     }
 
     button.append(mark, text);
 
-    // Only hits from other vaults get a vault label. The active vault is
-    // already open, and its name on every row would be noise.
     if (row.vault && row.vault.id !== this.host.activeVault()) {
       const vault = document.createElement("span");
       vault.className = "palette-vault";
@@ -618,7 +512,6 @@ export class Palette {
     }
   }
 
-  /** Wraps around: arrow down on the last row goes to the first one. */
   private move(delta: number): void {
     if (this.rows.length === 0) return;
     this.selected = (this.selected + delta + this.rows.length) % this.rows.length;
@@ -632,8 +525,6 @@ export class Palette {
       return;
     }
 
-    // Empty list and a valid name: Enter creates a note. A search miss usually
-    // means the note does not exist yet.
     const name = this.input.value.trim();
     if (this.outline || this.scope !== "all" || !nameable(name)) return;
     this.close();

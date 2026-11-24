@@ -1,11 +1,3 @@
-// Agent proposals: edits that an agent suggested through MCP (`propose_edit`).
-//
-// The note does not change until the person accepts. The float lists the
-// waiting proposals of the open note; each edit shows what goes away and
-// what comes instead, with a box to keep or drop it. "Apply" sends the
-// decisions to the core, which writes the accepted edits and keeps the
-// rejected ones as an answer for the agent (`proposal_status`).
-
 import { api, type NoteView, type ProposalEdit, type ProposalView } from "../api";
 import { bindDraft, bindDraftCheck, clearDraftsUnder, keepFocus } from "../drafts";
 import { t } from "../i18n";
@@ -28,11 +20,6 @@ function waiting(note: NoteView | null): ProposalView[] {
   return note?.file ? [] : (note?.proposals ?? []);
 }
 
-/**
- * The button shows only when the note has waiting proposals, as the comments
- * button does. An open float stays open after the last review: the person
- * sees "no proposals", not a window that vanished under the cursor.
- */
 function showProposals(note: NoteView | null): void {
   const list = waiting(note);
   el.proposalsCount.textContent = String(list.length);
@@ -47,11 +34,6 @@ export function showProposalsFloat(show: boolean): void {
   if (show) renderProposals();
 }
 
-/**
- * Draws the list again. The feedback text and the boxes of each proposal are
- * drafts: a review of one proposal or a new view of the note does not reset
- * what the person typed or unchecked in another one.
- */
 function renderProposals(): void {
   const refocus = keepFocus(el.proposalsList);
   try {
@@ -176,10 +158,6 @@ function proposalItem(proposal: ProposalView): HTMLLIElement {
   return item;
 }
 
-/**
- * Sends the decisions. The pending edits of the editor go to disk first: the
- * core searches the text of each edit there.
- */
 async function review(
   proposal: ProposalView,
   decisions: { accept: number[]; reject: number[]; feedback?: string },
@@ -190,7 +168,6 @@ async function review(
     const view = await api.reviewProposal(proposal.id, decisions);
     clearDraftsUnder(draftPrefix(proposal));
     if (state.note?.id !== id) return;
-    // The text changed on disk: the editor takes the new text.
     calls.apply(view, { reload: true });
     setStatus(
       t(decisions.accept.length > 0 ? "status.proposalApplied" : "status.proposalRejected"),

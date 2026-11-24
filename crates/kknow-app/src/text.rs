@@ -1,14 +1,8 @@
-//! Text rows that the CLI and the MCP server print in the same form.
-//!
-//! An agent reads the same rows as a person in the terminal: one format is
-//! less to learn for both, and a test of one checks the other.
-
 use kknow_core::NoteId;
 use kknow_index::{Edge, EdgeKind, Subpath, Task};
 
 use crate::BacklinkLine;
 
-/// `note:line  text`. With `all`, the box shows which tasks are done.
 pub fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
     let place = format!("{id}:{}", task.line);
     if !all {
@@ -18,7 +12,6 @@ pub fn task_row(id: &NoteId, task: &Task, all: bool) -> String {
     format!("{place}  [{mark}] {}", task.text)
 }
 
-/// A link row: the other note, its heading or block, the label and the kind.
 pub fn describe(edge: &Edge, other: &NoteId) -> String {
     let mut line = other.to_string();
 
@@ -39,8 +32,6 @@ pub fn describe(edge: &Edge, other: &NoteId) -> String {
     line
 }
 
-/// `note:line  text of the line`: a link to a note, where it stands. The line
-/// already shows the label and the kind of the link.
 pub fn backlink_row(link: &BacklinkLine) -> String {
     let context = &link.context;
     format!(
@@ -49,9 +40,6 @@ pub fn backlink_row(link: &BacklinkLine) -> String {
     )
 }
 
-/// A search snippet for text output, on one line.
-///
-/// The snippet has HTML highlighting, which a text reader does not need.
 pub fn plain_snippet(snippet: &str) -> String {
     snippet
         .replace("<b>", "«")

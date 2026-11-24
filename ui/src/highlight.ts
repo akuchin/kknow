@@ -1,23 +1,8 @@
-/**
- * Syntax highlighting: markdown in the editor and code inside blocks.
- *
- * One style serves the whole window: CodeMirror uses it through
- * `syntaxHighlighting`, and so do the code block widget and `<pre><code>` in
- * the preview. The style has its own classes, and CodeMirror mounts the style
- * sheet into the whole document, not only the editor, so the same classes work
- * outside it too. Colors are theme variables, so a theme change recolors code.
- *
- * Languages come from `@codemirror/language-data`: a grammar loads the first
- * time its language appears, so we do not pay for all of them at once.
- */
-
 import { HighlightStyle, LanguageDescription, type Language } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { highlightCode, tags } from "@lezer/highlight";
 
 export const highlightStyle = HighlightStyle.define([
-  // Highlighting takes one rule per tag, the most specific one, so the color
-  // repeats on heading1–3; the general `heading` applies to levels 4–6.
   { tag: tags.heading, color: "var(--heading)" },
   { tag: tags.heading1, color: "var(--heading)", fontSize: "1.5em", fontWeight: "600" },
   { tag: tags.heading2, color: "var(--heading)", fontSize: "1.25em", fontWeight: "600" },
@@ -27,9 +12,7 @@ export const highlightStyle = HighlightStyle.define([
   { tag: tags.link, color: "var(--accent)" },
   { tag: tags.monospace, fontFamily: "var(--font-mono)" },
   { tag: tags.quote, color: "var(--text-muted)" },
-  // Markup details: URLs, fence language, rules, attributes in code.
   { tag: [tags.url, tags.labelName, tags.contentSeparator, tags.meta], color: "var(--text-muted)" },
-  // Code inside blocks.
   { tag: tags.keyword, color: "var(--code-keyword)" },
   {
     tag: [tags.string, tags.special(tags.string), tags.regexp, tags.escape],
@@ -48,10 +31,8 @@ export const highlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "var(--danger)" },
 ]);
 
-/** Code block languages for the markdown parser; it loads grammars from them itself. */
 export const codeLanguages = languages;
 
-/** `null`: the language is unknown or its grammar failed to load. */
 const loaded = new Map<string, Language | null>();
 const loading = new Map<string, Promise<Language | null>>();
 
@@ -75,13 +56,6 @@ function load(name: string): Promise<Language | null> {
   return promise;
 }
 
-/**
- * Puts the block source into `el`, highlighted as language `name`.
- *
- * If the language is not loaded yet, the source is plain text first. It gets
- * colors when the grammar arrives, if the element is still in the document.
- * An unknown language stays plain text.
- */
 export function paintCode(el: HTMLElement, source: string, name: string): void {
   const key = name.toLowerCase();
   const language = loaded.get(key);
@@ -122,7 +96,6 @@ export function paintCode(el: HTMLElement, source: string, name: string): void {
   el.replaceChildren(fragment);
 }
 
-/** Highlights code blocks in preview HTML: the core sets `class="language-…"`. */
 export function paintCodeBlocks(root: HTMLElement): void {
   for (const code of root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]')) {
     const name = [...code.classList].find((c) => c.startsWith("language-"))?.slice(9) ?? "";

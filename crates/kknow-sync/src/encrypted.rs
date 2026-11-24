@@ -1,41 +1,15 @@
-//! An encrypted storage: a [`SyncProvider`] on top of another one.
-//!
-//! The engine sees logical keys (`notes/a.md`, `.kknow/manifest.json`) and
-//! plaintext bytes, as with any storage. Under them, [`Encrypted`] keeps
-//! encrypted names and encrypted bytes (see [`crate::crypto`]). So the sync
-//! algorithm does not know about encryption at all.
-//!
-//! The storage has two plaintext objects:
-//!
-//! - `.kknow/key.json`: the wrapped data key ([`KeyFile`]);
-//! - `.kknow/manifest.json`: a decoy. An older build reads it, sees a
-//!   manifest format that it does not know, and stops. Without the decoy it
-//!   would see no manifest and upload all notes as plaintext. The real
-//!   manifest has an encrypted name, so the two do not collide.
-//!
-//! A person or an agent can still drop a plaintext note into the storage.
-//! [`SyncProvider::prepare`] encrypts it before the sync, and the sync then
-//! sees it as a new remote note.
-
 use crate::crypto::{self, Cipher, DataKey, KEY_FILE, KeyFile, RecoveryCode};
 use crate::engine::{MANIFEST_KEY, note_of_key};
 use crate::provider::{self, Operation, SyncProvider};
 use crate::{Error, Result, shared};
 
-/// The plaintext object at [`MANIFEST_KEY`] in an encrypted storage.
-///
-/// Format 2 is above the format of the real manifest, so an older build
-/// refuses it with "manifest of version 2".
 pub const DECOY: &[u8] = b"{\n  \"format\": 2,\n  \"encrypted\": true,\n  \"notes\": {}\n}\n";
 
-/// True for the manifest of an encrypted storage, as a build without the
-/// key sees it.
 pub fn is_decoy(bytes: &[u8]) -> bool {
     serde_json::from_slice::<serde_json::Value>(bytes)
         .is_ok_and(|value| value.get("encrypted") == Some(&serde_json::Value::Bool(true)))
 }
 
-/// A storage whose names and contents are encrypted with one data key.
 pub struct Encrypted<P> {
     inner: P,
     cipher: Cipher,
@@ -51,7 +25,6 @@ impl<P: SyncProvider> Encrypted<P> {
         }
     }
 
-    /// The storage under the encryption, as other programs see it.
     pub fn inner(&self) -> &P {
         &self.inner
     }
@@ -62,10 +35,6 @@ impl<P: SyncProvider> Encrypted<P> {
             .map_err(|error| provider::Error::new(operation, key, error))
     }
 
-    /// Encrypts a plaintext object and removes the plaintext.
-    ///
-    /// The encrypted copy goes first. If the sync stops between the two
-    /// writes, the plaintext stays, and the next sync does the same work again.
     fn adopt(&self, key: &str) -> Result<()> {
         if let Some(bytes) = self.inner.get(key)? {
             self.put(key, &bytes)?;
@@ -74,13 +43,6 @@ impl<P: SyncProvider> Encrypted<P> {
         Ok(())
     }
 
-    /// Makes sure the plaintext manifest is the decoy.
-    ///
-    /// No manifest: a new storage, or a person deleted the decoy. A real
-    /// plaintext manifest and no encrypted one: `init` stopped after it wrote
-    /// the key file, so the manifest is moved under encryption now. Both: a
-    /// device without encryption wrote into this storage, and the two
-    /// manifests disagree. This needs a person.
     fn guard_manifest(&self, plain_keys: &[String]) -> Result<()> {
         let plain = if plain_keys.iter().any(|key| key == MANIFEST_KEY) {
             self.inner.get(MANIFEST_KEY)?
@@ -127,8 +89,6 @@ impl<P: SyncProvider> SyncProvider for Encrypted<P> {
         self.inner.delete(&stored)
     }
 
-    /// Only the objects that this key encrypted. Plaintext objects are not
-    /// listed: [`SyncProvider::prepare`] encrypts them before each sync.
     fn list(&self, prefix: &str) -> provider::Result<Vec<String>> {
         let mut keys: Vec<String> = self
             .inner
@@ -141,9 +101,6 @@ impl<P: SyncProvider> SyncProvider for Encrypted<P> {
         Ok(keys)
     }
 
-    /// Keeps the decoy in place and encrypts plaintext notes and shared
-    /// files. Gives their logical keys: the remote manifest may have an old
-    /// hash for them.
     fn prepare(&self) -> Result<Vec<String>> {
         let file = key_file(&self.inner).map_err(|error| match error {
             Error::NotEncrypted => Error::WrongKey,
@@ -178,17 +135,10 @@ impl<P> std::fmt::Debug for Encrypted<P> {
     }
 }
 
-/// True if the storage has a key file.
 pub fn is_encrypted(storage: &dyn SyncProvider) -> Result<bool> {
     Ok(storage.get(KEY_FILE)?.is_some())
 }
 
-/// Turns encryption on for a storage: a new key, then all objects that are
-/// there go under encryption.
-///
-/// The key file goes first. From that moment, a device without the key
-/// refuses the storage, so no new plaintext arrives during the work. If the
-/// work stops, the next sync with the key finishes it ([`SyncProvider::prepare`]).
 pub fn init(storage: &dyn SyncProvider, passphrase: &str) -> Result<(DataKey, RecoveryCode)> {
     let (file, key, code) = KeyFile::create(passphrase)?;
     init_with(storage, file, &key)?;
@@ -204,12 +154,10 @@ fn init_with(storage: &dyn SyncProvider, file: KeyFile, key: &DataKey) -> Result
     Ok(())
 }
 
-/// The data key of the storage from the passphrase or the recovery code.
 pub fn unlock(storage: &dyn SyncProvider, secret: &str) -> Result<DataKey> {
     key_file(storage)?.unlock(secret)
 }
 
-/// A new passphrase. `secret` is the current passphrase or the recovery code.
 pub fn change_passphrase(storage: &dyn SyncProvider, secret: &str, new: &str) -> Result<DataKey> {
     let mut file = key_file(storage)?;
     let key = file.unlock(secret)?;
@@ -242,7 +190,6 @@ mod tests {
         NoteId::parse(path).unwrap()
     }
 
-    /// A storage with encryption on, and its key.
     fn encrypted_storage() -> (MemoryProvider, DataKey) {
         let storage = MemoryProvider::new();
         let (file, key, _) = KeyFile::create_with(PASSPHRASE, WEAK).unwrap();
@@ -265,7 +212,6 @@ mod tests {
         SyncEngine::new(Encrypted::new(storage.clone(), key))
     }
 
-    /// Each object of the storage as text, for checks that nothing leaks.
     fn everything(storage: &MemoryProvider) -> String {
         storage
             .keys()
@@ -323,7 +269,6 @@ mod tests {
         let (_b, mut desktop) = device(&[]);
         engine(&storage, &key).run(&mut laptop).unwrap();
 
-        // An agent drops its research next to the notes.
         storage.put("Research/Agent.md", b"# Found it").unwrap();
 
         let report = engine(&storage, &key).run(&mut laptop).unwrap();
@@ -377,8 +322,6 @@ mod tests {
 
         let all = everything(&storage);
         assert!(!all.contains("alpha") && !all.contains("gamma"), "{all}");
-        // The manifest moved under encryption with its hashes, so the laptop
-        // has nothing to do.
         assert!(engine(&storage, &key).run(&mut laptop).unwrap().is_empty());
 
         let (_b, mut desktop) = device(&[]);
@@ -443,7 +386,6 @@ mod tests {
         let (_a, mut laptop) = device(&[("A.md", "# alpha")]);
         SyncEngine::new(storage.clone()).run(&mut laptop).unwrap();
 
-        // Only the key file is written: the app stopped here.
         let (file, key, _) = KeyFile::create_with(PASSPHRASE, WEAK).unwrap();
         storage.put(KEY_FILE, &file.to_json()).unwrap();
 
@@ -468,7 +410,6 @@ mod tests {
     fn an_older_build_stops_at_the_decoy() {
         let (storage, _) = encrypted_storage();
         let decoy = storage.get(MANIFEST_KEY).unwrap().unwrap();
-        // What an older build does: it parses the manifest in the old format.
         let value: serde_json::Value = serde_json::from_slice(&decoy).unwrap();
         assert!(value["format"].as_u64().unwrap() > 1);
         assert!(value["notes"].as_object().unwrap().is_empty());
@@ -490,7 +431,6 @@ mod tests {
         let (_a, mut vault) = device(&[("A.md", "# alpha")]);
         engine(&storage, &key).run(&mut vault).unwrap();
 
-        // A device without encryption wrote here after the decoy was deleted.
         storage
             .put(MANIFEST_KEY, b"{\"format\": 1, \"notes\": {}}")
             .unwrap();
@@ -507,8 +447,6 @@ mod tests {
         let (_a, mut vault) = device(&[("A.md", "# alpha")]);
         engine(&storage, &key).run(&mut vault).unwrap();
 
-        // Without the check, a different key would see an empty storage and
-        // start a second set of notes next to the first one.
         let other = DataKey::generate().unwrap();
         let (_b, mut stranger) = device(&[("B.md", "# beta")]);
         assert!(matches!(

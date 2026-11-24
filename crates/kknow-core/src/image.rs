@@ -1,14 +1,3 @@
-//! Images next to notes.
-//!
-//! A note refers to an image by a path from the note (`![](img/diagram.png)`),
-//! by a path from the vault root, or by a bare file name, like a wikilink
-//! (`![[diagram.png]]`). A bare name is searched in the whole vault. Only
-//! images inside the vault can be read: a note can come from another person's
-//! vault, and a path like `../../.ssh/id_rsa` in it must open nothing.
-//!
-//! A pasted or dropped image goes to the `attachments` folder ([`save`]).
-//! The window gives only a name and the bytes. The core selects the folder.
-
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -17,34 +6,20 @@ use walkdir::WalkDir;
 use crate::error::{Error, Result};
 use crate::vault::is_hidden;
 
-/// Image extensions: the formats the webview can show.
 pub const IMAGE_EXTENSIONS: [&str; 9] = [
     "png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico",
 ];
 
-/// Larger images are not read. The note shows them scaled down anyway, and
-/// sending hundreds of megabytes to the window for a preview is a waste.
 pub const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 
-/// Folder for pasted and dropped images, at the vault root.
 pub const ATTACHMENTS: &str = "attachments";
 
-/// These characters break a `![[link]]` or the path cleanup in [`resolve`].
-/// A name gets `-` in their place.
 const LINK_BREAKERS: [char; 9] = ['[', ']', '|', '#', '^', '?', '%', '<', '>'];
 
-/// Checks only the extension of the link target. It does not touch the disk.
 pub fn is_image(target: &str) -> bool {
     has_image_extension(Path::new(&clean(target)))
 }
 
-/// Finds an image for a note in `from_dir` inside the vault `root`.
-///
-/// Order: path from the note, path from the root, then the file name in the
-/// whole vault (the one nearest to the root; at equal depth, the first in
-/// alphabetical order). Only a target without folders is searched by name:
-/// a missing `img/a.png` must not silently become an unrelated `a.png` from
-/// another project.
 pub fn resolve(root: &Path, from_dir: &Path, target: &str) -> Option<PathBuf> {
     let target = clean(target);
     let relative = Path::new(&target);
@@ -57,7 +32,6 @@ pub fn resolve(root: &Path, from_dir: &Path, target: &str) -> Option<PathBuf> {
         (path.starts_with(&root) && path.is_file()).then_some(path)
     };
 
-    // `/img/a.png` is a path from the vault root, not from the disk root.
     let from_root: PathBuf = relative
         .components()
         .filter(|part| !matches!(part, Component::RootDir | Component::Prefix(_)))
@@ -82,8 +56,6 @@ pub fn resolve(root: &Path, from_dir: &Path, target: &str) -> Option<PathBuf> {
         .map(|entry| entry.into_path())
 }
 
-/// Finds an image for a loose file. It has no vault, so only a path from the
-/// file itself or an absolute path works.
 pub fn resolve_near(from_dir: &Path, target: &str) -> Option<PathBuf> {
     let target = clean(target);
     let relative = Path::new(&target);
@@ -104,18 +76,12 @@ pub fn read(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|err| Error::io(path, err))
 }
 
-/// Saves an image into `dir/attachments` under the first free name.
-///
-/// `name` is a file name without folders: it comes from the window. The
-/// function never overwrites a file. It returns the path from `dir` with `/`,
-/// for example `attachments/Pasted image 2.png`.
 pub fn save(dir: &Path, name: &str, bytes: &[u8]) -> Result<String> {
     let name = attachment_name(name)?;
     if bytes.len() as u64 > MAX_IMAGE_BYTES {
         return Err(Error::TooLarge(PathBuf::from(name)));
     }
     let folder = dir.join(ATTACHMENTS);
-    // A symlink in place of the folder could take the write out of `dir`.
     match fs::symlink_metadata(&folder) {
         Ok(meta) if meta.is_dir() => {}
         Ok(_) => return Err(Error::InvalidFolder(ATTACHMENTS.to_string())),
@@ -127,27 +93,21 @@ pub fn save(dir: &Path, name: &str, bytes: &[u8]) -> Result<String> {
 
     let free = free_name(&folder, &name);
     let target = folder.join(&free);
-    // A hidden temp file: the vault scan and the name search skip it.
     let temp = folder.join(format!(".{free}.kknow-tmp"));
     fs::write(&temp, bytes).map_err(|err| Error::io(&temp, err))?;
     fs::rename(&temp, &target).map_err(|err| Error::io(&target, err))?;
     Ok(format!("{ATTACHMENTS}/{free}"))
 }
 
-/// Copies an image file from the disk into `dir/attachments`, like [`save`].
-/// The copy keeps the file name.
 pub fn import(dir: &Path, source: &Path) -> Result<String> {
     let name = source
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    // Check the name before the read: a large file that is not an image must
-    // not go into memory.
     attachment_name(&name)?;
     save(dir, &name, &read(source)?)
 }
 
-/// Checks a file name from the window and makes it safe for a link.
 fn attachment_name(raw: &str) -> Result<String> {
     let invalid = || Error::InvalidImageName(raw.to_string());
     let trimmed = raw.trim();
@@ -174,7 +134,6 @@ fn attachment_name(raw: &str) -> Result<String> {
     Ok(name)
 }
 
-/// `name`, then `stem 2.ext`, `stem 3.ext`… The first name not on the disk.
 fn free_name(folder: &Path, name: &str) -> String {
     let path = Path::new(name);
     let stem = path.file_stem().unwrap_or_default().to_string_lossy();
@@ -198,13 +157,11 @@ fn has_image_extension(path: &Path) -> bool {
         })
 }
 
-/// Target as a path: without `?query` and `#anchor`, with `%20` decoded.
 fn clean(target: &str) -> String {
     let end = target.find(['?', '#']).unwrap_or(target.len());
     decode(target[..end].trim())
 }
 
-/// Percent-decoding by bytes: `%D0%BA` is one letter, not two.
 fn decode(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -289,7 +246,6 @@ mod tests {
     fn bare_name_is_searched_across_the_vault() {
         let dir = fixture();
 
-        // Of two `shot.png` files, the one nearest to the root wins.
         assert_eq!(
             found(&dir, "shot.png").as_deref(),
             Some("attachments/shot.png")
@@ -352,7 +308,6 @@ mod tests {
 
         assert_eq!(path, "attachments/Pasted image 20261024153012.png");
         assert_eq!(fs::read(dir.path().join(&path)).unwrap(), b"png");
-        // The vault resolves the same link from a note in a folder.
         assert_eq!(found(&dir, &path).as_deref(), Some(path.as_str()));
     }
 

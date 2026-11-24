@@ -1,8 +1,3 @@
-//! Markdown note parsing and the link graph between notes.
-//!
-//! The crate works with note text and ids but does not read the disk.
-//! [`kknow_core::Vault`] supplies the files.
-
 pub mod agent_note;
 pub mod graph;
 pub mod mention;

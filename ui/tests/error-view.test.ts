@@ -1,5 +1,3 @@
-// Error texts from coded core errors. Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

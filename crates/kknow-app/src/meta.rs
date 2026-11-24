@@ -1,15 +1,3 @@
-//! Small JSON records of a vault: one file for each record in a folder of
-//! `.kknow`.
-//!
-//! Proposals and comment threads use it. A file for each record, not one
-//! file for all, because these files sync between machines: two machines
-//! that change two different records change two different files and do not
-//! conflict.
-//!
-//! The records are not kept in memory. A vault has tens of them, not
-//! thousands, and a read from disk on each call also sees what sync or
-//! another program wrote. A cache would need a reload after each of them.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,7 +7,6 @@ use serde::de::DeserializeOwned;
 
 use crate::{Error, Result};
 
-/// A folder of records, for example `.kknow/proposals`.
 #[derive(Debug, Clone)]
 pub struct RecordDir {
     dir: PathBuf,
@@ -36,9 +23,6 @@ impl RecordDir {
         self.dir.join(format!("{id}.json"))
     }
 
-    /// All records that parse, sorted by ID. A broken file is skipped, not an
-    /// error: one bad record must not hide the others. It stays on disk for a
-    /// person to look at.
     pub fn all<T: DeserializeOwned>(&self) -> Result<Vec<T>> {
         let entries = match fs::read_dir(&self.dir) {
             Ok(entries) => entries,
@@ -57,7 +41,6 @@ impl RecordDir {
             .collect())
     }
 
-    /// The record with this ID, or `None` if there is no such file.
     pub fn get<T: DeserializeOwned>(&self, id: &str) -> Result<Option<T>> {
         if !valid_id(id) {
             return Ok(None);
@@ -70,8 +53,6 @@ impl RecordDir {
         }
     }
 
-    /// Writes the record through a temporary file: an interrupted write keeps
-    /// the old record.
     pub fn put<T: Serialize>(&self, id: &str, record: &T) -> Result<()> {
         fs::create_dir_all(&self.dir).map_err(|source| Error::io(&self.dir, source))?;
         let path = self.file(id);
@@ -95,8 +76,6 @@ impl RecordDir {
     }
 }
 
-/// An ID is a file name, and it comes from an agent. Only letters, digits,
-/// `-` and `_`: no `/`, no `..`.
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 32
@@ -105,11 +84,6 @@ pub fn valid_id(id: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
-/// A new short random ID: six base-36 characters.
-///
-/// `RandomState` takes its keys from the system random source, as in
-/// `mcp::fresh_token`. Six characters give two billion values. A vault has
-/// tens of records, and [`fresh_id`] callers check for a free name anyway.
 pub fn fresh_id() -> String {
     use std::hash::{BuildHasher, Hasher};
 
@@ -130,8 +104,6 @@ pub fn fresh_id() -> String {
     id
 }
 
-/// Seconds since 1970. The records show "when" to a person, and sync does
-/// not compare them, so the clock of each machine is good enough.
 pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -2,11 +2,6 @@ import { expect, test } from "@playwright/test";
 
 import { menuItem, openWindow, t } from "./window";
 
-/**
- * Sections in menu order, with the first heading of each. The vaults section
- * and the commands section have a list on the left; their first heading
- * belongs to the picked entry.
- */
 const SECTIONS: [string, string][] = [
   ["general", "settings.section.general"],
   ["appearance", "settings.section.appearance"],
@@ -27,7 +22,6 @@ test("each settings section opens", async ({ page }) => {
     await expect(buttons.nth(index)).toHaveText(t(`settings.section.${id}`));
     await expect(buttons.nth(index)).toHaveAttribute("aria-current", "true");
     await expect(page.locator("#settings-body .settings-heading").first()).toHaveText(t(heading));
-    // A section has controls, not only its heading.
     await expect(page.locator("#settings-body .settings-row").first()).toBeVisible();
   }
 });
@@ -45,7 +39,6 @@ test("a theme picked in the settings reaches the main window", async ({ page, co
   await theme.selectOption("dark");
   await expect(root).toHaveAttribute("data-theme", "dark");
 
-  // A vault theme also paints its variables.
   await theme.selectOption("sepia");
   await expect(root).toHaveAttribute("data-theme", "light");
   await expect(root).toHaveAttribute("style", /--bg:\s*#f6efe0/);
@@ -57,7 +50,6 @@ test("the gear menu changes the theme of the main window", async ({ page }) => {
   await menuItem(page, t("theme.dark")).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-  // The choice is a setting: a reload keeps it.
   await page.reload();
   await expect(page.locator("#note-title")).toHaveText("Index");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -69,7 +61,6 @@ test("a key recorded in the settings replaces the default and resets", async ({ 
   const reset = line.getByRole("button", { name: t("settings.keys.reset") });
   await expect(reset).toHaveCount(0);
 
-  // Esc while recording cancels the recording, not the window.
   await line.getByRole("button", { name: t("settings.keys.change") }).click();
   await expect(line).toContainText(t("settings.keys.record"));
   await page.keyboard.press("Escape");
@@ -80,7 +71,6 @@ test("a key recorded in the settings replaces the default and resets", async ({ 
   await expect(line).toHaveClass(/custom/);
   await expect(line.locator("kbd")).toHaveCount(1);
 
-  // The key is in the keys file: a reload keeps it.
   await page.reload();
   await expect(line).toHaveClass(/custom/);
 
@@ -103,12 +93,10 @@ test("the command form adds, edits and removes a command", async ({ page }) => {
   const name = page.locator("#settings-body input.settings-name");
   await expect(name).toHaveValue(t("settings.commands.new"));
 
-  // Typed text saves on `change` and updates the list on the left.
   await name.fill("Build");
   await name.press("Tab");
   await expect(added).toContainText("Build");
 
-  // A target chip rebuilds the form: the note variable goes away with it.
   const vars = page.locator("details.settings-vars");
   await vars.locator("summary").click();
   await expect(vars).toContainText("$KKNOW_NOTE");
@@ -135,12 +123,10 @@ test("the vault page renames, recolors and sets up sync", async ({ page }) => {
   await expect(page.locator('.settings-color[data-color="red"]')).toHaveAttribute("aria-pressed", "true");
   await expect(picked.locator(".vault-label")).toHaveAttribute("data-color", "red");
 
-  // S3 shows its key form; its button saves the fields.
   const provider = page
     .locator(".settings-row", { hasText: t("settings.vaults.provider") })
     .locator("select");
   await provider.selectOption("s3");
-  // The bucket is the first field; the prefix field also has the word "bucket" in its name.
   const bucket = page.locator(".settings-s3 label").first().locator("input");
   await expect(page.locator(".settings-s3 label").first()).toContainText(t("dialog.sync.bucket"));
   await expect(bucket).toHaveValue("kknow");
@@ -164,19 +150,16 @@ test("typed S3 fields survive other changes on the vault page", async ({ page })
   await field("dialog.sync.endpoint").fill("https://s3.example.com");
   await field("dialog.sync.secret").fill("typed-secret");
 
-  // A color change draws the page again before "Save".
   await page.locator('.settings-color[data-color="green"]').click();
   await expect(page.locator('.settings-color[data-color="green"]')).toHaveAttribute("aria-pressed", "true");
   await expect(field("dialog.sync.endpoint")).toHaveValue("https://s3.example.com");
   await expect(field("dialog.sync.secret")).toHaveValue("typed-secret");
 
   await page.locator(".settings-s3 button", { hasText: t("dialog.sync.save") }).click();
-  // Saved: the secret field is empty again and says that a key is stored.
   await expect(field("dialog.sync.secret")).toHaveValue("");
   await expect(field("dialog.sync.secret")).toHaveAttribute("placeholder", t("dialog.sync.secret.saved"));
   await expect(field("dialog.sync.endpoint")).toHaveValue("https://s3.example.com");
 
-  // A new endpoint without the key again keeps the stored key.
   await field("dialog.sync.endpoint").fill("https://other.example.com");
   await page.locator(".settings-s3 button", { hasText: t("dialog.sync.save") }).click();
   await expect(field("dialog.sync.endpoint")).toHaveValue("https://other.example.com");
@@ -192,13 +175,11 @@ test("git asks for the program first and then connects the vault", async ({ page
 
   const form = page.locator(".settings-git");
   await form.getByPlaceholder(t("dialog.git.url.placeholder")).fill("https://github.com/me/notes.git");
-  // Only the field of the picked sign-in shows.
   await expect(form.getByPlaceholder("GITHUB_TOKEN")).toBeHidden();
   const connect = form.getByRole("button", { name: t("dialog.git.connect") });
   await connect.click();
   await expect(form.locator(".settings-form-error")).toHaveText(t("error.gitPathNotSet"));
 
-  // "Find" fills the path to git in the general section.
   await page.goto("/settings.html#general");
   await page.getByRole("button", { name: t("settings.general.git.find") }).click();
   await expect(page.locator(".settings-git-path")).toHaveValue("/opt/homebrew/bin/git");
@@ -211,7 +192,6 @@ test("git asks for the program first and then connects the vault", async ({ page
   await form.getByPlaceholder("GITHUB_TOKEN").fill("GITHUB_TOKEN");
   await connect.click();
 
-  // Connected: the address comes from the repository and does not change.
   await expect(form.getByRole("button", { name: t("dialog.sync.save") })).toBeVisible();
   await expect(form.getByPlaceholder(t("dialog.git.url.placeholder"))).toHaveAttribute("readonly", "");
   await expect(page.locator(".settings-row", { hasText: t("dialog.sync.policy") })).toHaveCount(0);

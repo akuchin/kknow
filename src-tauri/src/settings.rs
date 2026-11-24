@@ -1,15 +1,3 @@
-//! App settings: language, theme and editor behaviour.
-//!
-//! They used to live in the main window's `localStorage`. Now there are two
-//! windows, and they must agree. The second webview has its own storage and
-//! does not report changes. So the source of truth is `settings.json` next to
-//! the vault registry. A command changes it, and an event sends it to both
-//! windows in the same way.
-//!
-//! The window keeps a mirror in `localStorage`. It needs the language
-//! synchronously at the first moment of loading. Otherwise labels render in
-//! one language and then re-render in another.
-
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -18,13 +6,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::state::Result;
 
-/// Event name for the windows.
 pub const EVENT: &str = "settings-changed";
 
-/// App settings and the file to write them to.
 #[derive(Default)]
 pub struct SettingsState {
-    /// `None` means write nowhere. Tests use this.
     file: Mutex<Option<PathBuf>>,
     settings: Mutex<AppSettings>,
 }
@@ -39,8 +24,6 @@ impl SettingsState {
         self.settings.lock().expect("settings are poisoned").clone()
     }
 
-    /// Writes the settings. A write error does not undo the change in memory:
-    /// the window must use the new language even if the file did not open.
     fn put(&self, next: AppSettings) -> AppSettings {
         *self.settings.lock().expect("settings are poisoned") = next.clone();
 
@@ -59,7 +42,6 @@ pub fn get_settings(state: State<'_, SettingsState>) -> AppSettings {
     state.get()
 }
 
-/// Saves the settings and sends them to both windows.
 #[tauri::command(async)]
 pub fn set_settings<R: Runtime>(
     app: AppHandle<R>,
@@ -107,12 +89,9 @@ mod tests {
 
         assert_eq!(saved, next);
         assert_eq!(get_settings(app.state()), next);
-        // The disk has the same values: the second window reads them at start.
         assert_eq!(AppSettings::load(&path).unwrap().settings, next);
     }
 
-    /// Settings change even without a file. Tests and the first start, before
-    /// the settings folder is found, must not fail.
     #[test]
     fn settings_without_a_file_still_change() {
         let app = mock_builder()

@@ -11,26 +11,16 @@ use crate::wikilink::{self, WikiLink};
 pub struct Heading {
     pub level: u8,
     pub text: String,
-    /// 1-based source line, frontmatter included.
     pub line: usize,
     pub span: Range<usize>,
 }
 
-/// A block ID: `^id` at the end of a paragraph or list item line. A link
-/// `[[note#^id]]` points to this line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
-    /// The ID without the caret.
     pub id: String,
-    /// 1-based source line, frontmatter included.
     pub line: usize,
 }
 
-/// YAML block at the start of the file.
-///
-/// The parser cuts it out so that it does not get into the text and links.
-/// [`Frontmatter::fields`] gets the top-level scalar fields. A note uses them
-/// to pass parameters to its commands (for example, an export page id).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frontmatter {
     pub raw: String,
@@ -38,22 +28,10 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
-    /// Top-level fields of the form `key: value`.
-    ///
-    /// This is not a YAML parser: a real one adds a dependency for things that
-    /// notes almost never have. Only top-level scalar fields are taken, the
-    /// usual reason for frontmatter: `status`, `page: 123456789`,
-    /// `due: 2026-08-14`. Nested maps and block lists (`- item`) are skipped:
-    /// they have no single value to put into an environment variable.
-    ///
-    /// Quotes around a value are removed, because they are there for YAML, not
-    /// for the reader of the value. All else stays as written, `[a, b]` too:
-    /// it is also one string, and the caller decides what to do with it.
     pub fn fields(&self) -> BTreeMap<String, String> {
         let mut fields = BTreeMap::new();
 
         for line in self.raw.lines() {
-            // Indent means nesting, `#` a comment, `-` a list.
             if line.starts_with([' ', '\t', '#', '-']) {
                 continue;
             }
@@ -63,12 +41,6 @@ impl Frontmatter {
         fields
     }
 
-    /// Values of a list field: an inline list `key: [a, "b"]`, a block list
-    /// of `- item` lines under `key:`, or one scalar `key: a`.
-    ///
-    /// This is for one known key, such as `aliases`, not a YAML parser. A
-    /// value with a comma inside quotes stays whole; nested lists are not
-    /// read. Empty items are dropped.
     pub fn list(&self, key: &str) -> Vec<String> {
         let mut lines = self.raw.lines();
         let value = loop {
@@ -106,7 +78,6 @@ impl Frontmatter {
     }
 }
 
-/// `a, "b, c", 'd'` → the three items, with their quotes.
 fn split_inline_list(inner: &str) -> Vec<&str> {
     let mut items = Vec::new();
     let mut quote = None;
@@ -126,22 +97,6 @@ fn split_inline_list(inner: &str) -> Vec<&str> {
     items
 }
 
-/// Metadata as a comment: `<!-- page: 987654321 -->`.
-///
-/// A second way to say what frontmatter says. It is for places where others
-/// see the frontmatter: a code host shows the frontmatter of a repository
-/// `readme.md` as a block, and an export copies it to the page. A comment is
-/// visible nowhere: not in the preview (raw HTML is removed there) and not in
-/// other markdown viewers.
-///
-/// The comment can be anywhere in the body and can span several lines:
-///
-/// ```text
-/// <!--
-///   page: 987654321
-///   space: DOCS
-/// -->
-/// ```
 fn take_comment_fields(html: &str, fields: &mut BTreeMap<String, String>) {
     let mut rest = html;
     while let Some(open) = rest.find("<!--") {
@@ -152,8 +107,6 @@ fn take_comment_fields(html: &str, fields: &mut BTreeMap<String, String>) {
 
         let body = &after[..close];
         rest = &after[close + 3..];
-        // An agent task is not metadata. `«words»: text` also has a colon, and
-        // without this check it becomes a field.
         if agent_note::is_note(body) {
             continue;
         }
@@ -163,11 +116,6 @@ fn take_comment_fields(html: &str, fields: &mut BTreeMap<String, String>) {
     }
 }
 
-/// Parses a `key: value` line and stores it if the key is not there yet.
-///
-/// The first match wins. Frontmatter is parsed before the body, so it beats a
-/// comment, and of two equal comments the upper one wins. Both sources use one
-/// rule, so nobody has to remember which one overrides which.
 fn take_field(line: &str, fields: &mut BTreeMap<String, String>) {
     let Some((key, value)) = line.split_once(':') else {
         return;
@@ -182,7 +130,6 @@ fn take_field(line: &str, fields: &mut BTreeMap<String, String>) {
         .or_insert_with(|| unquote(value.trim()).to_string());
 }
 
-/// Removes quotes if they enclose the whole value.
 fn unquote(value: &str) -> &str {
     for quote in ['"', '\''] {
         if let Some(inner) = value
@@ -195,7 +142,6 @@ fn unquote(value: &str) -> &str {
     value
 }
 
-/// A plain markdown link `[text](note.md)` to a file in the vault.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarkdownLink {
     pub target: String,
@@ -203,33 +149,20 @@ pub struct MarkdownLink {
     pub span: Range<usize>,
 }
 
-/// A task list item: `- [ ] text` or `- [x] text`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Task {
-    /// The item text without markup, up to a nested list.
     pub text: String,
     pub done: bool,
-    /// 1-based source line, frontmatter included.
     pub line: usize,
-    /// The `[ ]` marker in the source.
     pub span: Range<usize>,
 }
 
-/// A comment for an agent: `<!-- @agent «words»: text -->`.
-///
-/// The parse keeps where the comment is, so an agent can find the task in
-/// the file and remove the comment when the task is done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentComment {
-    /// The thread ID (`@agent#id`), if the comment has one.
     pub id: Option<String>,
-    /// The words the comment is about. Empty for a comment on a paragraph.
     pub anchor: String,
-    /// The task text.
     pub text: String,
-    /// 1-based source line, frontmatter included.
     pub line: usize,
-    /// The whole `<!-- … -->` in the source.
     pub span: Range<usize>,
 }
 
@@ -237,28 +170,18 @@ pub struct AgentComment {
 pub struct ParsedNote {
     pub frontmatter: Option<Frontmatter>,
     pub headings: Vec<Heading>,
-    /// Block IDs (`^id`) in source order.
     pub blocks: Vec<Block>,
     pub wiki_links: Vec<WikiLink>,
     pub markdown_links: Vec<MarkdownLink>,
     pub tags: Vec<Tag>,
-    /// Task list items in source order.
     pub tasks: Vec<Task>,
-    /// Comments for an agent in source order.
     pub agent_comments: Vec<AgentComment>,
-    /// Scalar metadata: frontmatter fields and the same as
-    /// `<!-- key: value -->` comments. A note uses them to pass parameters to
-    /// its commands, for example an export page id.
     pub fields: BTreeMap<String, String>,
-    /// Other names of the note from the frontmatter: `aliases`, or the
-    /// older `alias`.
     pub aliases: Vec<String>,
-    /// Text without markup, for the full-text index.
     pub text: String,
 }
 
 impl ParsedNote {
-    /// The first-level heading, if the note body has one.
     pub fn title(&self) -> Option<&str> {
         self.headings
             .iter()
@@ -275,10 +198,6 @@ pub(crate) fn options() -> Options {
         | Options::ENABLE_MATH
 }
 
-/// Parses a whole note.
-///
-/// All `span` values count from the start of the given text, frontmatter
-/// included.
 pub fn parse(source: &str) -> ParsedNote {
     let (frontmatter, body_start) = split_frontmatter(source);
 
@@ -287,9 +206,6 @@ pub fn parse(source: &str) -> ParsedNote {
         skip.push(frontmatter.span.clone());
     }
 
-    // Frontmatter is parsed before the body, so on equal keys it beats a
-    // comment: an explicit metadata block is stronger than a line lost in the
-    // middle of the text.
     let mut fields = frontmatter
         .as_ref()
         .map(Frontmatter::fields)
@@ -298,14 +214,12 @@ pub fn parse(source: &str) -> ParsedNote {
     let mut headings = Vec::new();
     let mut markdown_links = Vec::new();
     let mut text = String::new();
-    // Raw HTML of the note in order. Comment metadata comes from it.
     let mut raw_html = String::new();
 
     let mut heading: Option<(u8, usize, Range<usize>, String)> = None;
     let mut link: Option<(String, Range<usize>, String)> = None;
     let mut tasks = Vec::new();
     let mut agent_comments = Vec::new();
-    // The task whose text is being collected.
     let mut task: Option<Task> = None;
     let mut lines = LineCounter::new(source);
 
@@ -355,15 +269,6 @@ pub fn parse(source: &str) -> ParsedNote {
                 text.push_str(&code);
             }
             Event::InlineMath(_) | Event::DisplayMath(_) => skip.push(range),
-            // Comment metadata arrives here with all raw HTML. This is useful:
-            // inside a code block the parser gives text, not HTML, so a
-            // `<!-- … -->` in an example does not become metadata.
-            //
-            // It is parsed after the walk, not here: the parser gives a
-            // multi-line comment as **several** events, one per line, and
-            // `<!--` and `-->` end up in different events.
-            //
-            // An agent comment is one line, so it is always one event.
             Event::Html(html) | Event::InlineHtml(html) => {
                 if let Some(note) = agent_note::parse(&html) {
                     let start = range.start + (html.len() - html.trim_start().len());
@@ -378,8 +283,6 @@ pub fn parse(source: &str) -> ParsedNote {
                 raw_html.push_str(&html);
                 skip.push(range);
             }
-            // The parser gives the marker only in a real list item, so
-            // `- [ ]` in a code block is not a task.
             Event::TaskListMarker(done) => {
                 task = Some(Task {
                     text: String::new(),
@@ -388,7 +291,6 @@ pub fn parse(source: &str) -> ParsedNote {
                     span: range,
                 });
             }
-            // The text of a task ends with its paragraph or at a nested list.
             Event::Start(MdTag::List(_)) | Event::End(TagEnd::Paragraph | TagEnd::Item) => {
                 if let Some(mut found) = task.take() {
                     found.text = unwrap_wiki_links(found.text.trim());
@@ -436,8 +338,6 @@ pub fn parse(source: &str) -> ParsedNote {
     let wiki_links = wikilink::scan(source, &skip);
     let blocks = scan_blocks(source, &skip);
 
-    // A `#` inside a link is a subpath (`[[note#Section]]`, `(note.md#anchor)`),
-    // not a tag, so the tag scan skips the links found.
     let mut tag_skip = skip;
     tag_skip.extend(wiki_links.iter().map(|link| link.span.clone()));
     tag_skip.extend(markdown_links.iter().map(|link| link.span.clone()));
@@ -457,11 +357,6 @@ pub fn parse(source: &str) -> ParsedNote {
     }
 }
 
-/// Sets the task on 1-based line `line` to `done` and returns the new text.
-///
-/// `None` means the line has no task: the file can change after the caller
-/// got the line number. Only the marker character changes. The rest of the
-/// text stays byte for byte.
 pub fn set_task(source: &str, line: usize, done: bool) -> Option<String> {
     let task = parse(source)
         .tasks
@@ -475,13 +370,6 @@ pub fn set_task(source: &str, line: usize, done: bool) -> Option<String> {
     Some(out)
 }
 
-/// Removes the agent comment with the task `text` on 1-based line `line` and
-/// returns the new text.
-///
-/// `None` means the line has no such comment: the file can change after the
-/// caller got the line. The text is part of the key, because one line can
-/// have several comments. A comment alone on its line goes away with its
-/// line, so no empty line stays in the file.
 pub fn remove_agent_comment(source: &str, line: usize, text: &str) -> Option<String> {
     let comment = parse(source)
         .agent_comments
@@ -504,10 +392,6 @@ pub fn remove_agent_comment(source: &str, line: usize, text: &str) -> Option<Str
     Some(out)
 }
 
-/// Removes the agent comment with thread ID `id`, wherever it is now.
-///
-/// An ID moves with the comment, so this needs no line. `None` means no
-/// comment has this ID.
 pub fn remove_agent_comment_by_id(source: &str, id: &str) -> Option<String> {
     let comment = parse(source)
         .agent_comments
@@ -516,28 +400,15 @@ pub fn remove_agent_comment_by_id(source: &str, id: &str) -> Option<String> {
     remove_agent_comment(source, comment.line, &comment.text)
 }
 
-/// The marker of an answer that an agent wrote in the text: a question,
-/// variants to choose from, or the reason it did not do a task.
 pub const AGENT_ANSWER: &str = "@agent-note";
 
-/// An answer of an agent to one `@agent` comment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentAnswer {
-    /// The comment the answer belongs to.
     pub comment: AgentComment,
-    /// The text of the answer.
     pub text: String,
-    /// What to cut from the source: the answer and the space before it.
     pub span: Range<usize>,
 }
 
-/// Answers that an agent without MCP wrote just after `@agent` comments:
-/// `<!-- @agent-note: … -->` after the comment, with only spaces or one line
-/// break between. An empty line ends the paragraph, so a note after it is
-/// not an answer to the comment above.
-///
-/// Several notes after one comment are one answer: their texts join with an
-/// empty line.
 pub fn agent_answers(source: &str) -> Vec<AgentAnswer> {
     let mut answers = Vec::new();
     for comment in parse(source).agent_comments {
@@ -560,7 +431,6 @@ pub fn agent_answers(source: &str) -> Vec<AgentAnswer> {
     answers
 }
 
-/// The `@agent-note` comment right after `at`, and the offset after it.
 fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
     let rest = &source[at..];
     let gap = rest.len() - rest.trim_start().len();
@@ -579,7 +449,6 @@ fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
     }
     let text = body.trim_start().strip_prefix(':').unwrap_or(body).trim();
     let mut end = at + gap + 4 + close + 3;
-    // A note alone on its line takes its line break with it.
     let tail = &source[end..];
     let spaces = tail.len() - tail.trim_start_matches([' ', '\t']).len();
     if rest[..gap].contains('\n') && (tail[spaces..].starts_with('\n') || tail[spaces..].is_empty())
@@ -589,8 +458,6 @@ fn answer_after(source: &str, at: usize) -> Option<(String, usize)> {
     Some((text.to_string(), end))
 }
 
-/// Gives the agent comment with the task `text` on line `line` the thread ID
-/// `id`. `None` means the line has no such comment.
 pub fn set_agent_comment_id(source: &str, line: usize, text: &str, id: &str) -> Option<String> {
     let comment = parse(source)
         .agent_comments
@@ -602,11 +469,6 @@ pub fn set_agent_comment_id(source: &str, line: usize, text: &str, id: &str) -> 
     Some(out)
 }
 
-/// Line numbers of growing offsets, without a recount from the start.
-/// Finds `^id` at the end of lines. The caret needs a space or the line start
-/// before it, so `x^2` is no block. An ID is Latin letters, digits and
-/// dashes, as Obsidian writes it. A caret in code, math or HTML (`skip`) is
-/// part of that text.
 fn scan_blocks(source: &str, skip: &[Range<usize>]) -> Vec<Block> {
     let mut blocks = Vec::new();
     let mut start = 0;
@@ -654,8 +516,6 @@ impl<'a> LineCounter<'a> {
     }
 }
 
-/// Replaces `[[note|label]]` with "label". The text for search and snippets
-/// must keep what a person reads, not the link markup.
 fn unwrap_wiki_links(text: &str) -> String {
     let links = wikilink::scan(text, &[]);
     if links.is_empty() {
@@ -673,7 +533,6 @@ fn unwrap_wiki_links(text: &str) -> String {
     out
 }
 
-/// Cuts off the YAML frontmatter and returns the offset where the body starts.
 fn split_frontmatter(source: &str) -> (Option<Frontmatter>, usize) {
     let Some(after_open) = source
         .strip_prefix("---\n")
@@ -700,7 +559,6 @@ fn split_frontmatter(source: &str) -> (Option<Frontmatter>, usize) {
         offset += line.len();
     }
 
-    // No closing delimiter: this is plain text, not frontmatter.
     (None, 0)
 }
 
@@ -711,7 +569,6 @@ fn is_external(target: &str) -> bool {
         .any(|scheme| lowercase.starts_with(scheme))
 }
 
-/// Decodes `%20` and similar sequences to plain characters.
 pub(crate) fn decode_target(target: &str) -> String {
     let mut decoded = String::with_capacity(target.len());
     let mut chars = target.chars();
@@ -796,8 +653,6 @@ mod tests {
         assert_eq!(fields["space"], "DOCS");
         assert_eq!(fields["пусто"], "");
         assert_eq!(fields["tags"], "[rust, заметки]", "это тоже одна строка");
-        // A nested map and a block list are not scalars: the key stays with an
-        // empty value, and their content goes nowhere.
         assert_eq!(fields["автор"], "");
         assert_eq!(fields["список"], "");
         assert!(!fields.contains_key("имя"), "вложенное не всплывает наверх");
@@ -834,8 +689,6 @@ mod tests {
         assert!(note.fields.is_empty());
     }
 
-    /// The second way to set metadata is a comment. It is for places where
-    /// others see the frontmatter, like a repository `readme.md`.
     #[test]
     fn a_comment_carries_metadata_too() {
         let note = parse(concat!(
@@ -851,7 +704,6 @@ mod tests {
             "комментарий бывает в несколько строк"
         );
         assert_eq!(note.fields["status"], "в работе");
-        // The search text must not contain the comment: nobody reads it.
         assert!(!note.text.contains("confluence"), "{:?}", note.text);
     }
 
@@ -1030,7 +882,6 @@ mod tests {
             set_task(source, 4, false).as_deref(),
             Some("# Дела\n\n- [ ] один\n  - [ ] два\n")
         );
-        // The same state again is not an error: two clicks must not fail.
         assert_eq!(set_task(source, 4, true).as_deref(), Some(source));
     }
 

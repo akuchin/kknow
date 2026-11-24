@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-/// Part of the link target after `#`: `[[note#Heading]]` or `[[note#^block-id]]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Subpath {
     Heading(String),
@@ -9,37 +8,24 @@ pub enum Subpath {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WikiKind {
-    /// `[[note]]`: a plain link.
     Link,
-    /// `![[note]]`: embeds the content.
     Embed,
 }
 
-/// A `[[…]]` wikilink, exactly as written in the text.
-///
-/// The target is not normalized or resolved: the graph does this, because it
-/// knows the note list. The original text and `span` are kept so that links
-/// can be rewritten when a note is renamed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WikiLink {
-    /// Target as written. Empty for links inside the current note, like
-    /// `[[#Heading]]`.
     pub target: String,
     pub subpath: Option<Subpath>,
-    /// Text after `|`, if present.
     pub alias: Option<String>,
     pub kind: WikiKind,
-    /// Range in the source text, with the brackets and the leading `!` of an embed.
     pub span: Range<usize>,
 }
 
 impl WikiLink {
-    /// The link points to another place in the same note.
     pub fn is_internal(&self) -> bool {
         self.target.is_empty()
     }
 
-    /// Text to show: the alias, else the target, else the subpath.
     pub fn display_text(&self) -> &str {
         if let Some(alias) = &self.alias {
             return alias;
@@ -55,11 +41,6 @@ impl WikiLink {
     }
 }
 
-/// Finds all `[[wikilinks]]` in the text and skips the `skip` ranges
-/// (code, formulas, frontmatter).
-///
-/// The scan reads the raw text, not markdown parser events: `[[...]]` is not
-/// part of CommonMark, and the parser can split it into several text events.
 pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<WikiLink> {
     let mut links = Vec::new();
     let mut cursor = 0;
@@ -72,7 +53,6 @@ pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<WikiLink> {
             continue;
         }
 
-        // A link does not continue on the next line.
         let line_end = source[cursor..]
             .find('\n')
             .map_or(source.len(), |end| cursor + end);
@@ -82,7 +62,6 @@ pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<WikiLink> {
         let close = cursor + offset;
 
         let inner = &source[cursor..close];
-        // A nested `[[` means the real link start is further right.
         if inner.contains('[') {
             continue;
         }
@@ -100,7 +79,6 @@ pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<WikiLink> {
 }
 
 fn parse_inner(inner: &str, is_embed: bool, span: Range<usize>) -> Option<WikiLink> {
-    // The first `|` starts the alias: `[[a|b|c]]` -> alias "b|c".
     let (path, alias) = match inner.split_once('|') {
         Some((path, alias)) => (path, non_empty(alias)),
         None => (inner, None),
@@ -132,7 +110,6 @@ fn parse_subpath(raw: &str) -> Option<Subpath> {
     let raw = raw.trim();
     match raw.strip_prefix('^') {
         Some(block) => non_empty(block).map(Subpath::Block),
-        // Nested headings `#a#b` are kept whole for now.
         None => non_empty(raw).map(Subpath::Heading),
     }
 }
@@ -195,7 +172,6 @@ mod tests {
 
         assert_eq!(links[0].kind, WikiKind::Embed);
         assert_eq!(links[1].kind, WikiKind::Link);
-        // The span of an embed includes the `!`.
         assert_eq!(
             &"![[diagram]] и [[diagram]]"[links[0].span.clone()],
             "![[diagram]]"

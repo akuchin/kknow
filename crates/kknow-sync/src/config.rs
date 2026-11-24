@@ -1,13 +1,3 @@
-//! Where this vault syncs to.
-//!
-//! The settings are next to the sync state, in `.kknow/remote.json`. Thus they
-//! belong to the notes directory, not to the app. A second vault cannot go to
-//! the wrong bucket by accident: each directory has its own address.
-//!
-//! This struct has **no field** for the secret key, so it cannot be written
-//! even by mistake. The code that stores secrets (the OS keychain,
-//! environment variables) gives the key at connect time.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,72 +6,49 @@ use serde::{Deserialize, Serialize};
 use crate::plan::ConflictPolicy;
 use crate::{Error, Result};
 
-/// Where the vault keeps its sync settings.
-///
-/// The directory is hidden, so the vault does not see it as a note.
 pub const CONFIG_PATH: &str = ".kknow/remote.json";
 
-/// Settings of S3-compatible storage: AWS, MinIO, R2.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct S3Settings {
     pub bucket: String,
-    /// Storage address. AWS does not need it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub region: Option<String>,
-    /// Prefix inside the bucket, so one bucket can hold several vaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub prefix: Option<String>,
-    /// Access key ID. It is not a secret: it is the login for the secret key,
-    /// and AWS keeps it in plain text in `~/.aws/credentials`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub access_key_id: Option<String>,
 }
 
-/// Where the token for a git repository comes from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum GitAuth {
-    /// kknow gives no token: git signs in as it is set up on this machine
-    /// (an SSH key, its credential helper).
     #[default]
     System,
-    /// A token of this repository in the OS keychain.
     Token,
-    /// A token in an environment variable, also from the login shell.
     Env,
 }
 
-/// Settings of a git repository.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitSettings {
-    /// The address of the repository. For a vault that was already a
-    /// repository, it is the URL of `origin`.
     pub url: String,
     #[serde(default)]
     pub auth: GitAuth,
-    /// The variable name for [`GitAuth::Env`], for example `GITHUB_TOKEN`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub env: Option<String>,
 }
 
-/// The kind of storage on the other end.
-///
-/// Cloud drive services do not get their own variants: they sync a plain
-/// folder, so for kknow they are [`Provider::Folder`] with a path. Git is a
-/// variant here only as a setting: it has commits and its own conflict model,
-/// that is, a different algorithm (`crate::git`), not a trait implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -91,34 +58,18 @@ pub enum Provider {
     Git(GitSettings),
 }
 
-/// Storage address and conflict policy.
-///
-/// Unlike the manifest, this file has no format version: only kknow on the
-/// same machine writes and reads it. The old format (S3 fields at the root)
-/// is detected by the shape of the file, see [`Stored`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RemoteConfig {
     pub provider: Provider,
     pub policy: ConflictPolicy,
-    /// Auto sync interval in minutes. `0` turns auto sync off.
-    ///
-    /// This is a directory setting, not an app setting: a work vault can sync
-    /// every five minutes, and an archive on an external disk never.
     #[serde(default)]
     pub auto_sync_minutes: u32,
-    /// The storage is encrypted. The key is not here: it is in the keychain
-    /// or comes from the passphrase.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub encrypted: bool,
 }
 
-/// The settings as stored in the file: the current format or the format from
-/// before providers.
-///
-/// Users already have such files. Asking them to set up sync again because
-/// of a format change is a bad trade.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Stored {
@@ -155,7 +106,6 @@ impl<'de> Deserialize<'de> for RemoteConfig {
                 auto_sync_minutes,
                 encrypted,
             },
-            // The old format had no auto sync, so it is off.
             Stored::Legacy { s3, policy } => RemoteConfig {
                 provider: Provider::S3(s3),
                 policy,
@@ -194,14 +144,10 @@ impl RemoteConfig {
         }
     }
 
-    /// Git syncs by hand: commits are a decision of the person, and a sync
-    /// without new commits only gets the remote ones. So it has no auto sync
-    /// and no conflict policy: a conflict always keeps both versions.
     pub fn is_git(&self) -> bool {
         matches!(self.provider, Provider::Git(_))
     }
 
-    /// The auto sync interval that applies: always off for git.
     pub fn auto_sync(&self) -> u32 {
         if self.is_git() {
             0
@@ -210,15 +156,10 @@ impl RemoteConfig {
         }
     }
 
-    /// Path to the settings inside the vault.
-    ///
-    /// Takes the root, not an open [`Vault`](kknow_core::Vault): some callers
-    /// have only the directory path.
     pub fn path(vault_root: impl AsRef<Path>) -> PathBuf {
         vault_root.as_ref().join(CONFIG_PATH)
     }
 
-    /// Reads the settings. No file means sync is not set up yet.
     pub fn load(path: &Path) -> Result<Option<Self>> {
         match fs::read(path) {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
@@ -227,7 +168,6 @@ impl RemoteConfig {
         }
     }
 
-    /// Writes the settings through a temporary file, like the manifest.
     pub fn save(&self, path: &Path) -> Result<()> {
         self.check()?;
 
@@ -243,7 +183,6 @@ impl RemoteConfig {
         fs::rename(&temp, path).map_err(|source| Error::io(path, source))
     }
 
-    /// Empty settings are not saved: without a bucket or path there is no target.
     fn check(&self) -> Result<()> {
         match &self.provider {
             Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket),
@@ -254,10 +193,6 @@ impl RemoteConfig {
         }
     }
 
-    /// Removes the settings, which turns sync off.
-    ///
-    /// The snapshot of the last sync stays. If the storage is connected again,
-    /// the snapshot prevents treating all notes as conflicts.
     pub fn forget(path: &Path) -> Result<()> {
         match fs::remove_file(path) {
             Ok(()) => Ok(()),
@@ -266,10 +201,6 @@ impl RemoteConfig {
         }
     }
 
-    /// The address to show to a person, without keys.
-    ///
-    /// The keychain stores the secret under this string, so it must be
-    /// different for different storages.
     pub fn location(&self) -> String {
         match &self.provider {
             Provider::S3(s3) => {
@@ -280,8 +211,6 @@ impl RemoteConfig {
         }
     }
 
-    /// Whether this storage needs a secret key from the keychain. A folder has
-    /// no secrets; git has one only when the token is stored in kknow.
     pub fn needs_secret(&self) -> bool {
         match &self.provider {
             Provider::S3(_) => true,
@@ -291,8 +220,6 @@ impl RemoteConfig {
     }
 }
 
-/// The S3 address as a string. It is a separate function because builds
-/// without S3 support also show it.
 pub fn s3_location(endpoint: Option<&str>, bucket: &str, prefix: Option<&str>) -> String {
     let root = prefix.unwrap_or_default().trim_start_matches('/');
     match endpoint {
@@ -342,8 +269,6 @@ mod tests {
         assert_eq!(loaded.location(), "/Users/кто-то/iCloud/kknow");
     }
 
-    /// Users have settings from before providers on disk. Read them, do not
-    /// ask to set up sync again.
     #[test]
     fn the_old_flat_format_is_still_read() {
         let dir = tempfile::tempdir().unwrap();
@@ -360,7 +285,6 @@ mod tests {
         assert_eq!(loaded, s3());
         assert_eq!(loaded.policy, ConflictPolicy::PreferLocal);
 
-        // It is written back in the current format.
         loaded.save(&path).unwrap();
         let written = fs::read_to_string(&path).unwrap();
         assert!(written.contains(r#""kind": "s3""#), "{written}");
@@ -459,7 +383,6 @@ mod tests {
 
     #[test]
     fn locations_differ_between_storages() {
-        // The keychain finds the secret by this string, so they must not match.
         assert_eq!(s3().location(), "http://localhost:9000/notes/");
         assert_eq!(
             RemoteConfig::s3(S3Settings {

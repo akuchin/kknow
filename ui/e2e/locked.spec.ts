@@ -8,12 +8,10 @@ test.beforeEach(async ({ page }) => {
   await openWindow(page);
 });
 
-/** The lock button of a note row in the tree. */
 function rowLock(page: Page, id: string) {
   return page.locator(`.note-row[data-vault="notes"][data-id="${id}"] .note-lock`);
 }
 
-/** Locks Rust: the first password, the recovery code, then the open note. */
 async function lockRust(page: Page): Promise<void> {
   await noteRow(page, "Rust").click();
   await expect(page.locator("#note-title")).toHaveText("Rust");
@@ -23,7 +21,6 @@ async function lockRust(page: Page): Promise<void> {
   const panel = page.locator("#lock-view");
   await expect(panel).toBeVisible();
   await expect(page.locator("#lock-view-title")).toHaveText(t("lock.setup.title"));
-  // A short password and two different ones are refused in the window.
   await page.locator("#lock-secret").fill("short");
   await page.locator("#lock-repeat").fill("short");
   await page.locator("#lock-submit").click();
@@ -35,7 +32,6 @@ async function lockRust(page: Page): Promise<void> {
   await page.locator("#lock-repeat").fill(PASSWORD);
   await page.locator("#lock-submit").click();
 
-  // The recovery code shows once; the note is locked behind it.
   await expect(page.locator("#lock-view-title")).toHaveText(t("lock.code.title"));
   await expect(page.locator("#lock-code")).not.toBeEmpty();
   await page.locator("#lock-submit").click();
@@ -46,13 +42,11 @@ async function lockRust(page: Page): Promise<void> {
 test("a note is locked, closed with Lock all and opened with the password", async ({ page }) => {
   await lockRust(page);
 
-  // The note stays open, with an open lock in the tree and in the header.
   await expect(editorText(page)).toContainText("Rust");
   await expect(rowLock(page, "Rust")).toHaveAttribute("data-open", "true");
   await expect(page.locator("#note-lock")).toHaveAttribute("data-open", "true");
   await expect(page.locator("#note-bookmarks")).toBeHidden();
 
-  // A click on the open lock closes all locked notes.
   await page.locator("#note-lock").click();
   await expect(statusMessage(page)).toHaveText(t("status.notesLocked"));
   await expect(rowLock(page, "Rust")).toHaveAttribute("data-open", "false");
@@ -60,7 +54,6 @@ test("a note is locked, closed with Lock all and opened with the password", asyn
   await expect(page.locator("#lock-view")).toBeVisible();
   await expect(page.locator("#lock-view-title")).toHaveText(t("lock.unlock.title"));
 
-  // A wrong password shows an error and lets the person try again.
   await page.locator("#lock-secret").fill("wrong horse");
   await page.locator("#lock-submit").click();
   await expect(page.locator("#lock-error")).toHaveText(t("lock.error.wrong"));
@@ -77,12 +70,10 @@ test("a locked note opens closed from the tree, and Remove lock makes it plain",
   await noteRow(page, "Index").click();
   await expect(page.locator("#lock-view")).toBeHidden();
 
-  // A closed note shows the password field, not its text.
   await noteRow(page, "Rust").click();
   await expect(page.locator("#lock-view")).toBeVisible();
   await expect(editorText(page)).not.toContainText("заимствование");
 
-  // The recovery code opens the notes and asks for a new password.
   const code = "K7QF-2M9X-ABCD-EFGH-JKLM-NPQR-ST";
   await page.locator("#lock-secret").fill(code.toLowerCase());
   await page.locator("#lock-submit").click();

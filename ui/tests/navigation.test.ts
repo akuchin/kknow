@@ -1,5 +1,3 @@
-// Back and forward (`src/navigation.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -7,7 +5,6 @@ import { History, type Place } from "../src/navigation.ts";
 
 const note = (id: string): Place => ({ file: false, vault: "v", id });
 
-/** A window that can open everything except the `missing` ids. */
 function walker(missing: string[] = []) {
   let here: Place | null = null;
   return {

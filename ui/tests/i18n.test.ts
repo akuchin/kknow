@@ -1,7 +1,3 @@
-// Checks for the translation files (`locales/*.json`). The type system checks
-// only the keys that the code uses; these tests check the files against each
-// other. Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -18,13 +14,11 @@ const locales: Record<string, Dict> = Object.fromEntries(
     .map((file) => [file.slice(0, -5), JSON.parse(readFileSync(new URL(file, DIR), "utf8"))]),
 );
 
-/** The key without its plural suffix, and the suffix. */
 function split(key: string): [string, string | null] {
   const match = /^(.+)_([a-z]+)$/.exec(key);
   return match && CATEGORIES.includes(match[2]) ? [match[1], match[2]] : [key, null];
 }
 
-/** Base key → its plural categories (empty for a plain string). */
 function shape(dict: Dict): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
   for (const key of Object.keys(dict)) {
@@ -65,8 +59,6 @@ for (const [name, dict] of Object.entries(locales)) {
   });
 
   test(`${name}: no key shortcuts`, () => {
-    // Keys belong to actions (`src/actions.ts`): the code adds them as this
-    // system writes them. A text gets a key through a placeholder.
     for (const [key, value] of Object.entries(dict)) {
       assert.doesNotMatch(value, /[⌘⇧⌥⌃↵⌫]|\b(Ctrl|Cmd|Esc|Enter)\b|↑↓/, key);
     }

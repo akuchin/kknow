@@ -1,6 +1,3 @@
-//! Commands that the frontend calls. All logic lives in `kknow-app`; this
-//! module only translates between it and JSON.
-
 use kknow_app::proposals::{ProposalView, Review};
 use kknow_app::threads::{CommentRef, ME, Thread};
 use std::fs;
@@ -26,7 +23,6 @@ use crate::state::{AppState, Error, Result};
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct VaultInfo {
-    /// Vault ID: later commands and events refer to the vault by it.
     id: String,
     name: String,
     root: String,
@@ -34,10 +30,6 @@ pub struct VaultInfo {
     note_count: usize,
 }
 
-/// A vault in the switcher list.
-///
-/// There is no note count here: it needs the vault to be opened and parsed,
-/// and the list must show at once on the first click.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -46,17 +38,12 @@ pub struct VaultView {
     name: String,
     path: String,
     color: String,
-    /// Text labels: `kknow mcp --label` takes vaults by them.
     labels: Vec<String>,
     active: bool,
-    /// The folder exists. An external disk can be disconnected.
     available: bool,
-    /// The vault syncs through git: its row gets a button for the changes
-    /// panel.
     git: bool,
 }
 
-/// Vault totals for the settings window.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(rename = "VaultStats"))]
@@ -66,7 +53,6 @@ pub struct VaultStatsView {
     bytes: u64,
 }
 
-/// A global search result: a normal result plus the vault it came from.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -87,7 +73,6 @@ pub struct NoteSummary {
     title: String,
     folder: Option<String>,
     tags: Vec<String>,
-    /// The file is a locked note: the tree shows a lock.
     locked: bool,
 }
 
@@ -105,7 +90,6 @@ pub struct SearchResult {
     id: String,
     title: String,
     folder: Option<String>,
-    /// Snippet with highlighted matches; its HTML is already escaped.
     snippet: String,
 }
 
@@ -119,86 +103,58 @@ pub struct NoteView {
     backlinks: Vec<LinkRef>,
     outgoing: Vec<LinkRef>,
     tags: Vec<String>,
-    /// Bookmarks in this text: 1-based lines with optional names.
     bookmarks: Vec<Mark>,
-    /// Threads of the `@agent#id` comments of this note.
     threads: Vec<Thread>,
-    /// Proposals of agents for this note that wait for review.
     proposals: Vec<ProposalView>,
-    /// The file is a locked note.
     locked: bool,
-    /// A locked note in a locked session: `content` and `html` are empty,
-    /// and the window shows the password field instead of the text.
     closed: bool,
 }
 
-/// Where a link in the editor leads, and the anchors of that note for
-/// completion.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct LinkTargetView {
-    /// The note ID.
     id: String,
-    /// 1-based line of the `#Heading` or `#^block`; `null` opens the top.
     line: Option<usize>,
     headings: Vec<HeadingView>,
-    /// Block IDs without the caret.
     blocks: Vec<String>,
 }
 
-/// A link to the open note, where it stands in the source note.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct BacklinkLineView {
-    /// The source note.
     id: String,
     title: String,
-    /// 1-based line in the source note.
     line: usize,
-    /// The line text before the link, cut to a few words.
     before: String,
-    /// The link as written.
     text: String,
     after: String,
 }
 
-/// A place where the name of the open note stands as plain text.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct MentionView {
-    /// The note with the mention.
     id: String,
     title: String,
     line: usize,
     before: String,
-    /// The name as written.
     text: String,
     after: String,
-    /// Byte range of the name in the source; `link_mention` takes it back.
     start: usize,
     end: usize,
 }
 
-/// The note or the part of it that a link names, for a hover preview.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct LinkPreview {
     id: String,
     title: String,
-    /// HTML without line marks; images name their note.
     html: String,
-    /// 1-based line of the heading or block; `null` for the whole note.
     line: Option<usize>,
-    /// The link names a heading or block that the note does not have: the
-    /// preview shows the whole note.
     part_missing: bool,
-    /// A locked note: `html` is empty, and the preview shows a lock. Its
-    /// text never goes to a preview, also in an unlocked session.
     locked: bool,
 }
 
-/// A heading of a note.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct HeadingView {
@@ -207,7 +163,6 @@ pub struct HeadingView {
     line: usize,
 }
 
-/// A bookmark in the palette list.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -222,7 +177,6 @@ pub struct BookmarkView {
     name: Option<String>,
 }
 
-/// A task in the palette list.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TaskView {
@@ -234,20 +188,15 @@ pub struct TaskView {
     done: bool,
 }
 
-/// One deletion in the trash of a vault.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct TrashEntryView {
-    /// Entry name: restore takes it.
     id: String,
     path: String,
-    /// Deletion time in Unix seconds.
     deleted: u64,
-    /// Notes in the entry: paths from the vault root, `Folder/note.md`.
     notes: Vec<String>,
 }
 
-/// A moved note: its new ID and the number of notes whose links changed.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct RenamedNote {
@@ -315,8 +264,6 @@ pub(crate) fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> 
             .map(|parsed| parsed.tags.iter().map(|tag| tag.name.clone()).collect())
             .unwrap_or_default(),
         bookmarks,
-        // A broken record folder must not stop the note from opening. A
-        // locked note has neither: agents do not see it.
         threads: if locked {
             Vec::new()
         } else {
@@ -330,8 +277,6 @@ pub(crate) fn note_view(workspace: &Workspace, id: &NoteId, content: String) -> 
     }
 }
 
-/// The view of a note as the person sees it: a locked note opens with the
-/// key of the session, or comes closed.
 pub(crate) fn open_view(workspace: &Workspace, id: &NoteId) -> Result<NoteView> {
     match workspace.open_text(id) {
         Ok(content) => Ok(note_view(workspace, id, content)),
@@ -344,8 +289,6 @@ pub(crate) fn open_view(workspace: &Workspace, id: &NoteId) -> Result<NoteView> 
     }
 }
 
-/// Several links can connect the same pair of notes. The list must show the
-/// pair once.
 fn dedup(workspace: &Workspace, edges: &[Edge], pick: impl Fn(&Edge) -> &NoteId) -> Vec<LinkRef> {
     let mut seen: Vec<&NoteId> = Vec::new();
     let mut refs = Vec::new();
@@ -369,7 +312,6 @@ pub(crate) fn note_id(workspace: &Workspace, raw: &str) -> Result<NoteId> {
         .ok_or_else(|| Error::NotFound(raw.to_string()))
 }
 
-/// The vault list for the switcher.
 #[tauri::command]
 pub fn list_vaults(state: State<'_, AppState>) -> Vec<VaultView> {
     let active = state.active().map(|entry| entry.id);
@@ -380,21 +322,18 @@ pub fn list_vaults(state: State<'_, AppState>) -> Vec<VaultView> {
         .collect()
 }
 
-/// Adds a folder to the vault list and makes it active.
 #[tauri::command(async)]
 pub fn add_vault(state: State<'_, AppState>, path: String) -> Result<VaultInfo> {
     let entry = state.add(path.into(), None)?;
     activate_vault(state, entry.id)
 }
 
-/// Forgets a vault. Notes stay on disk.
 #[tauri::command(async)]
 pub fn remove_vault(state: State<'_, AppState>, id: String) -> Result<Vec<VaultView>> {
     state.remove(&id)?;
     Ok(list_vaults(state))
 }
 
-/// Switches the active vault: the tree, search and status bar use it.
 #[tauri::command(async)]
 pub fn activate_vault(state: State<'_, AppState>, id: String) -> Result<VaultInfo> {
     let entry = state.set_active(&id)?;
@@ -402,14 +341,6 @@ pub fn activate_vault(state: State<'_, AppState>, id: String) -> Result<VaultInf
     slot.read(|workspace| Ok(info(&entry, workspace)))
 }
 
-/// Opens the settings window, or brings it to the front if it is open.
-///
-/// A separate window, not a panel in the main one: the user sees settings next
-/// to what they change, and closing them moves nothing. The section comes as a
-/// URL hash, so the window does not need a separate command for it.
-///
-/// The command is async. On Windows a sync command runs on the main thread.
-/// WebView2 then waits for that thread, and the new window stays blank.
 #[tauri::command(async)]
 pub fn open_settings<R: Runtime>(
     app: AppHandle<R>,
@@ -438,10 +369,8 @@ pub fn open_settings<R: Runtime>(
     Ok(())
 }
 
-/// Settings window label. We find the window by it, so we do not open a second.
 pub const SETTINGS_WINDOW: &str = "settings";
 
-/// Renames a vault. Notes and sync settings do not change.
 #[tauri::command(async)]
 pub fn rename_vault(
     state: State<'_, AppState>,
@@ -462,8 +391,6 @@ pub fn set_vault_color(
     Ok(list_vaults(state))
 }
 
-/// Replaces the text labels of a vault. The core cleans them, so the reply
-/// has the stored form: `#Work` comes back as `work`.
 #[tauri::command(async)]
 pub fn set_vault_labels(
     state: State<'_, AppState>,
@@ -474,10 +401,6 @@ pub fn set_vault_labels(
     Ok(list_vaults(state))
 }
 
-/// Vault totals: notes, folders and bytes.
-///
-/// It counts from the open vault. So the first visit to the settings of another
-/// vault opens that vault, as a global search does.
 #[tauri::command(async)]
 pub fn vault_stats(state: State<'_, AppState>, vault: Option<String>) -> Result<VaultStatsView> {
     let slot = state.slot(vault.as_deref())?;
@@ -491,13 +414,11 @@ pub fn vault_stats(state: State<'_, AppState>, vault: Option<String>) -> Result<
     })
 }
 
-/// The vault for ⌘1…⌘9; a number can have no vault.
 #[tauri::command]
 pub fn vault_by_hotkey(state: State<'_, AppState>, number: usize) -> Option<String> {
     state.by_hotkey(number)
 }
 
-/// Full-text search in one vault. An empty query returns an empty list.
 #[tauri::command(async)]
 pub fn search(
     state: State<'_, AppState>,
@@ -520,20 +441,6 @@ pub fn search(
     })
 }
 
-/// Search in all vaults at once.
-///
-/// Vaults open lazily, so the first such search parses the vaults that were not
-/// opened yet. After that they stay in memory.
-///
-/// Results come in groups: the active vault first, then the others in list
-/// order. We must not mix them by score: tantivy computes the score inside one
-/// index, so scores from different vaults are not comparable.
-/// An unavailable vault (disk disconnected) is skipped: results from the
-/// others matter more than an error about one.
-///
-/// `vaults` narrows the search to these ids: the label filter of the sidebar.
-/// The other vaults are not even opened, so a hidden large vault costs no
-/// indexing.
 #[tauri::command(async)]
 pub fn search_all(
     state: State<'_, AppState>,
@@ -541,8 +448,6 @@ pub fn search_all(
     limit: Option<usize>,
     vaults: Option<Vec<String>>,
 ) -> Result<Vec<GlobalResult>> {
-    // The limit is per vault, not for the whole response. Otherwise one large
-    // vault fills the list, and the others get no place.
     let limit = limit.unwrap_or(20);
     let mut found = Vec::new();
 
@@ -620,9 +525,6 @@ pub fn load_note(
         let id = note_id(workspace, &id)?;
         open_view(workspace, &id)
     })?;
-    // An agent without MCP asks in the text (`@agent-note`). The question
-    // goes to the thread of its comment, where the person can answer it.
-    // A locked note has no threads.
     if view.locked || kknow_index::parse::agent_answers(&view.content).is_empty() {
         return Ok(view);
     }
@@ -634,7 +536,6 @@ pub fn load_note(
     })
 }
 
-/// Save result for the window.
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -642,23 +543,12 @@ pub enum SaveOutcome {
     Saved {
         note: NoteView,
     },
-    /// The file changed outside. The disk keeps that version, and the window
-    /// text goes to the copy `copy`.
     Conflict {
         note: NoteView,
         copy: String,
     },
 }
 
-/// Saves a note.
-///
-/// `base` is the text the window started to edit from. With it, the write
-/// replaces only the same file content, never an outside edit. Without it, the
-/// write is unconditional.
-///
-/// `bookmarks` are bookmarks as the editor sees them: lines and names. The
-/// editor moves them with edits and knows their position better than a text
-/// search.
 #[tauri::command(async)]
 pub fn save_note(
     state: State<'_, AppState>,
@@ -692,7 +582,6 @@ pub fn save_note(
     })
 }
 
-/// Renders unsaved text for the preview while the user types.
 #[tauri::command(async)]
 pub fn preview(
     state: State<'_, AppState>,
@@ -706,8 +595,6 @@ pub fn preview(
     })
 }
 
-/// Follows a link that note `from` has: `note`, `note#Heading`,
-/// `note#^block`, `#Heading`. `null` means the note does not exist.
 #[tauri::command(async)]
 pub fn link_target(
     state: State<'_, AppState>,
@@ -716,7 +603,6 @@ pub fn link_target(
     vault: Option<String>,
 ) -> Result<Option<LinkTargetView>> {
     state.slot(vault.as_deref())?.read(|workspace| {
-        // The note can be new and not saved yet: the ID is enough here.
         let from = NoteId::parse(&from).ok_or_else(|| Error::NotFound(from.clone()))?;
         Ok(workspace
             .link_target(&from, &target)
@@ -737,8 +623,6 @@ pub fn link_target(
     })
 }
 
-/// The links to note `id` with their lines. The window asks for them when it
-/// shows the lines: the core reads each source note for this.
 #[tauri::command(async)]
 pub fn note_backlinks(
     state: State<'_, AppState>,
@@ -762,8 +646,6 @@ pub fn note_backlinks(
     })
 }
 
-/// Places in other notes where the name or an alias of note `id` stands as
-/// plain text.
 #[tauri::command(async)]
 pub fn unlinked_mentions(
     state: State<'_, AppState>,
@@ -789,8 +671,6 @@ pub fn unlinked_mentions(
     })
 }
 
-/// Changes a mention in note `from` into a link to note `target`. The answer
-/// is the new backlink list of the target, for the count in the toolbar.
 #[tauri::command(async)]
 pub fn link_mention(
     state: State<'_, AppState>,
@@ -811,9 +691,6 @@ pub fn link_mention(
     })
 }
 
-/// What a link of note `from` shows in a hover preview: the section of
-/// `#Heading`, the block of `#^id`, or the whole note. `null` means the note
-/// does not exist.
 #[tauri::command(async)]
 pub fn link_preview(
     state: State<'_, AppState>,
@@ -861,9 +738,6 @@ pub fn link_preview(
     })
 }
 
-/// Image bytes for a note. The response is raw bytes, not JSON: a number array
-/// for a screenshot of a few megabytes takes much longer to parse than the
-/// image itself.
 #[tauri::command(async)]
 pub fn note_image(
     state: State<'_, AppState>,
@@ -881,12 +755,6 @@ pub fn note_image(
     Ok(Response::new(bytes))
 }
 
-/// Saves a pasted image and returns the path for the link.
-///
-/// The body is raw bytes, for the same reason as in `note_image`. So the name
-/// and the standalone file come in headers, percent-encoded: a header holds
-/// only ASCII. The window gives only a file name. The core selects the folder:
-/// `attachments/` at the vault root, or next to a standalone file.
 #[tauri::command(async)]
 pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Result<String> {
     let header = |key: &str| {
@@ -897,7 +765,6 @@ pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Resu
     let name = header("kknow-name").unwrap_or_default();
     let saved = match request.body() {
         InvokeBody::Raw(bytes) => kknow_core::image::save(&dir, &name, bytes),
-        // The fallback IPC path sends bytes as a JSON array of numbers.
         InvokeBody::Json(value) => {
             let bytes: Vec<u8> =
                 serde_json::from_value(value.clone()).map_err(|_| Error::NoImageBytes)?;
@@ -907,10 +774,6 @@ pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Resu
     Ok(saved.map_err(kknow_app::Error::from)?)
 }
 
-/// Copies an image file dropped on the editor, like `save_attachment`.
-///
-/// `source` comes from the shell drop event, as in `open_file`. The command
-/// only reads it, and only an image of a limited size.
 #[tauri::command(async)]
 pub fn attach_file(
     state: State<'_, AppState>,
@@ -921,8 +784,6 @@ pub fn attach_file(
     Ok(kknow_core::image::import(&dir, Path::new(&source)).map_err(kknow_app::Error::from)?)
 }
 
-/// Where `attachments/` goes: the active vault root, or the folder of a
-/// standalone file. The file must be in the list (`known_file`).
 fn attachment_dir(state: &AppState, file: Option<&str>) -> Result<PathBuf> {
     match file {
         Some(file) => {
@@ -951,11 +812,6 @@ pub fn create_note(
     })
 }
 
-/// Vault themes together with global themes.
-///
-/// The UI puts their variables into `:root`; the core already validated the
-/// values. If no vault is open, that is fine: global themes do not depend on
-/// it, and a window with loose files needs them too.
 #[tauri::command(async)]
 pub fn list_themes(state: State<'_, AppState>, vault: Option<String>) -> Result<ThemeSet> {
     let global = state.themes_path();
@@ -966,10 +822,6 @@ pub fn list_themes(state: State<'_, AppState>, vault: Option<String>) -> Result<
     }
 }
 
-/// Copies a vault theme to the global folder, so every vault sees it.
-///
-/// The window sends only `id`. The core builds the path and refuses an `id`
-/// that looks like a path to another folder.
 #[tauri::command(async)]
 pub fn share_theme(state: State<'_, AppState>, id: String, vault: Option<String>) -> Result<()> {
     let global = state.themes_path().ok_or(Error::NoConfig)?;
@@ -980,10 +832,6 @@ pub fn share_theme(state: State<'_, AppState>, id: String, vault: Option<String>
     Ok(())
 }
 
-/// Opens the global themes folder in the file manager. Creates it if missing.
-///
-/// It opens the folder instead of selecting it: the user comes to put a file
-/// there and should not search for it inside "Application Support".
 #[tauri::command(async)]
 pub fn reveal_themes(state: State<'_, AppState>) -> Result<()> {
     let dir = state.themes_path().ok_or(Error::NoConfig)?;
@@ -991,14 +839,6 @@ pub fn reveal_themes(state: State<'_, AppState>) -> Result<()> {
     open_default(&dir).map_err(|error| Error::Reveal(error.to_string()))
 }
 
-/// Shows the note file in the system file manager; without `id`, the vault
-/// folder.
-///
-/// An own command, not a plugin: a plugin for one action brings an npm package
-/// and permissions. Our icons are our own for the same reason.
-///
-/// The core computes the path from the note ID. The frontend sends only `id`,
-/// so this command cannot open a file outside the vault.
 #[tauri::command(async)]
 pub fn reveal_note(
     state: State<'_, AppState>,
@@ -1020,7 +860,6 @@ fn reveal_target(workspace: &Workspace, id: Option<&str>) -> Result<PathBuf> {
 
 #[cfg(target_os = "macos")]
 pub(crate) fn reveal(path: &Path) -> std::io::Result<()> {
-    // -R selects the file in Finder instead of opening it in an editor.
     run(Command::new("open").arg("-R").arg(path))
 }
 
@@ -1031,7 +870,6 @@ pub(crate) fn reveal(path: &Path) -> std::io::Result<()> {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub(crate) fn reveal(path: &Path) -> std::io::Result<()> {
-    // xdg-open cannot select a file, so we show its parent folder.
     run(Command::new("xdg-open").arg(path.parent().unwrap_or(path)))
 }
 
@@ -1044,7 +882,6 @@ fn run(command: &mut Command) -> std::io::Result<()> {
     }
 }
 
-/// Opens the note file in the app that the system assigns to `.md`.
 #[tauri::command(async)]
 pub fn open_note(state: State<'_, AppState>, id: String, vault: Option<String>) -> Result<()> {
     let path = state
@@ -1053,10 +890,6 @@ pub fn open_note(state: State<'_, AppState>, id: String, vault: Option<String>) 
     open_default(&path).map_err(|error| Error::Open(error.to_string()))
 }
 
-/// Shows a vault folder in the file manager.
-///
-/// The path is not taken from outside as is: it must be in the core folder
-/// list. So this command can show only what is inside the vault.
 #[tauri::command(async)]
 pub fn reveal_folder(
     state: State<'_, AppState>,
@@ -1079,8 +912,6 @@ fn open_default(path: &Path) -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn open_default(path: &Path) -> std::io::Result<()> {
-    // The empty quotes are the window title. Without them `start` takes the
-    // path as the title.
     run(Command::new("cmd").args(["/C", "start", ""]).arg(path))
 }
 
@@ -1089,9 +920,6 @@ fn open_default(path: &Path) -> std::io::Result<()> {
     run(Command::new("xdg-open").arg(path))
 }
 
-/// Sets the note bookmarks to exactly these lines of `content`, with these
-/// names. The window calls this when a bookmark is added, removed or renamed;
-/// the note does not need a save.
 #[tauri::command(async)]
 pub fn set_bookmarks(
     state: State<'_, AppState>,
@@ -1107,7 +935,6 @@ pub fn set_bookmarks(
     })
 }
 
-/// All vault bookmarks, in the order they were added.
 #[tauri::command(async)]
 pub fn list_bookmarks(
     state: State<'_, AppState>,
@@ -1132,7 +959,6 @@ pub fn list_bookmarks(
     })
 }
 
-/// Tasks of all vault notes, sorted by note and line.
 #[tauri::command(async)]
 pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<TaskView>> {
     state.slot(vault.as_deref())?.read(|workspace| {
@@ -1151,10 +977,6 @@ pub fn list_tasks(state: State<'_, AppState>, vault: Option<String>) -> Result<V
     })
 }
 
-/// Marks the task on a note line as done or open and returns the note.
-///
-/// The core reads the line from disk and refuses it if it is no longer a
-/// task. The window saves its edits before the call, so the disk is current.
 #[tauri::command(async)]
 pub fn set_task(
     state: State<'_, AppState>,
@@ -1170,11 +992,6 @@ pub fn set_task(
     })
 }
 
-/// Applies the decisions on the edits of a proposal.
-///
-/// The window saves its edits before the call, so the edits find their text
-/// on disk. The view comes back with the new text and the remaining
-/// proposals.
 #[tauri::command(async)]
 pub fn review_proposal(
     state: State<'_, AppState>,
@@ -1190,7 +1007,6 @@ pub fn review_proposal(
     })
 }
 
-/// Drops a proposal without a review: the person does not want it at all.
 #[tauri::command(async)]
 pub fn dismiss_proposal(
     state: State<'_, AppState>,
@@ -1202,10 +1018,6 @@ pub fn dismiss_proposal(
         .write(|workspace| Ok(workspace.remove_proposal(&proposal)?))
 }
 
-/// The answer of the person in the thread of a comment.
-///
-/// `thread` names a comment that already has an ID. A comment without one
-/// comes by place (`line` and `text`), and the core gives it an ID.
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn reply_thread(
@@ -1234,8 +1046,6 @@ pub fn reply_thread(
     })
 }
 
-/// Trash entries from the newest to the oldest: the latest delete is the
-/// one to undo first.
 #[tauri::command(async)]
 pub fn list_trash(
     state: State<'_, AppState>,
@@ -1262,8 +1072,6 @@ pub fn list_trash(
     })
 }
 
-/// Puts a trash entry back and returns the restored notes. The core
-/// overwrites nothing: if a file of the entry is taken, nothing moves.
 #[tauri::command(async)]
 pub fn restore_trash(
     state: State<'_, AppState>,
@@ -1279,11 +1087,6 @@ pub fn restore_trash(
     })
 }
 
-/// Renders a note from the trash to read it before a restore.
-///
-/// Links resolve against the vault, as if the note were still at its path.
-/// The window shows the HTML read-only: the file is out of the vault, and an
-/// edit would have nowhere to go.
 #[tauri::command(async)]
 pub fn trash_note(
     state: State<'_, AppState>,
@@ -1302,7 +1105,6 @@ pub fn trash_note(
     })
 }
 
-/// Removes one trash entry for good.
 #[tauri::command(async)]
 pub fn delete_trash_entry(
     state: State<'_, AppState>,
@@ -1317,7 +1119,6 @@ pub fn delete_trash_entry(
     })
 }
 
-/// Removes all trash entries for good and returns their number.
 #[tauri::command(async)]
 pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<usize> {
     state
@@ -1325,11 +1126,6 @@ pub fn empty_trash(state: State<'_, AppState>, vault: Option<String>) -> Result<
         .write(|workspace| Ok(workspace.trash().empty().map_err(kknow_app::Error::from)?))
 }
 
-/// Renames or moves a note and returns its new ID and the number of notes
-/// with rewritten links.
-///
-/// The new name is the full path from the root, `Folder/Name`. For the core,
-/// rename and move are one operation, so the window does not separate them.
 #[tauri::command(async)]
 pub fn rename_note(
     state: State<'_, AppState>,
@@ -1348,7 +1144,6 @@ pub fn rename_note(
     })
 }
 
-/// Copies a note next to it and returns the copy ID.
 #[tauri::command(async)]
 pub fn duplicate_note(
     state: State<'_, AppState>,
@@ -1361,8 +1156,6 @@ pub fn duplicate_note(
     })
 }
 
-/// Renames or moves a folder with all its notes. Returns the number of notes
-/// with rewritten links.
 #[tauri::command(async)]
 pub fn rename_folder(
     state: State<'_, AppState>,
@@ -1420,8 +1213,6 @@ mod tests {
     use tauri::Manager;
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
 
-    /// An app on the mock runtime: commands really run, but with no window
-    /// and no webview.
     fn app(roots: &[&std::path::Path]) -> tauri::App<MockRuntime> {
         mock_builder()
             .manage(crate::state::testing(roots))
@@ -1477,7 +1268,6 @@ mod tests {
             [Mark::new(3, Some("проект"))]
         );
 
-        // The editor moved the bookmark with the inserted line.
         let SaveOutcome::Saved { note } = save_note(
             app.state(),
             "Index".into(),
@@ -1960,8 +1750,6 @@ mod tests {
         assert_eq!(own(list_themes(empty.state(), None).unwrap()).len(), 1);
     }
 
-    /// Tests only path resolution: the real reveal would start Finder for the
-    /// person who runs the tests.
     #[test]
     fn reveal_resolves_a_note_path_and_falls_back_to_the_vault() {
         let dir = vault();
@@ -1972,9 +1760,6 @@ mod tests {
             .slot(None)
             .unwrap()
             .read(|workspace| {
-                // Compare the root with what the vault returns: macOS
-                // canonicalizes the path, and `dir.path()` differs (`/var`
-                // versus `/private/var`).
                 assert_eq!(
                     reveal_target(workspace, Some("kknow"))?,
                     workspace.root().join("Projects/kknow.md")
@@ -1989,7 +1774,6 @@ mod tests {
             .unwrap();
     }
 
-    /// A second vault with its own tree, search and notes.
     fn other_vault() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
@@ -2033,7 +1817,6 @@ mod tests {
         let added = add_vault(app.state(), work.path().to_string_lossy().into_owned()).unwrap();
         assert!(list_vaults(app.state()).iter().any(|view| view.active));
         assert_eq!(list_vaults(app.state()).len(), 2);
-        // The added vault becomes active at once: the user wants it.
         assert_eq!(current_vault(app.state()).unwrap().id, added.id);
 
         let left = remove_vault(app.state(), added.id).unwrap();
@@ -2066,15 +1849,12 @@ mod tests {
         let found = search_all(app.state(), "компиляторы".into(), None, None).unwrap();
 
         assert_eq!(found.len(), 2, "находки из обоих хранилищ");
-        // The active vault comes first. Scores from different indexes are not
-        // comparable, so the list sets the order, not the match score.
         assert_eq!(found[0].vault, ids[0]);
         assert_eq!(found[0].id, "Index");
         assert_eq!(found[1].vault, ids[1]);
         assert_eq!(found[1].id, "Смета");
         assert!(!found[1].vault_name.is_empty());
 
-        // The label filter of the sidebar: only the listed vaults.
         let found = search_all(
             app.state(),
             "компиляторы".into(),

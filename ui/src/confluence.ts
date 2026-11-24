@@ -1,20 +1,3 @@
-/**
- * The Confluence page of a note in the editor.
- *
- * The comment `<!-- confluence: 123456789 -->` (`confluence-field.ts`) shows
- * as a chip with an icon and the page number. A click on the chip opens a
- * form, where the user changes the number or removes the comment. The editor
- * context menu (`editor-menu.ts`) opens the same form, also for a note
- * without a page: then the form adds the comment at the top of the note.
- *
- * The live preview `build` calls `addPageComment` on each comment node, as it
- * does for agent notes. The chip is not drawn while the selection is inside
- * the comment: then the user edits its text by hand.
- *
- * Only the main editor has this extension. A table cell is not a file, so the
- * cell editors have no page.
- */
-
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, showTooltip, type Tooltip } from "@codemirror/view";
@@ -29,14 +12,12 @@ import {
 import { t } from "./i18n";
 import { icon } from "./icons";
 
-/** A page comment in the text. */
 export interface PageComment {
   from: number;
   to: number;
   pageId: string;
 }
 
-/** Comment nodes: inline (`Comment`) and on a line of their own (`CommentBlock`). */
 function isComment(name: string): boolean {
   return name === "Comment" || name === "CommentBlock";
 }
@@ -46,10 +27,6 @@ function pageAt(state: EditorState, from: number, to: number): PageComment | nul
   return pageId === null ? null : { from, to, pageId };
 }
 
-/**
- * The page comment of the note: the first one, as in the core, where the
- * upper comment wins. The syntax tree skips `<!-- … -->` in code blocks.
- */
 export function pageCommentOf(state: EditorState): PageComment | null {
   let found: PageComment | null = null;
   syntaxTree(state).iterate({
@@ -60,8 +37,6 @@ export function pageCommentOf(state: EditorState): PageComment | null {
   });
   return found;
 }
-
-// ——— Chip ———
 
 class PageWidget extends WidgetType {
   constructor(readonly page: PageComment) {
@@ -84,7 +59,6 @@ class PageWidget extends WidgetType {
     id.textContent = this.page.pageId === "" ? t("editor.confluence.empty") : this.page.pageId;
     dom.append(icon("confluence"), name, id);
 
-    // A press must not move the cursor: a cursor move closes the form.
     dom.addEventListener("mousedown", (event) => {
       event.preventDefault();
       openPageForm(view);
@@ -97,7 +71,6 @@ class PageWidget extends WidgetType {
   }
 }
 
-/** Decorations for a comment node; nothing if it is not a page comment. */
 export function addPageComment(
   state: EditorState,
   from: number,
@@ -112,9 +85,6 @@ export function addPageComment(
   marks.push(Decoration.replace({ widget: new PageWidget(page) }).range(from, to));
 }
 
-// ——— Form ———
-
-/** Opens the form (`true`) or closes it (`false`). */
 const setForm = StateEffect.define<boolean>();
 
 const formField = StateField.define<Tooltip | null>({
@@ -123,15 +93,12 @@ const formField = StateField.define<Tooltip | null>({
     for (const effect of tr.effects) {
       if (effect.is(setForm)) return effect.value ? tooltipFor(tr.state) : null;
     }
-    // As with the note form: an edit or a cursor move means the user went on
-    // with something else.
     if (value && (tr.docChanged || tr.selection)) return null;
     return value;
   },
   provide: (field) => showTooltip.from(field),
 });
 
-/** Whether this editor can have a page: the main one, not a table cell. */
 export function pagesEnabled(state: EditorState): boolean {
   return state.field(formField, false) !== undefined;
 }
@@ -174,7 +141,6 @@ function fillForm(view: EditorView, dom: HTMLElement, page: PageComment | null):
     view.dispatch({ effects: setForm.of(false) });
     view.focus();
   };
-  // An emptied field means "remove the page", as in the note form.
   const save = (): void => {
     const pageId = cleanPageId(field.value);
     if (pageId === "") {
@@ -214,12 +180,10 @@ function fillForm(view: EditorView, dom: HTMLElement, page: PageComment | null):
   };
 }
 
-/** Opens the form: the context menu and a click on the chip use it. */
 export function openPageForm(view: EditorView): void {
   view.dispatch({ effects: setForm.of(true) });
 }
 
-/** Changes the page, or adds the comment at the top of the note. */
 function setPage(view: EditorView, page: PageComment | null, pageId: string): void {
   const comment = formatPageComment(pageId);
   if (page) {
@@ -231,7 +195,6 @@ function setPage(view: EditorView, page: PageComment | null, pageId: string): vo
   } else {
     const text = view.state.doc.toString();
     const at = pageCommentPlace(text);
-    // Frontmatter at the very end of the file has no line break after it.
     const before = at > 0 && text[at - 1] !== "\n" ? "\n" : "";
     view.dispatch({
       changes: { from: at, insert: `${before}${comment}\n` },
@@ -242,7 +205,6 @@ function setPage(view: EditorView, page: PageComment | null, pageId: string): vo
   view.focus();
 }
 
-/** Removes the comment together with its line, if the line has nothing else. */
 export function removePage(view: EditorView, page: PageComment): void {
   const { doc } = view.state;
   const line = doc.lineAt(page.from);

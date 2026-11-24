@@ -1,13 +1,3 @@
-//! Errors as the window sees them: a code and its values, not a ready text.
-//!
-//! The core writes its errors in Russian, because the CLI prints them as they
-//! are. The window has more than one language, so it gets `error.<code>` and
-//! translates it in `ui/src/i18n.ts`. The Russian text comes too: the window
-//! shows it for a code that the locale file does not have yet.
-//!
-//! The map lives here, not in the crates: the codes are a contract with the
-//! window, and the core knows nothing about the UI.
-
 use std::collections::BTreeMap;
 
 use kknow_sync::provider::Operation;
@@ -44,8 +34,6 @@ fn detail(code: &'static str, detail: impl ToString) -> Coded {
     (code, vec![("detail", detail.to_string())])
 }
 
-/// An input or output error. The common kinds have their own codes, as in
-/// `kknow_core::io_text`: "os error 13" says nothing to a person.
 fn io(path: &std::path::Path, source: &std::io::Error) -> Coded {
     use std::io::ErrorKind;
     let code = match source.kind() {
@@ -282,15 +270,10 @@ fn run(error: &kknow_run::Error) -> Coded {
 mod tests {
     use super::*;
 
-    /// Names of the `{{…}}` values in the texts.
     const PLACEHOLDERS: [&str; 5] = ["value", "detail", "path", "line", "other"];
 
-    /// Every code that the window can get has a text in each locale. A code
-    /// without a text would fall back to Russian in the English window.
     #[test]
     fn every_code_has_a_text_in_each_locale() {
-        // The code part of this file has only two kinds of string literals:
-        // codes and placeholder names. Thus a new code cannot miss the check.
         let source = include_str!("errors.rs");
         let code_part = source.split("#[cfg(test)]").next().unwrap();
         let codes: Vec<&str> = code_part
@@ -330,8 +313,6 @@ mod tests {
         assert_eq!(view.message, error.to_string());
     }
 
-    /// The problems of a first start get their own codes, not "io" or
-    /// "storageList" with the text of a library.
     #[test]
     fn common_problems_have_their_own_codes() {
         use kknow_sync::provider::{Cause, Error as StorageError, Operation};

@@ -1,37 +1,15 @@
-/**
- * Hover preview: ⌘ and the pointer on a link show the linked note, or the
- * section of its `#Heading`, in a popup next to the pointer.
- *
- * The popup does not own the data: the host loads a preview and draws its
- * HTML (code, images, diagrams). This class only decides when to show and
- * hide, and where.
- *
- * - The popup waits `SHOW_DELAY` on a link: a pointer that only crosses a
- *   link must not flash a popup.
- * - It stays while the pointer is on the link or in the popup, so the user
- *   can scroll it and click a link in it. It hides after `HIDE_DELAY` outside
- *   both, at once on Esc, on a click outside and when the note changes.
- * - Previews are cached by link until `clear`: the window calls it when the
- *   vault changes.
- */
-
 import type { LinkPreview } from "./api";
 import { t } from "./i18n";
 
 const SHOW_DELAY = 300;
 const HIDE_DELAY = 250;
 
-/** The distance from the pointer to the popup, in px. */
 const GAP = 12;
 
 export interface HoverHost {
-  /** The preview of a link of the open note; `null`: no such note. */
   load(target: string): Promise<LinkPreview | null>;
-  /** Draws what the core does not: code, images, diagrams. */
   paint(root: HTMLElement): void;
-  /** Opens the note of the preview, at its line. */
   open(preview: LinkPreview): void;
-  /** A click on a link inside the popup. */
   follow(anchor: HTMLAnchorElement): void;
 }
 
@@ -39,7 +17,6 @@ export class HoverPreview {
   private readonly host: HoverHost;
   private readonly popup: HTMLElement;
   private readonly cache = new Map<string, Promise<LinkPreview | null>>();
-  /** The link the popup shows or waits for. */
   private target: string | null = null;
   private showTimer: number | undefined;
   private hideTimer: number | undefined;
@@ -82,15 +59,10 @@ export class HoverPreview {
     });
   }
 
-  /** Is the popup on the screen? */
   get visible(): boolean {
     return !this.popup.hidden;
   }
 
-  /**
-   * The pointer is on link `target` at (`x`, `y`) with ⌘ down; `null`: it
-   * left the link or ⌘ went up.
-   */
   point(target: string | null, x: number, y: number): void {
     if (target === null) {
       window.clearTimeout(this.showTimer);
@@ -105,7 +77,6 @@ export class HoverPreview {
     this.showTimer = window.setTimeout(() => void this.show(target, x, y), SHOW_DELAY);
   }
 
-  /** Hides the popup at once. */
   hide(): void {
     window.clearTimeout(this.showTimer);
     window.clearTimeout(this.hideTimer);
@@ -115,7 +86,6 @@ export class HoverPreview {
     this.popup.replaceChildren();
   }
 
-  /** Forgets the loaded previews: a note changed. */
   clear(): void {
     this.cache.clear();
   }
@@ -134,7 +104,6 @@ export class HoverPreview {
       this.cache.set(target, loading);
     }
     const preview = await loading;
-    // The pointer went to a different link meanwhile.
     if (this.target !== target) return;
     this.render(target, preview);
     this.place(x, y);
@@ -166,7 +135,6 @@ export class HoverPreview {
     };
     head.append(title);
     if (preview.locked) {
-      // The text of a locked note never goes to a preview.
       const note = document.createElement("p");
       note.className = "muted hover-locked";
       note.textContent = t("hover.locked");
@@ -186,7 +154,6 @@ export class HoverPreview {
     this.host.paint(body);
   }
 
-  /** Next to the pointer, inside the window: below and right if it fits. */
   private place(x: number, y: number): void {
     const box = this.popup.getBoundingClientRect();
     const left = x + GAP + box.width > innerWidth ? Math.max(GAP, x - GAP - box.width) : x + GAP;

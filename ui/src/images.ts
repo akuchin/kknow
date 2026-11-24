@@ -1,25 +1,8 @@
-/**
- * Images from notes, in the preview and in live preview.
- *
- * The webview does not read the disk itself. So the core outputs
- * `<img data-src="path">` without `src`, and the window asks for the bytes with
- * a command. The core resolves the path: relative to the note, or by file name
- * across the vault. The bytes become a `data:` URL, not `blob:`: WebKit does
- * not show `blob:` images on a `tauri://` page, so the window would show a
- * broken image icon. URLs accumulate while one note is open and are dropped
- * when the note changes.
- *
- * Network images do not load on purpose: a note can come from someone else's
- * vault, and `![](https://…)` would tell a foreign server that it was opened.
- */
-
 import { api } from "./api";
 import { t } from "./i18n";
 
-/** The same class the core sets (`IMAGE_CLASS`). */
 export const IMAGE_CLASS = "note-image";
 
-/** Who owns the images: a note in a vault or a separate file. */
 type Owner = { file: false; vault: string; id: string } | { file: true; path: string };
 
 let owner: Owner | null = null;
@@ -37,14 +20,12 @@ const MIME: Record<string, string> = {
   ico: "image/x-icon",
 };
 
-/** Another note is open: the URLs of the previous one are not needed. */
 export function setImageOwner(next: Owner | null): void {
   if (JSON.stringify(next) === JSON.stringify(owner)) return;
   owner = next;
   cache.clear();
 }
 
-/** Decides by extension, the same way the core does. */
 export function isImage(target: string): boolean {
   const ext = /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(target.trim())?.[1]?.toLowerCase();
   return ext !== undefined && ext in MIME;
@@ -54,11 +35,6 @@ function isExternal(target: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
-/**
- * Command response as bytes. Usually it is an `ArrayBuffer`, but the Tauri IPC
- * fallback (`postMessage`) returns an array of numbers. `Blob` would join it
- * into the text "137,80,78,…", and the image would be broken.
- */
 function toBytes(raw: ArrayBuffer | Uint8Array | number[]): Uint8Array<ArrayBuffer> {
   if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
   return Uint8Array.from(raw);
@@ -73,12 +49,6 @@ function dataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/**
- * A `data:` URL, or `null` if the image is missing.
- *
- * `note` is the note of a fragment from another note (a hover preview, an
- * embed): its image paths are relative to that note, not to the open one.
- */
 function imageUrl(target: string, note?: string): Promise<string | null> {
   const key = note ? `${note}\n${target}` : target;
   const known = cache.get(key);
@@ -104,10 +74,6 @@ function imageUrl(target: string, note?: string): Promise<string | null> {
   return loading;
 }
 
-/**
- * A caption can carry a size: `diagram|300`, `diagram|300x200` or
- * just `300`. Parsed the same way as in the core.
- */
 export function parseCaption(raw: string): { alt: string; width?: number; height?: number } {
   const size = (part: string) => /^\s*(\d+)(?:x(\d+))?\s*$/.exec(part);
   const bar = raw.lastIndexOf("|");
@@ -120,7 +86,6 @@ export function parseCaption(raw: string): { alt: string; width?: number; height
   };
 }
 
-/** For the editor widget; the preview gets the element from the core. */
 export function imageElement(target: string, caption: string): HTMLImageElement {
   const { alt, width, height } = parseCaption(caption);
   const img = document.createElement("img");
@@ -132,10 +97,6 @@ export function imageElement(target: string, caption: string): HTMLImageElement 
   return img;
 }
 
-/**
- * Fills the images inside `root`. A missing image becomes a label with its
- * path: an empty frame explains nothing, the label shows what is missing.
- */
 export function paintImages(root: ParentNode, loaded?: () => void): void {
   for (const img of root.querySelectorAll<HTMLImageElement>(`img.${IMAGE_CLASS}[data-src]`)) {
     if (img.src) continue;
@@ -150,7 +111,6 @@ export function paintImages(root: ParentNode, loaded?: () => void): void {
       img.replaceWith(missing);
       loaded?.();
     };
-    // The file exists, but the browser cannot decode it: a label is clearer than "?".
     img.onerror = () => fail("image.broken");
     void imageUrl(target, img.dataset.note).then((url) => {
       if (url) img.src = url;
@@ -159,10 +119,6 @@ export function paintImages(root: ParentNode, loaded?: () => void): void {
   }
 }
 
-/**
- * Shows the image over the whole window on click. In the text it is small on
- * purpose, so it does not get in the way; small text in a screenshot is read here.
- */
 function openViewer(img: HTMLImageElement): void {
   if (!img.src) return;
   const overlay = document.createElement("div");

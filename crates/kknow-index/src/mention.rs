@@ -1,23 +1,9 @@
-//! Unlinked mentions: places where a note name stands as plain text.
-//!
-//! A person writes "the release plan" and does not make it a link. The side
-//! panel of the note `Release plan` shows such places, and one click makes
-//! them `[[links]]`.
-//!
-//! Only plain text counts. A name in code, in an HTML block, in frontmatter,
-//! in a link or in a tag is not a mention: a click must not change it. Text
-//! between inline tags (`<b>Plan</b>`) is still text that a person reads, so
-//! it counts.
-
 use std::ops::Range;
 
 use pulldown_cmark::{Event, Parser, Tag as MdTag, TagEnd};
 
 use crate::parse::{options, parse};
 
-/// The places in `source` where one of `names` stands as plain text, in text
-/// order. Case does not matter; the place must start and end at a word
-/// boundary. Of two names at the same place, the longer one wins.
 pub fn find(source: &str, names: &[&str]) -> Vec<Range<usize>> {
     let mut wanted: Vec<Vec<char>> = names
         .iter()
@@ -60,12 +46,8 @@ pub fn find(source: &str, names: &[&str]) -> Vec<Range<usize>> {
     found
 }
 
-/// Ranges of plain text in the body, outside code, HTML, math and links.
-/// Neighbour text events join into one range: the parser splits text at
-/// special characters, and a name can contain one.
 fn text_segments(source: &str, body_start: usize) -> Vec<Range<usize>> {
     let mut segments: Vec<Range<usize>> = Vec::new();
-    // Inside a link, an image or a code block the text is not plain.
     let mut depth = 0usize;
 
     for (event, range) in Parser::new_ext(&source[body_start..], options()).into_offset_iter() {
@@ -87,7 +69,6 @@ fn text_segments(source: &str, body_start: usize) -> Vec<Range<usize>> {
     segments
 }
 
-/// The end of `name` when the text at `at` is the name in any case.
 fn match_at(text: &str, at: usize, name: &[char]) -> Option<usize> {
     let mut want = name.iter().peekable();
     for (offset, c) in text[at..].char_indices() {

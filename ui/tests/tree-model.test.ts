@@ -1,5 +1,3 @@
-// The sidebar tree as data (`src/tree-model.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -17,13 +15,11 @@ import {
 
 const collator = new Intl.Collator("ru");
 
-/** A note at the id; the folder is the part before the last slash. */
 function note(id: string, title = id): NoteSummary {
   const slash = id.lastIndexOf("/");
   return { id, title, folder: slash < 0 ? null : id.slice(0, slash), tags: [] };
 }
 
-/** The tree as nested names: folders end with `/`. */
 function shape(folder: Folder): unknown[] {
   return [
     ...folder.folders.map((child) => ({ [`${child.name}/`]: shape(child) })),

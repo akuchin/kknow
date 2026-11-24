@@ -1,5 +1,3 @@
-// The store of the main window (`src/window/state.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -37,7 +35,6 @@ test("a setter calls the handlers of its event with the new value", () => {
 
   state.setNote(note("a"));
   state.setNote(null);
-  // Other events do not reach the "note" handlers.
   state.setVault(vault("b"));
   assert.deepEqual(seen, ["a", null]);
 });

@@ -1,6 +1,3 @@
-// Checks for the task boxes (`src/tasks.ts`): which lines have a box and how
-// a click changes it. Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

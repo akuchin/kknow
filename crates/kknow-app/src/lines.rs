@@ -1,19 +1,9 @@
-//! The line around a place in a note: for a backlink or a mention.
-//!
-//! A list of backlinks shows where each link stands. The whole line can be a
-//! long paragraph, so the text around the place is cut to a few words on each
-//! side.
-
 use std::ops::Range;
 
-/// How many characters to keep on each side of the place.
 const SIDE: usize = 60;
 
-/// The text of a line, in three parts: before the place, the place itself
-/// and after it. The window marks the middle part.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineContext {
-    /// 1-based line number, frontmatter included.
     pub line: usize,
     pub before: String,
     pub text: String,
@@ -21,8 +11,6 @@ pub struct LineContext {
 }
 
 impl LineContext {
-    /// The line around `span` in `source`. `None` when the span does not fit
-    /// the text: the file changed after the parse.
     pub fn around(source: &str, span: &Range<usize>) -> Option<Self> {
         let text = source.get(span.clone())?;
         let start = source[..span.start].rfind('\n').map_or(0, |at| at + 1);
@@ -39,7 +27,6 @@ impl LineContext {
     }
 }
 
-/// The last `SIDE` characters, with `…` when the text was longer.
 fn tail(text: &str) -> String {
     match text.char_indices().rev().nth(SIDE - 1) {
         Some((at, _)) if at > 0 => format!("…{}", text[at..].trim_start()),
@@ -47,7 +34,6 @@ fn tail(text: &str) -> String {
     }
 }
 
-/// The first `SIDE` characters, with `…` when the text was longer.
 fn head(text: &str) -> String {
     match text.char_indices().nth(SIDE) {
         Some((at, _)) => format!("{}…", text[..at].trim_end()),

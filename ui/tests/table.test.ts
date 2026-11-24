@@ -1,6 +1,3 @@
-// Tests for the table model (`src/table.ts`). Node runs them as is: it strips
-// the types itself, and the module has no imports. Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -60,7 +57,6 @@ test("parsing: cell positions, alignment, an escaped pipe", () => {
   assert.equal(table.rows[0][1].text, "b \\| c");
   assert.equal(source.slice(table.rows[0][0].from - 100, table.rows[0][0].to - 100), "a");
   assert.deepEqual(table.lines, [0, 2]);
-  // An empty cell: the range is inside the spaces.
   assert.equal(table.rows[1][1].from, table.rows[1][1].to);
 });
 
@@ -76,7 +72,6 @@ test("the column under the cursor is counted by pipes", () => {
   assert.equal(columnAt(line, 0), 0);
   assert.equal(columnAt(line, 2), 0);
   assert.equal(columnAt(line, 5), 1);
-  // After the closing pipe: past the last cell.
   assert.equal(columnAt(line, 9), 2);
   assert.equal(columnAt("a | b", 4), 1);
   assert.equal(columnAt("| a \\| b | c", 10), 1);
@@ -141,7 +136,6 @@ test("toolbar actions return the new place of the selection", () => {
   assert.deepEqual(removed.rows[0], ["h1"]);
   assert.deepEqual(removed.rect, cell(1, 0));
 
-  // The header and the last column stay.
   assert.equal(runCommand("rowRemove", rows, [], cell(0, 0)), null);
   assert.equal(runCommand("columnRemove", rows, [], { top: 0, left: 0, bottom: 0, right: 1 }), null);
   assert.equal(runCommand("rowUp", rows, [], cell(1, 0)), null);

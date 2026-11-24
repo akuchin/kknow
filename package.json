@@ -17,7 +17,8 @@
     "docs:build": "pnpm --filter kknow-site build",
     "docs:preview": "pnpm --filter kknow-site preview",
     "tauri": "tauri",
-    "icons:mac": "python3 scripts/gen-macos-icon.py"
+    "icons:mac": "python3 scripts/gen-macos-icon.py",
+    "comments:strip": "cargo run -q -p kknow-no-comments && node ui/tools/strip-comments.ts"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

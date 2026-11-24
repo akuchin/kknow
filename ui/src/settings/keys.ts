@@ -1,5 +1,3 @@
-/** The "Keys" section: the keys of each action and key recording. */
-
 import { defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
 import type { KeyBinding } from "@codemirror/view";
@@ -31,7 +29,6 @@ import { t, type Key } from "../i18n";
 import { heading, row } from "./controls";
 import { view } from "./state";
 
-/** The label of each action on the keys page. */
 const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "palette.open": "settings.keys.action.palette.open",
   "note.new": "settings.keys.action.note.new",
@@ -67,7 +64,6 @@ const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "table.columnRight": "settings.keys.action.table.columnRight",
 };
 
-/** Groups of the keys page, by the first part of the action ID. */
 const KEY_GROUPS: { label: Key; has: (action: Action) => boolean }[] = [
   { label: "settings.keys.group.app", has: (action) => !/^(format|item|table)\./.test(action) },
   { label: "settings.keys.group.format", has: (action) => action.startsWith("format.") },
@@ -75,11 +71,6 @@ const KEY_GROUPS: { label: Key; has: (action: Action) => boolean }[] = [
   { label: "settings.keys.group.table", has: (action) => action.startsWith("table.") },
 ];
 
-/**
- * The keys of the editor's own commands: indentation, comments, search. An
- * action that takes one of them would lose it inside the note, because the
- * editor handles the key first.
- */
 const EDITOR_KEYS: readonly string[] = [...defaultKeymap, ...historyKeymap, ...searchKeymap]
   .map((binding: KeyBinding) => (MAC ? binding.mac : binding.win ?? binding.linux) ?? binding.key)
   .filter((key): key is string => typeof key === "string" && !key.includes(" "))
@@ -91,14 +82,10 @@ const EDITOR_KEYS: readonly string[] = [...defaultKeymap, ...historyKeymap, ...s
     }
   });
 
-/** The keys file as the core read it. */
 let keymap: KeymapView | null = null;
-/** The action that waits for a key press. */
 let recording: Action | null = null;
-/** A message under an action: a key that did not fit, maybe with a way out. */
 let keyNotice: { action: Action; text: string; reassign?: string } | null = null;
 
-/** Writes the changed keys; both windows learn about them from an event. */
 async function saveKeymap(next: Keymap): Promise<void> {
   try {
     keymap = await api.setKeymap(next);
@@ -111,7 +98,6 @@ async function saveKeymap(next: Keymap): Promise<void> {
   view.render();
 }
 
-/** Takes the keys from the core; repaints the page if they changed. */
 export function takeKeymap(incoming: KeymapView): void {
   const changed = useKeymap(incoming.keys);
   const problems = JSON.stringify(incoming.problems) !== JSON.stringify(keymap?.problems ?? []);
@@ -132,10 +118,6 @@ function stopRecording(): void {
   view.render();
 }
 
-/**
- * A key press while an action records. The capture phase comes before the
- * buttons and the window keys, so ⌘, here is a key, not "open settings".
- */
 function recordKey(event: KeyboardEvent): void {
   const action = recording;
   if (!action) return;
@@ -174,14 +156,11 @@ function recordKey(event: KeyboardEvent): void {
   view.render();
 }
 
-/** Listens for the keys of a recording. `main.ts` calls it once, on start. */
 export function initKeys(): void {
   document.addEventListener("keydown", recordKey, true);
-  // A key press in another app must not land in the recording.
   window.addEventListener("blur", stopRecording);
 }
 
-/** Reads the keys: the copy in `localStorage` may be old after a hand edit. */
 export async function loadKeymap(): Promise<void> {
   try {
     keymap = await api.getKeymap();
@@ -202,7 +181,6 @@ export function renderKeys(): void {
     for (const action of actions) page.append(keyRow(action));
   }
 
-  // ⌘1…⌘9 follow the vault list, so they do not change.
   const vaults = document.createElement("span");
   vaults.className = "settings-key-combo";
   vaults.append(kbd(`${formatKey(vaultKey(1))}…${formatKey(vaultKey(9))}`));
@@ -213,7 +191,6 @@ export function renderKeys(): void {
   resetAll.className = "ghost";
   resetAll.textContent = t("settings.keys.resetAll");
   resetAll.disabled = !custom;
-  // Entries of actions that this version does not know stay in the file.
   resetAll.onclick = () => void saveKeymap(unbind(...rebindable()));
 
   if (keymap?.problems.length) page.append(keyProblems(keymap.problems));
@@ -241,7 +218,6 @@ function kbd(text: string): HTMLElement {
   return key;
 }
 
-/** One action: its keys, "Change", and "Reset" if the user changed them. */
 function keyRow(action: Exclude<Action, FixedAction>): HTMLElement {
   const control = document.createElement("div");
   control.className = "settings-key-control";
@@ -312,7 +288,6 @@ function keyRow(action: Exclude<Action, FixedAction>): HTMLElement {
   return line;
 }
 
-/** Entries of a hand-edited file that the core skipped. */
 function keyProblems(problems: KeyProblem[]): HTMLElement {
   const box = document.createElement("div");
   box.className = "settings-key-problems";
@@ -328,7 +303,6 @@ function keyProblems(problems: KeyProblem[]): HTMLElement {
   return box;
 }
 
-/** The file location with a reveal button, like the commands file. */
 function keymapFile(file: string, resetAll: HTMLElement): HTMLElement {
   const path = document.createElement("span");
   path.className = "settings-path";

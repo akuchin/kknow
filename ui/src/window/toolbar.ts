@@ -1,9 +1,3 @@
-// The note toolbar in the header: the note menu and the bookmarks, run and
-// backlinks menus. The counts on its buttons belong to the note zone
-// (`renderNoteTools`) and the commands zone (`renderRunButton`).
-//
-// The module does not touch the DOM on import.
-
 import { t } from "../i18n";
 import { openMenu, type MenuItem } from "../menu";
 import {
@@ -22,14 +16,12 @@ import { openBookmark, toggleCurrentBookmark } from "./marks";
 import { palette } from "./palette";
 import { state } from "./state";
 
-/** Wires the buttons of the header. */
 export function initToolbar(): void {
   el.noteMenu.onclick = () => openNoteMenu();
   el.noteBookmarks.onclick = () => openBookmarksMenu();
   el.runLast.onclick = () => {
     const last = lastCommand();
     const target = currentTarget();
-    // Nothing to repeat yet: the menu shows what can run.
     if (last && target) void runCommand(last, target);
     else void openRunMenu();
   };
@@ -37,11 +29,6 @@ export function initToolbar(): void {
   el.noteBacklinks.onclick = () => showAside("backlinks");
 }
 
-/**
- * Menu of the open note. It is the same as its tree row menu: commands,
- * rename, clipboard, Finder. One menu for two places keeps them in
- * sync. A separate file uses its row menu from the file list.
- */
 function openNoteMenu(): void {
   if (!state.note) return;
   if (state.note.file) {
@@ -54,11 +41,6 @@ function openNoteMenu(): void {
   void openCommandMenu(el.noteMenu, { kind: "note", name: state.note.id, vault: state.vault.id });
 }
 
-/**
- * Bookmarks of the open note: a jump to each, then the toggle and the list of
- * all bookmarks. The toolbar has no line of its own, so the toggle works on
- * the cursor line, as ⌘⇧B does.
- */
 function openBookmarksMenu(): void {
   if (!state.note || state.note.file) return;
   const id = state.note.id;
@@ -97,10 +79,6 @@ function openBookmarksMenu(): void {
   ]);
 }
 
-/**
- * A bookmark line as a menu label: the text without the markdown marker and
- * without agent notes, which are HTML comments in the text.
- */
 function bookmarkLabel(line: string): string {
   const text = line
     .replace(/<!--.*?(-->|$)/g, "")
@@ -109,7 +87,6 @@ function bookmarkLabel(line: string): string {
   return text || t("topbar.bookmarks.blank");
 }
 
-/** Commands of the open note, the same list as in its menu. */
 async function openRunMenu(): Promise<void> {
   const target = currentTarget();
   if (!target) return;

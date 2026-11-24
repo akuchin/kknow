@@ -1,11 +1,3 @@
-//! The vault trash: deleted notes and folders wait here for a restore.
-//!
-//! The trash is `.kknow/trash` inside the vault. The scanner skips hidden
-//! folders, and sync does not include `.kknow`. Each deletion gets its own
-//! entry folder, named by the deletion time in Unix seconds. Inside the entry,
-//! the item keeps its path relative to the vault root. So two deletions of
-//! one path do not collide, and a restore knows where the file was.
-
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -16,27 +8,16 @@ use walkdir::WalkDir;
 use crate::error::{Error, Result};
 use crate::note::{NoteId, is_markdown_extension};
 
-/// How long an entry stays in the trash. A move to the trash purges older
-/// entries.
 pub const RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
-/// One deletion in the trash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrashEntry {
-    /// Name of the entry folder. `kknow trash restore` takes it.
     pub id: String,
     pub deleted: SystemTime,
-    /// The deleted item relative to the vault root, with `/` as the separator.
-    ///
-    /// The entry stores no metadata. So this is the longest path with one
-    /// child at each level: a deleted folder with one subfolder shows the
-    /// subfolder.
     pub path: String,
-    /// Notes in the entry: paths from the vault root, with `/`, sorted.
     pub notes: Vec<String>,
 }
 
-/// The trash of one vault.
 #[derive(Debug, Clone)]
 pub struct Trash {
     root: PathBuf,
@@ -54,11 +35,6 @@ impl Trash {
         &self.dir
     }
 
-    /// Moves a file or a folder from the vault into a new entry.
-    ///
-    /// The trash is on the same file system as the vault, so this is one
-    /// atomic `rename`. The watcher sees the old path disappear, as on a
-    /// delete. The new path is hidden, and the watcher skips it.
     pub fn put(&self, relative: &Path) -> Result<()> {
         let now = unix_now();
         self.purge(now)?;
@@ -71,15 +47,12 @@ impl Trash {
             .map_or(Ok(()), fs::create_dir_all)
             .and_then(|()| fs::rename(&source, &target));
         if let Err(source) = moved {
-            // An empty entry would show in the list as a deletion of nothing.
             let _ = fs::remove_dir_all(&entry);
             return Err(Error::io(&target, source));
         }
         Ok(())
     }
 
-    /// Entries from the oldest to the newest. A vault without a trash has
-    /// none.
     pub fn entries(&self) -> Result<Vec<TrashEntry>> {
         let mut entries = Vec::new();
         for (id, path, deleted) in self.entry_dirs()? {
@@ -108,11 +81,6 @@ impl Trash {
         Ok(entries)
     }
 
-    /// Moves the entry content back to its place and removes the entry.
-    ///
-    /// Returns the restored notes. Overwrites nothing: if one file of the
-    /// entry is taken, nothing moves. A folder that exists again gets the
-    /// files of the entry next to its own.
     pub fn restore(&self, id: &str) -> Result<Vec<NoteId>> {
         let entry = self.entry_path(id)?;
 
@@ -157,16 +125,11 @@ impl Trash {
             .collect())
     }
 
-    /// Removes one entry for good.
     pub fn remove(&self, id: &str) -> Result<()> {
         let entry = self.entry_path(id)?;
         fs::remove_dir_all(&entry).map_err(|source| Error::io(&entry, source))
     }
 
-    /// Text of a note in the entry, to look at it before a restore.
-    ///
-    /// `note` is the path from the vault root, as in [`TrashEntry::notes`].
-    /// A path that leaves the entry or is no note is "not found".
     pub fn read(&self, id: &str, note: &str) -> Result<String> {
         let entry = self.entry_path(id)?;
         let relative = Path::new(note);
@@ -180,7 +143,6 @@ impl Trash {
         fs::read_to_string(&path).map_err(|source| Error::io(&path, source))
     }
 
-    /// Removes all entries for good. Returns their number.
     pub fn empty(&self) -> Result<usize> {
         let dirs = self.entry_dirs()?;
         for (_, path, _) in &dirs {
@@ -189,7 +151,6 @@ impl Trash {
         Ok(dirs.len())
     }
 
-    /// Removes the entries that are older than [`RETENTION`].
     fn purge(&self, now: u64) -> Result<()> {
         for (_, path, deleted) in self.entry_dirs()? {
             if deleted.saturating_add(RETENTION.as_secs()) < now {
@@ -199,9 +160,6 @@ impl Trash {
         Ok(())
     }
 
-    /// Creates a free entry folder for this second: `<secs>`, then
-    /// `<secs>-2`… `create_dir` fails on a taken name, so two deletions in one
-    /// second get different entries.
     fn new_entry(&self, now: u64) -> Result<PathBuf> {
         fs::create_dir_all(&self.dir).map_err(|source| Error::io(&self.dir, source))?;
         for attempt in 1.. {
@@ -219,8 +177,6 @@ impl Trash {
         unreachable!("the endless name search ended")
     }
 
-    /// The entry folder by its name. A name that is not an entry name is
-    /// "not found": it must not lead outside the trash.
     fn entry_path(&self, id: &str) -> Result<PathBuf> {
         let path = self.dir.join(id);
         if deletion_time(id).is_none() || !path.is_dir() {
@@ -229,8 +185,6 @@ impl Trash {
         Ok(path)
     }
 
-    /// Entry folders with their names and deletion times. Other files in the
-    /// trash folder are not entries.
     fn entry_dirs(&self) -> Result<Vec<(String, PathBuf, u64)>> {
         let read = match fs::read_dir(&self.dir) {
             Ok(read) => read,
@@ -255,7 +209,6 @@ impl Trash {
     }
 }
 
-/// Deletion time from an entry name: `<secs>` or `<secs>-<n>`.
 fn deletion_time(name: &str) -> Option<u64> {
     let (secs, attempt) = match name.split_once('-') {
         Some((secs, attempt)) => (secs, Some(attempt)),
@@ -268,7 +221,6 @@ fn deletion_time(name: &str) -> Option<u64> {
     secs.parse().ok()
 }
 
-/// The longest path inside the entry with one child at each level.
 fn item_path(entry: &Path) -> String {
     let mut parts = Vec::new();
     let mut current = entry.to_path_buf();

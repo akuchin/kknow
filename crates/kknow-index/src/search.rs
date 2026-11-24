@@ -1,9 +1,3 @@
-//! Full-text search over notes.
-//!
-//! The index lives in memory and is built when the vault opens. The files are
-//! the source of truth, and the index is derived from them and can always be
-//! rebuilt. Saving it to disk is a separate task.
-
 use kknow_core::NoteId;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, Query, QueryParser, RegexQuery};
@@ -25,10 +19,8 @@ pub enum Error {
     Query(#[from] tantivy::query::QueryParserError),
 }
 
-/// Name of the analyzer that all text fields share.
 const ANALYZER: &str = "kknow";
 
-/// Number of characters in a result snippet.
 const SNIPPET_CHARS: usize = 180;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +28,6 @@ pub struct SearchHit {
     pub id: NoteId,
     pub title: String,
     pub score: f32,
-    /// Text fragment with `<mark>` around matches.
     pub snippet: String,
 }
 
@@ -59,7 +50,6 @@ impl SearchIndex {
     pub fn new() -> Result<Self> {
         let mut schema = Schema::builder();
 
-        // `id` is not tokenized: it is the key to delete a document.
         let id = schema.add_text_field("id", STRING | STORED);
         let title = schema.add_text_field("title", analyzed() | STORED);
         let body = schema.add_text_field("body", analyzed() | STORED);
@@ -69,11 +59,6 @@ impl SearchIndex {
         let index = Index::create_in_ram(schema.build());
         index.tokenizers().register(ANALYZER, analyzer());
 
-        // One indexing thread with the smallest arena tantivy allows. Each open
-        // vault has its own writer: the default (a thread per core, 50 MB)
-        // gave 12 vaults about 25 more threads and 15% more memory. Opening
-        // 5000 notes took the same time: parsing, not indexing, is the slow
-        // part.
         let writer = index.writer_with_num_threads(1, 15_000_000)?;
         let reader = index.reader()?;
 
@@ -91,9 +76,6 @@ impl SearchIndex {
         })
     }
 
-    /// Adds or replaces the note document.
-    ///
-    /// Changes become visible only after [`SearchIndex::commit`].
     pub fn upsert(&mut self, id: &NoteId, title: &str, body: &str, tags: &[String]) -> Result<()> {
         self.remove(id)?;
 
@@ -102,7 +84,6 @@ impl SearchIndex {
             self.fields.title => title,
             self.fields.body => body,
             self.fields.tag => tags.join(" "),
-            // The path is searched as text, so "projects rust" finds a note by folder.
             self.fields.path => id.as_str().replace('/', " "),
         ))?;
         Ok(())
@@ -114,15 +95,12 @@ impl SearchIndex {
         Ok(())
     }
 
-    /// Makes the pending changes visible.
     pub fn commit(&mut self) -> Result<()> {
         self.writer.commit()?;
         self.reader.reload()?;
         Ok(())
     }
 
-    /// Supports tantivy syntax: `tag:rust`, `title:kknow`, `-word`, quotes for
-    /// a phrase. All plain words are required.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
         let query = query.trim();
         if query.is_empty() {
@@ -131,9 +109,6 @@ impl SearchIndex {
 
         let parsed = self.parser().parse_query(query)?;
 
-        // A prefix match is always added to the exact one: while the user
-        // types «синхр», they must already see «синхронизацию». Exact matches
-        // weigh more, so they get a boost.
         let query: Box<dyn Query> = match self.prefix_query(query)? {
             Some(prefix) => Box::new(BooleanQuery::new(vec![
                 (Occur::Should, Box::new(BoostQuery::new(parsed, 3.0))),
@@ -145,9 +120,6 @@ impl SearchIndex {
         self.run(query, limit)
     }
 
-    /// Notes whose text has `phrase`, at most `limit`. The analyzer stems the
-    /// words, so this is a superset: the caller checks the exact text. A
-    /// phrase with no words finds nothing.
     pub fn containing(&self, phrase: &str, limit: usize) -> Result<Vec<NoteId>> {
         let words = phrase.replace(['"', '\\'], " ");
         if words.trim().is_empty() {
@@ -189,14 +161,6 @@ impl SearchIndex {
         ]
     }
 
-    /// A query where the last word is treated as the start of a word.
-    ///
-    /// `*` in tantivy syntax gives no prefix search: the tokenizer drops the
-    /// star. So the prefix is searched with a regex over the term dictionary.
-    ///
-    /// The palette chips wrap the text in a field: `tag:(per)`. Such a query
-    /// gets the prefix too, but only in that field, or the «Tags» chip finds
-    /// `#personal` only after the last letter.
     fn prefix_query(&self, query: &str) -> Result<Option<Box<dyn Query>>> {
         let (fields, text, field_name) = match self.scoped(query) {
             Some((field, name, text)) => (vec![field], text, Some(name)),
@@ -235,7 +199,6 @@ impl SearchIndex {
         Ok(Some(Box::new(BooleanQuery::new(clauses))))
     }
 
-    /// Splits `field:(text)` or `field:text` into the field and the text.
     fn scoped<'q>(&self, query: &'q str) -> Option<(Field, &'static str, &'q str)> {
         let (name, rest) = query.split_once(':')?;
         let text = rest
@@ -300,8 +263,6 @@ fn analyzed() -> TextOptions {
     )
 }
 
-/// The Russian stemmer brings «заметки» and «заметка» to one form. It almost
-/// does not touch Latin text, so one analyzer is enough for both languages.
 fn analyzer() -> TextAnalyzer {
     TextAnalyzer::builder(SimpleTokenizer::default())
         .filter(RemoveLongFilter::limit(40))
@@ -394,7 +355,6 @@ mod tests {
     fn word_forms_match_thanks_to_stemming() {
         let index = sample();
 
-        // The text has «синхронизация». Search with other grammatical cases.
         assert_eq!(
             ids(&index.search("синхронизации", 10).unwrap()),
             ["Projects/kknow"]
@@ -404,9 +364,6 @@ mod tests {
             ["Projects/kknow"]
         );
 
-        // The stemmer cuts endings but does not restore a dropped vowel:
-        // «заметки» and «заметок» stay different words. Russian lemmatization
-        // is a separate task. For now this is accepted.
         assert_eq!(
             ids(&index.search("заметками", 10).unwrap()),
             ["Projects/kknow"]
@@ -447,7 +404,6 @@ mod tests {
     fn tag_prefix_works_inside_a_field() {
         let index = sample();
 
-        // The «Tags» chip of the palette sends the text in this form.
         assert_eq!(
             ids(&index.search("tag:(ru)", 10).unwrap()),
             ["Projects/kknow"]
@@ -456,7 +412,6 @@ mod tests {
             ids(&index.search("tag:дне", 10).unwrap()),
             ["Daily/2026-07-26"]
         );
-        // The prefix stays in the field: «Rust» has the word in the title only.
         assert!(index.search("tag:(язы проекты)", 10).unwrap().is_empty());
         assert_eq!(
             ids(&index.search("tag:(rust прое)", 10).unwrap()),
@@ -475,7 +430,6 @@ mod tests {
     fn prefix_search_works_while_typing() {
         let index = sample();
 
-        // «синхр» is an incomplete word. Plain search does not find it.
         assert_eq!(ids(&index.search("синхр", 10).unwrap()), ["Projects/kknow"]);
     }
 

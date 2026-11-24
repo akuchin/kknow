@@ -2,7 +2,6 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
-/// File extensions that the vault treats as notes.
 pub const MARKDOWN_EXTENSIONS: [&str; 3] = ["md", "markdown", "mdown"];
 
 pub fn is_markdown_extension(ext: &str) -> bool {
@@ -11,16 +10,10 @@ pub fn is_markdown_extension(ext: &str) -> bool {
         .any(|known| ext.eq_ignore_ascii_case(known))
 }
 
-/// Note id: the path relative to the vault root, without the extension,
-/// always with `/` as the separator.
-///
-/// `Projects/Rust/kknow.md` -> `Projects/Rust/kknow`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoteId(String);
 
 impl NoteId {
-    /// Returns `None` for paths that cannot be inside the vault: absolute,
-    /// with `..`, empty or not UTF-8.
     pub fn from_relative_path(path: &Path) -> Option<Self> {
         let mut parts: Vec<&str> = Vec::new();
         for component in path.components() {
@@ -53,8 +46,6 @@ impl NoteId {
         Some(NoteId(id))
     }
 
-    /// Parses user input: `folder/note`, `folder/note.md` and `folder\note`
-    /// give the same id.
     pub fn parse(raw: &str) -> Option<Self> {
         let normalized = raw.replace('\\', "/");
         Self::from_relative_path(Path::new(normalized.trim_matches('/')))
@@ -64,7 +55,6 @@ impl NoteId {
         &self.0
     }
 
-    /// Note name without folders. A short `[[link]]` refers to this name.
     pub fn name(&self) -> &str {
         match self.0.rsplit_once('/') {
             Some((_, name)) => name,
@@ -72,7 +62,6 @@ impl NoteId {
         }
     }
 
-    /// Folder relative to the vault root. `None` for notes in the root.
     pub fn folder(&self) -> Option<&str> {
         self.0.rsplit_once('/').map(|(folder, _)| folder)
     }
@@ -88,8 +77,6 @@ impl fmt::Display for NoteId {
     }
 }
 
-/// Note metadata. The content is not kept in memory: [`crate::Vault::read`]
-/// reads it, because the files on disk are the source of truth.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Note {
     pub id: NoteId,

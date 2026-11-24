@@ -1,9 +1,3 @@
-//! Loose files: markdown opened without a vault.
-//!
-//! The logic is in `kknow_app::files`. This module converts to JSON and keeps
-//! what needs window state: the list, the "was this file opened" check, and an
-//! "open" request from Finder that arrives before the window loads.
-
 use std::path::{Path, PathBuf};
 
 use kknow_app::files::{self as loose, FileSaved};
@@ -14,33 +8,23 @@ use tauri::ipc::Response;
 use crate::commands::LinkRef;
 use crate::state::{AppState, Error, Result};
 
-/// What was opened from outside or from the window, and how to show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub enum Opened {
-    /// The file is in a known vault, so it is a note of that vault.
     Note { vault: String, id: String },
-    /// A standalone file: it is in the loose files list.
     File { path: String },
 }
 
-/// A loose file in the sidebar.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FileEntry {
     path: String,
-    /// File name with extension. The title needs a disk read, and the list
-    /// must show at once.
     name: String,
-    /// The parent folder: it tells two `README.md` files apart.
     folder: String,
 }
 
-/// An open file. It has the same shape as a vault note, so the window shows
-/// both in one editor. Here `id` is the absolute path, and `file` tells them
-/// apart.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct FileView {
@@ -54,7 +38,6 @@ pub struct FileView {
     file: bool,
 }
 
-/// Result of saving a loose file. Same as for a note, but the copy is a path.
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -95,15 +78,7 @@ fn file_view(path: &Path, content: String) -> FileView {
     }
 }
 
-/// Accepts a file to open: from Finder, a dialog, drag and drop, or a
-/// command-line argument.
-///
-/// A file from a known vault becomes its note. Other files become rows in the
-/// loose files list. The file's folder does not become a vault: a double click
-/// on `README.md` must not parse and index the whole repository.
 pub fn open_path(state: &AppState, path: &Path) -> Result<Opened> {
-    // Check for markdown first. Otherwise a `.png` from a known vault becomes
-    // a "note".
     let canonical = loose::markdown_file(path)?;
 
     if let Some((vault, id)) = state.locate(&canonical) {
@@ -120,13 +95,11 @@ pub fn list_files(state: State<'_, AppState>) -> Vec<FileEntry> {
     state.files().iter().map(|path| entry(path)).collect()
 }
 
-/// Opens a file picked in the window: by dialog or drag and drop.
 #[tauri::command(async)]
 pub fn open_file(state: State<'_, AppState>, path: String) -> Result<Opened> {
     open_path(&state, Path::new(&path))
 }
 
-/// Returns the pending "open this" request from outside.
 #[tauri::command]
 pub fn take_opened_file(state: State<'_, AppState>) -> Option<Opened> {
     state.take_pending()
@@ -139,7 +112,6 @@ pub fn load_file(state: State<'_, AppState>, path: String) -> Result<FileView> {
     Ok(file_view(&path, content))
 }
 
-/// Writes a loose file. `base` works as in `save_note`.
 #[tauri::command(async)]
 pub fn save_file(
     state: State<'_, AppState>,
@@ -149,9 +121,6 @@ pub fn save_file(
 ) -> Result<FileSaveOutcome> {
     let path = match state.known_file(&path) {
         Ok(path) => path,
-        // Deleted outside while the window had unsaved edits. The write brings
-        // the file back and keeps the edits, as for a vault note. The window
-        // closes and forgets a missing file that has no edits.
         Err(Error::FileGone(raw)) => {
             let path = PathBuf::from(raw);
             loose::write(&path, &content)?;
@@ -175,8 +144,6 @@ pub fn save_file(
             note: file_view(&path, content),
         },
         FileSaved::Conflict { copy, disk } => {
-            // The copy is also a loose file. It must show in the list, and the
-            // window appends to it what the user typed during the write.
             let copy = state.remember_file(&copy)?;
             FileSaveOutcome::Conflict {
                 note: file_view(&path, disk),
@@ -186,14 +153,12 @@ pub fn save_file(
     })
 }
 
-/// Renders unsaved text for the preview while the user types.
 #[tauri::command(async)]
 pub fn preview_file(state: State<'_, AppState>, path: String, content: String) -> Result<String> {
     let path = state.known_file(&path)?;
     Ok(loose::render(&path, &content))
 }
 
-/// Image bytes for a loose file, like `note_image`.
 #[tauri::command(async)]
 pub fn file_image(state: State<'_, AppState>, path: String, target: String) -> Result<Response> {
     let path = state.known_file(&path)?;
@@ -202,14 +167,12 @@ pub fn file_image(state: State<'_, AppState>, path: String, target: String) -> R
     Ok(Response::new(bytes))
 }
 
-/// Removes the file from the list. The file stays on disk.
 #[tauri::command(async)]
 pub fn forget_file(state: State<'_, AppState>, path: String) -> Vec<FileEntry> {
     state.forget_file(Path::new(&path));
     state.files().iter().map(|path| entry(path)).collect()
 }
 
-/// Shows a loose file in the file manager.
 #[tauri::command(async)]
 pub fn reveal_file(state: State<'_, AppState>, path: String) -> Result<()> {
     let path = state.known_file(&path)?;

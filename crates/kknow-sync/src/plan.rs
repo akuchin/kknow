@@ -1,9 +1,3 @@
-//! What to do so that disk and cloud match.
-//!
-//! The plan comes from three manifests with no network or disk access. So a
-//! test can check the decision for each note, and the user can see it in
-//! advance (`kknow sync --dry-run`).
-
 use std::collections::BTreeSet;
 use std::fmt;
 
@@ -12,33 +6,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::manifest::Manifest;
 
-/// Which version wins when both sides changed the same note.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum ConflictPolicy {
-    /// Lose nothing: the local version stays, and the remote version goes next
-    /// to it as a separate note.
     #[default]
     KeepBoth,
-    /// The version on this device wins.
     PreferLocal,
-    /// The cloud version wins.
     PreferRemote,
 }
 
-/// One action on one note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Send the local version to the cloud.
     Upload(NoteId),
-    /// Get the cloud version to disk.
     Download(NoteId),
-    /// Remove the note from disk: another device deleted it.
     RemoveLocal(NoteId),
-    /// Remove the note from the cloud: it was deleted here.
     RemoveRemote(NoteId),
-    /// Conflict: `id` keeps the local version, `copy` gets the remote one.
     KeepBoth { id: NoteId, copy: NoteId },
 }
 
@@ -66,16 +49,12 @@ impl fmt::Display for Action {
     }
 }
 
-/// The sync plan with the states it was computed from.
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub(crate) actions: Vec<Action>,
-    /// Actions on shared files of `.kknow`.
     pub(crate) files: Vec<FileAction>,
     pub(crate) local: Manifest,
     pub(crate) remote: Manifest,
-    /// Hash of the manifest as we read it. Before the new write, we check that
-    /// the cloud did not move ahead since then.
     pub(crate) revision: Option<String>,
 }
 
@@ -105,12 +84,6 @@ impl fmt::Display for Plan {
     }
 }
 
-/// Turns three states into a list of actions.
-///
-/// `base` is the state both sides agreed on last time. It tells "the note
-/// changed" from "the note was not touched". Without it, a delete on one
-/// device looks like a new note on another, and deleted notes would come back
-/// from the cloud forever.
 pub(crate) fn diff(
     local: &Manifest,
     remote: &Manifest,
@@ -124,14 +97,11 @@ pub(crate) fn diff(
         .collect()
 }
 
-/// The decision for one path from its three hashes. Notes and shared files
-/// use the same rules; only a conflict ends differently.
 enum Decision {
     Upload,
     Download,
     RemoveLocal,
     RemoveRemote,
-    /// Both sides changed, and the policy keeps both.
     Conflict,
 }
 
@@ -185,8 +155,6 @@ fn decide(
     base: &Manifest,
     policy: ConflictPolicy,
 ) -> Option<Action> {
-    // A locked note on either side keeps both versions: neither text can be
-    // read, so a side picked by the policy could lose a person's edit.
     let locked = [local, remote]
         .iter()
         .any(|manifest| manifest.get(id).is_some_and(|entry| entry.locked));
@@ -216,9 +184,6 @@ fn decide(
     })
 }
 
-/// An action on a shared file of `.kknow`.
-///
-/// A conflict is a merge, not two copies: see [`crate::shared`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileAction {
     Upload(String),
@@ -240,7 +205,6 @@ impl fmt::Display for FileAction {
     }
 }
 
-/// [`diff`] for the shared files.
 pub(crate) fn diff_files(
     local: &Manifest,
     remote: &Manifest,
@@ -272,13 +236,8 @@ pub(crate) fn diff_files(
         .collect()
 }
 
-/// This mark in a name shows a copy left by a conflict.
-///
-/// It is a separate constant because the list of conflicts to resolve comes
-/// from the files in the directory: a copy is a file and needs no other state.
 pub const CONFLICT_MARK: &str = " (conflict ";
 
-/// The mark of older versions. Copies with it are still conflict copies.
 const LEGACY_CONFLICT_MARK: &str = " (конфликт ";
 
 pub fn is_conflict_copy(id: &NoteId) -> bool {
@@ -286,11 +245,6 @@ pub fn is_conflict_copy(id: &NoteId) -> bool {
     (name.contains(CONFLICT_MARK) || name.contains(LEGACY_CONFLICT_MARK)) && name.ends_with(')')
 }
 
-/// Name of the copy for a conflict version: the note ID, [`CONFLICT_MARK`],
-/// the short hash, and `)`.
-///
-/// The name has a hash, not a time: the same contents give the same name. So a
-/// repeated sync does not make more copies, it reuses the existing one.
 fn conflict_copy(id: &NoteId, short_hash: &str) -> NoteId {
     NoteId::parse(&format!("{id}{CONFLICT_MARK}{short_hash})"))
         .expect("the copy name differs from the original only by a suffix")
@@ -450,7 +404,6 @@ mod tests {
                 "{policy:?}: {actions:?}"
             );
         }
-        // A remote delete does not win over a local edit of a locked note.
         assert_eq!(
             diff(&local, &manifest(&[]), &base, ConflictPolicy::PreferRemote),
             [Action::Upload(id("Diary"))]

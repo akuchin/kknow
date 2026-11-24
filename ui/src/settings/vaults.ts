@@ -1,5 +1,3 @@
-/** The "Vaults" section: the vault list, the settings and statistics of one vault. */
-
 import { open } from "@tauri-apps/plugin-dialog";
 
 import {
@@ -17,34 +15,20 @@ import { encryptionSection } from "./encryption";
 import { state, view } from "./state";
 import { draftsGit, gitForm, pickFolder, s3Form, saveSync, switchProvider } from "./sync-form";
 
-/** Label colors: the same set as in the vault registry. */
 const COLORS = ["blue", "violet", "amber", "red", "green", "teal"];
 
-/** Auto sync intervals in minutes. */
 const INTERVALS = [0, 5, 15, 60];
 
-/** The vault open in the "Vaults" section. */
 let picked: string | null = null;
 
-/** The labels field had the focus before the redraw: give it back. */
 let labelFocus = false;
 
-/** A button is down: a redraw now would lose its click. */
 let pointerHeld = false;
 document.addEventListener("pointerdown", () => (pointerHeld = true), true);
 document.addEventListener("pointerup", () => (pointerHeld = false), true);
 
-/** The "Last sync" text on the right. An event updates it, not a redraw. */
 let lastSyncHint: HTMLElement | null = null;
 
-/**
- * Vaults section: the list on the left, the selected vault settings on the
- * right.
- *
- * The whole section redraws only when the vault list changes: add, remove,
- * rename. Sync state comes as an event and changes only the text. Otherwise
- * the panel would flicker and lose typed field values.
- */
 export async function renderVaults(): Promise<void> {
   lastSyncHint = null;
   await refreshVaults();
@@ -119,7 +103,6 @@ export async function renderVaults(): Promise<void> {
   if (vault) await renderVaultDetails(details, vault);
 }
 
-/** Updates in place what depends on the sync state. */
 export function repaintVaults(): void {
   for (const vault of state.vaults) {
     const button = view.body.querySelector<HTMLElement>(
@@ -156,7 +139,6 @@ function toneOf(vault: VaultView): string {
   return "ready";
 }
 
-/** Settings of one vault: name, label, path, sync, statistics. */
 async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<void> {
   const head = document.createElement("div");
   head.className = "settings-vault-head";
@@ -173,8 +155,6 @@ async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<
   const finder = document.createElement("button");
   finder.className = "ghost";
   finder.textContent = t("settings.vaults.finder");
-  // Show the vault selected in the list, not the active one: this window
-  // configures what the user looks at.
   finder.onclick = () => void api.revealNote(undefined, vault.id).catch(console.error);
 
   const names = document.createElement("div");
@@ -183,7 +163,6 @@ async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<
   head.append(names, finder);
   page.append(head);
 
-  // Label: the set is fixed, so it is a row of circles, not a color field.
   const colors = document.createElement("div");
   colors.className = "settings-colors";
   for (const color of COLORS) {
@@ -204,12 +183,6 @@ async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<
   await renderVaultStats(page, vault);
 }
 
-/**
- * Text labels as chips, like in the MCP float. A chip has a cross to remove
- * it, the field after the chips adds a new one: Enter, a space or a comma
- * ends the word. Labels of the other vaults come after the field as dashed
- * chips: a click adds one, so a group gets the same spelling everywhere.
- */
 function labelChips(vault: VaultView): HTMLElement {
   const box = document.createElement("div");
   box.className = "settings-labels";
@@ -238,7 +211,6 @@ function labelChips(vault: VaultView): HTMLElement {
   input.spellcheck = false;
   const typed = (): string[] => {
     const added = input.value.split(/[\s,#]+/).filter(Boolean);
-    // The redraw removes the field, and its blur must not save twice.
     input.value = "";
     return added;
   };
@@ -251,10 +223,6 @@ function labelChips(vault: VaultView): HTMLElement {
       save(vault.labels.slice(0, -1));
     }
   };
-  // The focus left with a word in the field: save it, but redraw only after
-  // the pointer is up. An earlier redraw would replace the button under the
-  // pointer, and the click that took the focus (on another vault, say) would
-  // be lost.
   input.onblur = () => {
     const added = typed();
     if (added.length === 0) return;
@@ -279,7 +247,6 @@ function labelChips(vault: VaultView): HTMLElement {
     offer.className = "settings-label settings-label-offer";
     offer.textContent = `+#${label}`;
     offer.title = t("settings.vaults.labels.add", { label });
-    // The field would commit its text on blur first and lose this click.
     offer.onmousedown = (event) => event.preventDefault();
     offer.onclick = () => save([...vault.labels, label]);
     box.append(offer);
@@ -323,8 +290,6 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
   if (!remote) return;
 
   if (remote.provider.kind === "git") {
-    // Git syncs by hand and keeps both versions in a conflict, so it has no
-    // interval and no policy rows.
     page.append(gitForm(vault, remote));
   } else if (remote.provider.kind === "folder") {
     const folder = document.createElement("button");
@@ -351,7 +316,6 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
   page.append(last);
 }
 
-/** Auto sync and the conflict policy: the rules of a folder or a bucket. */
 function renderSyncRules(page: HTMLElement, vault: VaultView, remote: SyncSettings): void {
   page.append(
     row(
@@ -385,7 +349,6 @@ function renderSyncRules(page: HTMLElement, vault: VaultView, remote: SyncSettin
   );
 }
 
-/** When the vault last synced. */
 function describeLastSync(id: string | null): string {
   const at = id ? state.statuses.get(id)?.at : undefined;
   return at ? new Date(at).toLocaleString(locale) : t("settings.vaults.lastSync.never");
@@ -420,7 +383,6 @@ async function renderVaultStats(page: HTMLElement, vault: VaultView): Promise<vo
   }
 }
 
-/** Human-readable size: bytes become KB and MB. */
 function formatSize(bytes: number): string {
   if (bytes < 1024) return t("settings.vaults.bytes", { count: bytes });
   const value = (size: number) =>

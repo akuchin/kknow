@@ -1,5 +1,3 @@
-// Checks the diff of an agent proposal (`src/word-diff.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

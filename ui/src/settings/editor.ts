@@ -1,5 +1,3 @@
-/** The "Editor" section: the default mode, line numbers and font size. */
-
 import type { ViewMode } from "../api";
 import { t } from "../i18n";
 import { MODES } from "../note-mode";

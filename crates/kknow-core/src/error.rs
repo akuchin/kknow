@@ -47,12 +47,6 @@ impl Error {
     }
 }
 
-/// The text of an input or output error, by its kind.
-///
-/// A new user meets these first: a vault in a folder that macOS does not let
-/// the app read, a cloud folder of a disk that is not connected. "os error
-/// 13" says nothing to them, so the common kinds get their own words. The
-/// window has its own texts for the same kinds (`src-tauri/src/errors.rs`).
 pub fn io_text(path: &std::path::Path, source: &std::io::Error) -> String {
     use std::io::ErrorKind;
     let path = path.display();

@@ -1,5 +1,3 @@
-// Tests for pasted image names (`src/attachment-name.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

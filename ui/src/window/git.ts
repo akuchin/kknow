@@ -1,12 +1,3 @@
-// The changes view of a git vault: what is staged, what is changed, the
-// commit message, the sync button and the diff of the picked file.
-//
-// It covers the editor and the preview, as the trash view does: a narrow list
-// on the left and the diff on the right, which needs the width. The view asks
-// the core for the state each time it opens and after each action; it keeps
-// only the picked file and the message. The diff is plain `git diff` text for
-// now. The module does not touch the DOM on import.
-
 import { api, type ChangeKind, type GitChange, type GitStatus } from "../api";
 import { iconMarkup } from "../icons";
 import { describeError, t, type Key } from "../i18n";
@@ -15,40 +6,30 @@ import { flushPendingSave, openNote } from "./note";
 import { state } from "./state";
 import { fail, setStatus } from "./status";
 
-/** Steps of higher zones that the panel starts. */
 export interface GitHooks {
-  /** The full sync of the vault: fetch, merge, push. */
   sync: () => Promise<void>;
-  /** The trash view takes the same place: the two do not stack. */
   closeTrashView: () => void;
-  /** A discard puts a file into the trash: the sidebar shows its count. */
   refreshTree: (vaultId: string) => Promise<void>;
 }
 
 let hooks: GitHooks;
 
-/** The message survives a redraw: the list redraws after each click. */
 let message = "";
 
-/** The file whose diff is shown: its side and path. */
 let picked: { side: Side; path: string } | null = null;
 
-/** Only the last diff request paints: a fast second click wins. */
 let diffRequest = 0;
 
 type Side = "staged" | "unstaged";
 
-/** Takes the hooks and wires the fixed buttons. */
 export function initGit(calls: GitHooks): void {
   hooks = calls;
   el.gitHide.onclick = () => hideGit();
   el.gitSync.onclick = () => void hooks.sync();
-  // A note saved here or a file changed outside: the list must follow.
   document.addEventListener("kknow:note-saved", () => void refreshGit());
   window.addEventListener("focus", () => void refreshGit());
 }
 
-/** Shows or hides the view. */
 export async function toggleGit(): Promise<void> {
   if (!el.gitView.hidden) {
     hideGit();
@@ -57,14 +38,12 @@ export async function toggleGit(): Promise<void> {
   await showGit();
 }
 
-/** Opens the view with a fresh state. */
 export async function showGit(): Promise<void> {
   hooks.closeTrashView();
   el.gitView.hidden = false;
   await refreshGit();
 }
 
-/** Closes the view; the open note under it shows again. */
 export function hideGit(): void {
   if (el.gitView.hidden) return;
   el.gitView.hidden = true;
@@ -73,7 +52,6 @@ export function hideGit(): void {
   el.gitDiffBody.replaceChildren();
 }
 
-/** Asks the core again, if the view is open. */
 export async function refreshGit(): Promise<void> {
   if (el.gitView.hidden) return;
   try {
@@ -83,7 +61,6 @@ export async function refreshGit(): Promise<void> {
   }
 }
 
-/** Runs one action and paints the state that it returns. */
 async function act(action: () => Promise<GitStatus>): Promise<void> {
   try {
     paint(await action());
@@ -123,8 +100,6 @@ function paint(status: GitStatus): void {
     commitForm(staged.length > 0),
   );
 
-  // The picked file may have moved to the other list or gone with a commit.
-  // Then the diff follows it, or the first file of the lists.
   const sides: [Side, GitChange[]][] = [
     ["staged", staged],
     ["unstaged", unstaged],
@@ -137,7 +112,6 @@ function paint(status: GitStatus): void {
   pick({ side: next[0], change });
 }
 
-/** Marks a file in the lists and shows its diff; `null` clears the diff. */
 function pick(target: { side: Side; change: GitChange } | null): void {
   picked = target && { side: target.side, path: target.change.path };
   for (const item of el.gitBody.querySelectorAll<HTMLLIElement>("li[data-path]")) {
@@ -178,10 +152,6 @@ async function paintDiff(target: { side: Side; change: GitChange } | null): Prom
   el.gitDiffBody.scrollTop = 0;
 }
 
-/**
- * One span per line, with a class for the kind: added, removed, a hunk
- * header or the file header. Text nodes only, so the file text is never HTML.
- */
 function diffLines(text: string): Node[] {
   const lines = text.replace(/\n$/, "").split("\n");
   if (text.trim() === "") return [muted(t("panel.git.noDiff"))];
@@ -210,10 +180,6 @@ function muted(text: string): HTMLElement {
   return span;
 }
 
-/**
- * One list: the staged files with "−", or the changed ones with "+". The
- * header button moves the whole list.
- */
 function group(title: Key, changes: GitChange[], side: Side): HTMLElement {
   const section = document.createElement("section");
   section.className = "git-group";
@@ -243,7 +209,6 @@ function group(title: Key, changes: GitChange[], side: Side): HTMLElement {
   return section;
 }
 
-/** The one-letter mark of a change, as in `git status --short`. */
 const MARKS: Record<ChangeKind, string> = {
   added: "A",
   modified: "M",
@@ -265,8 +230,6 @@ function changeItem(change: GitChange, side: Side): HTMLLIElement {
   mark.textContent = MARKS[kind];
   mark.title = t(`panel.git.kind.${kind}` as Key);
 
-  // A click shows the diff. A double click on a note opens it: the view
-  // closes, as it does for any note the user opens.
   const note = kind === "deleted" ? null : noteOf(change.path);
   const name = document.createElement("button");
   name.className = "git-path";
@@ -286,7 +249,6 @@ function changeItem(change: GitChange, side: Side): HTMLLIElement {
       side === "staged" ? api.gitUnstage([change.path]) : api.gitStage([change.path]),
     );
 
-  // A conflict is resolved by a merge, not thrown away.
   const discard = document.createElement("button");
   discard.className = "ghost bare git-move git-discard";
   discard.title = t("panel.git.discard");
@@ -299,14 +261,9 @@ function changeItem(change: GitChange, side: Side): HTMLLIElement {
   return item;
 }
 
-/**
- * Throws away the changes of one file after a confirmation. The core moves
- * the current version to the trash first, so the click can be undone there.
- */
 async function discardChange(change: GitChange, side: Side): Promise<void> {
   const question = side === "staged" ? "panel.git.discard.staged" : "panel.git.discard.unstaged";
   if (!window.confirm(t(question, { name: change.path }))) return;
-  // A pending save after the discard would write the old text back.
   await flushPendingSave();
   await act(async () => {
     const status = await api.gitDiscard(change.path, change.from ?? null, side === "staged");
@@ -316,13 +273,11 @@ async function discardChange(change: GitChange, side: Side): Promise<void> {
   });
 }
 
-/** A vault note opens by its ID: the path without `.md`. */
 function noteOf(path: string): string | null {
   const match = /^(.*)\.(md|markdown)$/i.exec(path);
   return match ? match[1] : null;
 }
 
-/** The message and the button. Mod+Enter in the field commits too. */
 function commitForm(hasStaged: boolean): HTMLElement {
   const form = document.createElement("form");
   form.className = "git-commit";

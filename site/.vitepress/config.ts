@@ -1,8 +1,5 @@
 import { defineConfig } from "vitepress";
 
-// GitHub Pages serves the site on the custom domain https://kknow.kuca.dev/,
-// from the root. Without the domain, Pages would serve it from
-// https://akuchin.github.io/kknow/: then set `KKNOW_SITE_BASE=/kknow/`.
 const base = process.env.KKNOW_SITE_BASE ?? "/";
 
 export default defineConfig({
@@ -86,8 +83,6 @@ export default defineConfig({
     },
   },
   markdown: {
-    // A `mermaid` code block becomes a diagram, drawn in the browser by
-    // `theme/Mermaid.vue`.
     config(md) {
       const fence = md.renderer.rules.fence!;
       md.renderer.rules.fence = (tokens, index, options, env, self) => {
@@ -99,7 +94,5 @@ export default defineConfig({
       };
     },
   },
-  // Mermaid is one large chunk, and the site loads it only on pages with
-  // diagrams.
   vite: { build: { chunkSizeWarningLimit: 4000 } },
 });

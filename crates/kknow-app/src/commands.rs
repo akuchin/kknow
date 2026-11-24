@@ -1,23 +1,13 @@
-//! Resolves a command target from the name given outside.
-//!
-//! The runner lives in `kknow-run` and knows nothing about notes. This module
-//! does the reverse step: a string from a menu or a CLI argument becomes a
-//! [`Target`] with an absolute path. The code is shared because the window and
-//! the CLI must resolve targets the same way.
-
 use std::path::{Path, PathBuf};
 
 use kknow_run::{CommandSet, Target, TargetKind};
 
 use crate::{Error, Result, Workspace};
 
-/// The commands file is next to the vault registry: it is a machine setting,
-/// not a notes directory setting. See `kknow_run::spec` for the reason.
 pub fn config_path() -> Option<PathBuf> {
     crate::vaults::config_dir().map(CommandSet::path)
 }
 
-/// Commands of this machine.
 pub fn load() -> Result<CommandSet> {
     let Some(path) = config_path() else {
         return Ok(CommandSet::default());
@@ -25,22 +15,16 @@ pub fn load() -> Result<CommandSet> {
     Ok(CommandSet::load(&path)?)
 }
 
-/// The whole vault.
 pub fn vault_target(workspace: &Workspace, id: &str, name: &str) -> Target {
     Target::vault(id, name, workspace.root())
 }
 
-/// A note by ID, in the same form that `kknow show` and the window accept.
 pub fn note_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> Result<Target> {
     let note = workspace
         .find(raw)
         .ok_or_else(|| Error::UnknownTarget(raw.to_string()))?
         .clone();
 
-    // Note metadata is how a note passes parameters to its commands: a wiki
-    // page number, a space name, anything else. Frontmatter and comments are
-    // the two sources, but parsing already merged them. They come from the
-    // parsed note, so there is no disk read here.
     let fields = workspace
         .parsed(&note)
         .map(|parsed| parsed.fields.clone())
@@ -49,8 +33,6 @@ pub fn note_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> Re
     Ok(Target {
         kind: TargetKind::Note,
         path: workspace.path_for(&note),
-        // `match` patterns describe files, so compare with the file path.
-        // Otherwise `**/*.md` matches nothing.
         relative: format!("{note}.md"),
         note: Some(note.as_str().to_string()),
         fields,
@@ -60,7 +42,6 @@ pub fn note_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> Re
     })
 }
 
-/// A folder inside the notes directory; the path is relative to its root.
 pub fn folder_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> Result<Target> {
     let relative = relative_folder(raw).ok_or_else(|| Error::UnknownTarget(raw.to_string()))?;
     let path = workspace.root().join(&relative);
@@ -74,8 +55,6 @@ pub fn folder_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> 
         path,
         relative,
         note: None,
-        // Frontmatter belongs to a note, not to a folder. Collecting it from all
-        // notes inside would need a rule for which note wins.
         fields: Default::default(),
         vault_id: id.to_string(),
         vault_name: name.to_string(),
@@ -83,14 +62,6 @@ pub fn folder_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> 
     })
 }
 
-/// A standalone file: markdown opened without a vault.
-///
-/// The caller checks that the person opened this file (the window keeps the
-/// list). Here the file is read only for its metadata: a `README.md` passes a
-/// page number to its command the same way a note does.
-///
-/// The path becomes absolute: the CLI gets `README.md` as typed, and the
-/// script needs a full `$KKNOW_PATH` and a real folder to start in.
 pub fn file_target(path: &Path) -> Result<Target> {
     let path = path
         .canonicalize()
@@ -99,10 +70,6 @@ pub fn file_target(path: &Path) -> Result<Target> {
     Ok(Target::file(path, kknow_index::parse(&content).fields))
 }
 
-/// Target by kind and string. Without a kind, guess the way the CLI needs.
-///
-/// Notes come first: `kknow run push Docs` usually means the note `Docs`, not
-/// the folder with the same name. Use an explicit `--folder` to resolve this.
 pub fn resolve(
     workspace: &Workspace,
     id: &str,
@@ -120,11 +87,6 @@ pub fn resolve(
     }
 }
 
-/// Folder path from the root: no `..`, no absolute paths, no empty parts.
-///
-/// The string comes from the window, which draws the tree from core data. We
-/// still check it: the command gets this path as its working directory, and
-/// `../..` would send it outside the vault.
 fn relative_folder(raw: &str) -> Option<String> {
     let path = Path::new(raw);
     if path.is_absolute() {
@@ -142,10 +104,6 @@ fn relative_folder(raw: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// Checks that the path is inside the root and is a directory.
-///
-/// Compare canonical paths: a symlink that points outside looks nested until
-/// the system resolves it.
 fn inside(root: &Path, path: &Path) -> bool {
     let (Ok(root), Ok(path)) = (root.canonicalize(), path.canonicalize()) else {
         return false;
@@ -195,8 +153,6 @@ mod tests {
         assert_eq!(target.note.as_deref(), Some("Docs/Внутри/Свод"));
     }
 
-    /// A command parameter belongs to the file, not to the manifest: the page
-    /// number is in the note itself and goes from there to the command.
     #[test]
     fn a_note_brings_its_frontmatter_fields_along() {
         let (_dir, workspace) = workspace();
@@ -229,7 +185,6 @@ mod tests {
                 "{raw}"
             );
         }
-        // A note is not a folder either: target kinds do not replace each other.
         assert!(folder_target(&workspace, "work", "Работа", "Index.md").is_err());
     }
 
@@ -277,8 +232,6 @@ mod tests {
     fn an_explicit_kind_is_not_guessed_around() {
         let (_dir, workspace) = workspace();
 
-        // `Docs` is a folder, so it must not resolve as a note: the target kind
-        // decides which commands apply to it.
         assert!(
             resolve(
                 &workspace,

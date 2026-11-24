@@ -1,10 +1,3 @@
-// The MCP lamp in the status bar and its float.
-//
-// The app runs an MCP server on 127.0.0.1 (`src-tauri/src/mcp_http.rs`). The
-// lamp shows its state, and a click opens the float: the switch, the port and
-// the setup for an agent. The module does not touch the DOM on import:
-// `main.ts` calls `initMcp` after the status bar exists.
-
 import { api, type McpStatus, type VaultView } from "../api";
 import { t } from "../i18n";
 import { iconMarkup } from "../icons";
@@ -14,24 +7,15 @@ import { state } from "./state";
 import { fail, status } from "./status";
 import { copyText } from "./util";
 
-/** The float element; `initMcp` creates it. */
 export let mcpFloat: HTMLElement;
 
-/** The last state of the server. `null` until the core answers. */
 let server: McpStatus | null = null;
 
-/** Which vaults the agent gets: the active one, all, or the chosen labels. */
 let mode: "vault" | "all" | "labels" = "vault";
 let chosen: string[] = [];
 
-/**
- * The vault list as the float last read it. Labels change in the settings
- * window, and that window does not tell this one, so the float reads the list
- * itself on each open. It does not write the store: `vaults.ts` owns it.
- */
 let vaults: VaultView[] = [];
 
-/** Builds the float and asks for the server state once, for the lamp. */
 export function initMcp(): void {
   mcpFloat = document.createElement("section");
   mcpFloat.id = "mcp-float";
@@ -56,16 +40,13 @@ function take(next: McpStatus): void {
   status.setMcp(next);
 }
 
-/** Shows or hides the float. The lamp toggles it. */
 export function showMcpSetup(show: boolean): void {
   mcpFloat.hidden = !show;
   status.setMcpOpen(show);
   if (!show) return;
-  // The two floats sit in the same corner.
   showRunOutput(false);
   vaults = state.vaults;
   render();
-  // Labels can change in the settings window while the float is closed.
   void Promise.all([refresh(), readVaults()]).then(render);
 }
 
@@ -73,11 +54,9 @@ async function readVaults(): Promise<void> {
   try {
     vaults = await api.listVaults();
   } catch {
-    // The list from the store is enough.
   }
 }
 
-/** The switch or the port changed: the core saves them and restarts. */
 async function configure(enabled: boolean, port: number): Promise<void> {
   try {
     take(await api.setMcp(enabled, port));
@@ -107,12 +86,8 @@ function render(): void {
   mcpFloat.append(intro);
 
   const vault = state.vault;
-  // Labels of all vaults, not only the active one: a label takes vaults from
-  // the whole registry, and the active vault may have none of them. Labels
-  // of the active vault go first.
   const ordered = [...vaults].sort((a, b) => Number(b.id === vault?.id) - Number(a.id === vault?.id));
   const labels = [...new Set(ordered.flatMap((entry) => entry.labels))];
-  // A label can go away in the settings while the float is closed.
   chosen = chosen.filter((label) => labels.includes(label));
   if (mode === "labels" && chosen.length === 0) mode = "vault";
   if (mode === "vault" && !vault) mode = "all";
@@ -135,7 +110,6 @@ function render(): void {
   mcpFloat.append(tools);
 }
 
-/** The switch, the port and the state line. */
 function controls(current: McpStatus): HTMLElement {
   const block = document.createElement("div");
   block.className = "mcp-controls";
@@ -193,13 +167,6 @@ function controls(current: McpStatus): HTMLElement {
   return block;
 }
 
-/**
- * The choice of what the agent gets: this vault, all vaults, or the vaults
- * with one of the chosen labels. Labels are a better setup when there are
- * several vaults: one line for a group, and it does not break on a rename.
- *
- * The labels are checkboxes, as `label` repeats in the address.
- */
 function scopes(labels: string[], hasVault: boolean): HTMLElement {
   const block = document.createElement("div");
   block.className = "mcp-scope";
@@ -256,7 +223,6 @@ function scopes(labels: string[], hasVault: boolean): HTMLElement {
   return block;
 }
 
-/** A heading, the text in monospace and a copy button. */
 function snippet(title: string, text: string): HTMLElement {
   const block = document.createElement("div");
   block.className = "mcp-snippet";

@@ -1,10 +1,3 @@
-// The entry point of the main window: `boot` starts the zones of
-// `window/` and subscribes to the events of the core.
-//
-// The zones live in `window/`, one module each; see
-// `docs/refactor-ui-2026.md`. A lower zone reaches a higher one only through
-// a hook that `boot` passes to its `init`.
-
 import {
   api,
   onCloseRequested,
@@ -64,11 +57,8 @@ import {
 } from "./window/vaults";
 
 async function boot(): Promise<void> {
-  // The browser uses the document language for hyphenation and word selection.
   document.documentElement.lang = locale;
 
-  // Zones start in the old order: markup, editor, floats, status bar; the tree
-  // follows the note before the commands; task boxes take clicks before links.
   initDom();
   initEditor({
     onChange: onEdit,
@@ -104,7 +94,6 @@ async function boot(): Promise<void> {
   initCommands();
   initFiles();
   initTrash({ renderTree, refreshTree });
-  // A note the user opens replaces the trash note and the changes view.
   const closeViews = () => (closeTrashView(), hideGit());
   initNote({ closeViews, refreshFiles, refreshTree, opened: rememberOpened, switchVault });
   initLockView();
@@ -118,59 +107,34 @@ async function boot(): Promise<void> {
   initKeys();
 
   if (await loadSettings()) return;
-  // The window was built with the keys from the `localStorage` copy. The file
-  // differs from it only after a hand edit or on the first start.
   if (await refreshKeymap()) return;
 
   setMode(defaultMode(), { remember: false });
   restoreSidebar();
   status.setVault(null);
   describeRemote();
-  // Until a vault opens, only built-in themes exist: the others live in the
-  // vault.
   pickTheme();
   void onVaultChanged(({ vault: changed, updated, removed }) =>
     void onExternalChange(changed, updated, removed),
   );
-  // The watcher can miss an edit (laptop sleep, network disk), so the note is
-  // checked against the disk again when the window gets focus.
   window.addEventListener("focus", () => void syncWithDisk());
-  // The user went to another app: the note goes to disk now, not after the
-  // timer. Sync, git and the CLI then see what the user sees.
   window.addEventListener("blur", () => void flushPendingSave());
-  // A close does not wait for the timer either. The handler runs before the
-  // window goes away; a failed save must not keep the window open.
   void onCloseRequested(() => flushPendingSave().catch(fail));
-  // A hand edit of `keybindings.json` shows when the user comes back.
   window.addEventListener("focus", () => void refreshKeymap());
-  // Names, colors and labels change in the settings window.
   window.addEventListener("focus", () => void refreshVaultsOnFocus());
   void onKeymapChanged(({ keys }) => void applyKeymap(keys));
-  // Sync reports itself: progress, conflicts and failures come as events,
-  // also from auto-sync that nobody started by hand.
   void onSyncStatus(takeStatus);
-  // The update downloads in the background. The window asks once, because
-  // the download can finish before the window loads, and then follows events.
   void api.updateStatus().then(showUpdate, console.error);
   void onUpdateStatus(showUpdate);
-  // Settings are shared with the settings window: language, theme and editor
-  // behavior change there and arrive here as events.
   void onSettingsChanged(applySettings);
-  // The core already opened a folder from outside (`open -a kknow ~/notes`).
   void onVaultOpened((id) => void switchVault(id));
-  // The core already stored a file opened from outside (a double click on `.md`).
   void onFileOpened(() => void takeOpened());
-  // Folders and files dropped on the window; see `takeDrop`.
   void onDragDrop(takeDrop);
-  // "2 min ago" gets old without any event, so the segment redraws every minute.
   window.setInterval(describeRemote, 60000);
 
-  // Read this before the vault: opening a vault note erases the key.
   const lastFile = localStorage.getItem(LAST_FILE);
   try {
     await refreshVaults();
-    // The vault list is already the tree: an empty list shows a prompt to add
-    // a folder, not a blank space.
     renderTree();
     await refreshFiles();
 
@@ -184,15 +148,10 @@ async function boot(): Promise<void> {
     fail(error);
   }
 
-  // A double click on `.md` at cold start: the request waited for the window.
-  // Without one, the window returns to the separate file it closed on. The
-  // core already forgot a missing file, so it is not in the list.
   if (!(await takeOpened()) && lastFile && state.files.some((entry) => entry.path === lastFile)) {
     await openFileView(lastFile);
   }
 
-  // Other expanded branches load last: the active vault matters more, and
-  // they must not show as empty before that.
   await restoreExpanded();
 }
 

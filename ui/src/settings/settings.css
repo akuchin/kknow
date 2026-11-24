@@ -1,7 +1,3 @@
-/* Settings window: sections on the left, content on the right, and for vaults
-   a list between them. Variables and buttons match the main window: it is one
-   app, and it must look the same. */
-
 #settings {
   display: grid;
   grid-template-columns: 186px 1fr;
@@ -41,7 +37,6 @@
   font-weight: 500;
 }
 
-/* App version at the bottom of the list, where people look for it. */
 .settings-version {
   margin-top: auto;
   padding: 8px 9px;
@@ -71,7 +66,6 @@
   margin-top: 18px;
 }
 
-/* Settings row: label on the left, field on the right. */
 .settings-row {
   display: flex;
   align-items: center;
@@ -110,15 +104,12 @@
   padding: 5px 9px;
 }
 
-/* Toggle switch: it shows its state, not only a label next to it. */
-/* Default font size: the same − / slider / + / value as in the status bar. */
 .settings-scale {
   display: inline-flex;
   align-items: center;
   gap: 2px;
 }
 
-/* The general row input look would draw a field box around the slider. */
 .settings-row input.scale-slider {
   width: 120px;
   padding: 0;
@@ -126,7 +117,6 @@
   border-radius: 0;
 }
 
-/* Fixed width: from 90% to 100% the slider must not move. */
 .settings-scale-value {
   justify-content: flex-end;
   min-width: 52px;
@@ -175,9 +165,6 @@
   color: var(--danger);
 }
 
-/* Sections with a list on the left and the selected item on the right: vaults and commands.
-   Each column scrolls on its own: a long command form must not take the list
-   and its "add" button out of view. */
 .settings-vaults,
 .settings-commands {
   display: grid;
@@ -254,7 +241,6 @@
   white-space: nowrap;
 }
 
-/* Sync state dot, the same as in the main window status bar. */
 .settings-vault .status-dot[data-tone="ready"] {
   background: var(--ok);
 }
@@ -293,7 +279,6 @@
   min-width: 0;
 }
 
-/* The vault name is edited in place: one line does not need a dialog. */
 .settings-name {
   font: inherit;
   font-size: 14px;
@@ -315,8 +300,6 @@
   outline: none;
 }
 
-/* In the command form the label sits under a field title, like the other
-   fields. There it must look like a field, not like a heading. */
 .settings-field > .settings-name {
   font-size: 13px;
   font-weight: 500;
@@ -378,7 +361,6 @@
   color: var(--text-muted);
 }
 
-/* Shortcut help: two columns, the shortcut and what it does. */
 .settings-subheading {
   margin: 16px 0 0;
   font-size: 11.5px;
@@ -407,7 +389,6 @@
   font-size: 11.5px;
 }
 
-/* A changed key stands out, so the reset button has a reason. */
 .settings-row.custom .settings-key-combo kbd {
   color: var(--text);
   border-color: var(--accent);
@@ -446,7 +427,6 @@
   margin-top: 14px;
 }
 
-/* S3 fields are rarely filled in, so they fold into a compact form. */
 .settings-s3 {
   display: flex;
   flex-direction: column;
@@ -487,20 +467,15 @@
   padding: 0;
 }
 
-/* The rows above set `display`, which beats the `hidden` attribute: the git
-   form hides the variable and the token rows that its sign-in does not use. */
 .settings-s3 [hidden] {
   display: none;
 }
 
-/* The address of a connected repository does not change: one vault is one
-   repository. */
 .settings-s3 input[readonly] {
   color: var(--text-muted);
   background: transparent;
 }
 
-/* The git form uses the S3 layout; its sign-in list is a select in a row. */
 .settings-s3 select {
   flex: 1;
   min-width: 0;
@@ -519,7 +494,6 @@
   font-size: 12px;
 }
 
-/* The recovery code: shown one time, so it must be easy to read and copy. */
 .settings-recovery-code {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -541,7 +515,6 @@
   flex: none;
 }
 
-/* A field and its button on one line: the path to git and "Find". */
 .settings-inline {
   display: flex;
   gap: 8px;
@@ -561,8 +534,6 @@
   padding: 5px 9px;
 }
 
-/* Command form. Fields use the full width: the script and the pattern list
-   need more than half a row, and "label left, field right" gives them half. */
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -601,7 +572,6 @@
   overflow-wrap: normal;
 }
 
-/* Toggles for targets and vaults: the selection is visible at once. */
 .settings-chips {
   display: flex;
   flex-wrap: wrap;
@@ -629,7 +599,6 @@
   border-color: var(--accent);
 }
 
-/* Command variables: name and value in one row, "add" below them. */
 .settings-env {
   display: flex;
   flex-direction: column;
@@ -655,8 +624,6 @@
   align-self: flex-start;
 }
 
-/* Help on the script environment. It is collapsed because it is not needed
-   every time, but it belongs here, next to the script field. */
 .settings-vars {
   margin: 10px 0 0;
   font-size: 12px;
@@ -697,7 +664,6 @@
   color: var(--text-muted);
 }
 
-/* Text labels of a vault: chips and a field for a new one, in one box. */
 .settings-labels {
   display: flex;
   flex-wrap: wrap;

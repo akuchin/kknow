@@ -1,7 +1,3 @@
-//! A thin wrapper over the core: open a vault, parse notes, show links.
-//!
-//! The CLI exists so that the core can grow and be tried without the GUI.
-
 use kknow_app::proposals::{EditState, Review, Status as ProposalStatus};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
@@ -29,7 +25,7 @@ mod mcp;
     about = "Markdown knowledge base: links, tags, structure"
 )]
 struct Cli {
-    /// Notes directory or vault name from the list (`kknow vaults`).
+    #[arg(help = "Notes directory or vault name from the list (`kknow vaults`)")]
     #[arg(long, short, global = true, env = "KKNOW_VAULT", default_value = ".")]
     vault: String,
 
@@ -39,148 +35,140 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// List notes.
+    #[command(about = "List notes")]
     List,
-    /// Show vault statistics.
+    #[command(about = "Show vault statistics")]
     Stats,
-    /// Show outgoing links of a note.
+    #[command(about = "Show outgoing links of a note")]
     Links { note: String },
-    /// Show notes that link to a note.
+    #[command(about = "Show notes that link to a note")]
     Backlinks { note: String },
-    /// List tags and their counts.
+    #[command(about = "List tags and their counts")]
     Tags,
-    /// List links to notes that do not exist.
+    #[command(about = "List links to notes that do not exist")]
     Broken,
-    /// List notes with no incoming links.
+    #[command(about = "List notes with no incoming links")]
     Orphans,
-    /// Show the parsed structure of a note.
+    #[command(about = "Show the parsed structure of a note")]
     Show { note: String },
-    /// Render a note to HTML.
+    #[command(about = "Render a note to HTML")]
     Render { note: String },
-    /// Create an empty note.
+    #[command(about = "Create an empty note")]
     New { name: String },
-    /// Lock a note with the vault password: the file becomes ciphertext.
-    ///
-    /// The password comes from `KKNOW_LOCK_PASSPHRASE` or a prompt. A vault
-    /// without a password gets one, and kknow prints the recovery code once.
+    #[command(
+        about = "Lock a note with the vault password: the file becomes ciphertext",
+        long_about = "Lock a note with the vault password: the file becomes ciphertext.\n\nThe password comes from `KKNOW_LOCK_PASSPHRASE` or a prompt. A vault without a password gets one, and kknow prints the recovery code once."
+    )]
     Lock { note: String },
-    /// Remove the lock of a note: the file becomes plain text again.
-    ///
-    /// The password or the recovery code comes from `KKNOW_LOCK_PASSPHRASE`
-    /// or a prompt.
+    #[command(
+        about = "Remove the lock of a note: the file becomes plain text again",
+        long_about = "Remove the lock of a note: the file becomes plain text again.\n\nThe password or the recovery code comes from `KKNOW_LOCK_PASSPHRASE` or a prompt."
+    )]
     Unlock { note: String },
-    /// Full-text search: `kknow search "tag:rust notes"`.
+    #[command(about = "Full-text search: `kknow search \"tag:rust notes\"`")]
     Search {
         query: Vec<String>,
-        /// Number of results to show.
+        #[arg(help = "Number of results to show")]
         #[arg(long, short, default_value_t = 10)]
         limit: usize,
     },
-    /// List themes found in the directory and their problems.
+    #[command(about = "List themes found in the directory and their problems")]
     Themes,
-    /// List vault bookmarks: `note:line  «name»  line text`.
+    #[command(about = "List vault bookmarks: `note:line  «name»  line text`")]
     Bookmarks,
-    /// Add or remove a bookmark on a note line: `kknow bookmark plan 12`.
-    ///
-    /// With `--name`, names the bookmark instead and sets it if needed:
-    /// `kknow bookmark plan 12 --name "summary"`. An empty name removes the name.
+    #[command(
+        about = "Add or remove a bookmark on a note line: `kknow bookmark plan 12`",
+        long_about = "Add or remove a bookmark on a note line: `kknow bookmark plan 12`.\n\nWith `--name`, names the bookmark instead and sets it if needed: `kknow bookmark plan 12 --name \"summary\"`. An empty name removes the name."
+    )]
     Bookmark {
         note: String,
-        /// Line number, starting from 1.
+        #[arg(help = "Line number, starting from 1")]
         line: usize,
-        /// Bookmark name.
+        #[arg(help = "Bookmark name")]
         #[arg(long)]
         name: Option<String>,
     },
-    /// List open tasks (`- [ ]`) of all notes: `note:line  text`.
+    #[command(about = "List open tasks (`- [ ]`) of all notes: `note:line  text`")]
     Tasks {
-        /// Also list done tasks, with `[x]` and `[ ]` before the text.
+        #[arg(help = "Also list done tasks, with `[x]` and `[ ]` before the text")]
         #[arg(long)]
         all: bool,
     },
-    /// Edits that agents proposed through MCP and that wait for review.
+    #[command(about = "Edits that agents proposed through MCP and that wait for review")]
     Proposals {
         #[command(subcommand)]
         action: Option<ProposalAction>,
     },
-    /// Vaults that kknow knows: the same list as in the window.
+    #[command(about = "Vaults that kknow knows: the same list as in the window")]
     Vaults {
         #[command(subcommand)]
         action: Option<VaultAction>,
     },
-    /// Commands attached to notes, folders, and vaults.
-    ///
-    /// Without a target, shows the whole file with the scope of each command.
-    /// With a target, shows only the commands for it.
+    #[command(
+        about = "Commands attached to notes, folders, and vaults",
+        long_about = "Commands attached to notes, folders, and vaults.\n\nWithout a target, shows the whole file with the scope of each command. With a target, shows only the commands for it."
+    )]
     Commands {
-        /// Note or folder. Without it, the target is the whole vault.
+        #[arg(help = "Note or folder. Without it, the target is the whole vault")]
         target: Option<String>,
-        /// Target kind, if the name matches both a note and a folder.
+        #[arg(help = "Target kind, if the name matches both a note and a folder")]
         #[arg(long, value_enum)]
         kind: Option<TargetChoice>,
-        /// A markdown file outside any vault, as a note target.
+        #[arg(help = "A markdown file outside any vault, as a note target")]
         #[arg(long, conflicts_with_all = ["target", "kind"])]
         file: Option<PathBuf>,
-        /// Write the shipped commands to the file if it does not exist yet.
+        #[arg(help = "Write the shipped commands to the file if it does not exist yet")]
         #[arg(long)]
         example: bool,
     },
-    /// Run a command on a note, folder, or vault.
-    ///
-    /// The script gets the target path in `KKNOW_PATH`, and also `KKNOW_NOTE`,
-    /// `KKNOW_RELATIVE`, `KKNOW_VAULT`, and others (`kknow commands`).
-    /// The exit code of the command becomes the exit code of kknow.
+    #[command(
+        about = "Run a command on a note, folder, or vault",
+        long_about = "Run a command on a note, folder, or vault.\n\nThe script gets the target path in `KKNOW_PATH`, and also `KKNOW_NOTE`, `KKNOW_RELATIVE`, `KKNOW_VAULT`, and others (`kknow commands`). The exit code of the command becomes the exit code of kknow."
+    )]
     Run {
-        /// Command ID from `kknow commands`.
+        #[arg(help = "Command ID from `kknow commands`")]
         command: String,
-        /// Note or folder. Without it, the target is the whole vault.
+        #[arg(help = "Note or folder. Without it, the target is the whole vault")]
         target: Option<String>,
-        /// Target kind, if the name matches both a note and a folder.
+        #[arg(help = "Target kind, if the name matches both a note and a folder")]
         #[arg(long, value_enum)]
         kind: Option<TargetChoice>,
-        /// A markdown file outside any vault, as a note target.
+        #[arg(help = "A markdown file outside any vault, as a note target")]
         #[arg(long, conflicts_with_all = ["target", "kind"])]
         file: Option<PathBuf>,
     },
-    /// Deleted notes and folders: list, restore, empty.
-    ///
-    /// Entries older than 30 days go away on the next delete.
+    #[command(
+        about = "Deleted notes and folders: list, restore, empty",
+        long_about = "Deleted notes and folders: list, restore, empty.\n\nEntries older than 30 days go away on the next delete."
+    )]
     Trash {
         #[command(subcommand)]
         action: Option<TrashAction>,
     },
-    /// Watch the directory and print changes.
+    #[command(about = "Watch the directory and print changes")]
     Watch,
-    /// Serve vaults to an agent over MCP on stdin and stdout.
-    ///
-    /// The agent starts the process itself, for example
-    /// `claude mcp add kknow -- kknow mcp --vault notes`. With `--label`, the
-    /// server takes all vaults with the label instead of `--vault`:
-    /// `kknow mcp --label work`.
+    #[command(
+        about = "Serve vaults to an agent over MCP on stdin and stdout",
+        long_about = "Serve vaults to an agent over MCP on stdin and stdout.\n\nThe agent starts the process itself, for example `claude mcp add kknow -- kknow mcp --vault notes`. With `--label`, the server takes all vaults with the label instead of `--vault`: `kknow mcp --label work`."
+    )]
     Mcp {
-        /// Vault label from `kknow vaults`. Repeat it for several labels: a
-        /// vault needs one of them.
+        #[arg(help = "Vault label from `kknow vaults`. Repeat it for several labels: a vault needs one of them")]
         #[arg(long = "label")]
         labels: Vec<String>,
     },
-    /// Sync the vault with S3-compatible storage, a shared folder or a git
-    /// repository.
+    #[command(about = "Sync the vault with S3-compatible storage, a shared folder or a git repository")]
     Sync {
-        /// Show the plan and change nothing.
+        #[arg(help = "Show the plan and change nothing")]
         #[arg(long)]
         dry_run: bool,
-        /// Which version wins if both sides changed a note.
-        /// The default comes from the directory settings.
+        #[arg(help = "Which version wins if both sides changed a note. The default comes from the directory settings")]
         #[arg(long, value_enum)]
         on_conflict: Option<OnConflict>,
-        /// Sync through a shared folder, for example a cloud drive folder.
+        #[arg(help = "Sync through a shared folder, for example a cloud drive folder")]
         #[arg(long, env = "KKNOW_FOLDER", conflicts_with = "bucket")]
         folder: Option<PathBuf>,
         #[command(flatten)]
         s3: S3Args,
-        /// Encryption of the storage. Without a subcommand, sync. An
-        /// encrypted storage needs the passphrase: `KKNOW_SYNC_PASSPHRASE`
-        /// or a prompt.
         #[command(subcommand)]
         action: Option<SyncAction>,
     },
@@ -188,61 +176,57 @@ enum Command {
 
 #[derive(Subcommand)]
 enum SyncAction {
-    /// Turn on encryption: a new key, then all notes in the storage are
-    /// encrypted. Prints the recovery code one time.
+    #[command(about = "Turn on encryption: a new key, then all notes in the storage are encrypted. Prints the recovery code one time")]
     Encrypt,
-    /// Set a new passphrase. The notes and the recovery code stay as they
-    /// are. The new passphrase comes from `KKNOW_SYNC_NEW_PASSPHRASE` or a
-    /// prompt.
+    #[command(about = "Set a new passphrase. The notes and the recovery code stay as they are. The new passphrase comes from `KKNOW_SYNC_NEW_PASSPHRASE` or a prompt")]
     Passphrase,
 }
 
 #[derive(Subcommand)]
 enum VaultAction {
-    /// List vaults. The same as `kknow vaults` without a subcommand.
+    #[command(about = "List vaults. The same as `kknow vaults` without a subcommand")]
     List,
-    /// Add a directory to the list.
+    #[command(about = "Add a directory to the list")]
     Add {
         path: PathBuf,
-        /// Vault name. The default is the directory name.
+        #[arg(help = "Vault name. The default is the directory name")]
         #[arg(long)]
         name: Option<String>,
     },
-    /// Remove a vault from the list. The files on disk stay.
+    #[command(about = "Remove a vault from the list. The files on disk stay")]
     Rm { vault: String },
-    /// Make a vault active: the window opens with it.
+    #[command(about = "Make a vault active: the window opens with it")]
     Use { vault: String },
-    /// Set the labels of a vault: `kknow vaults label Personal work ai`.
-    ///
-    /// The list replaces the old one; without labels, the vault has none.
-    /// `kknow mcp --label work` serves all vaults with the label.
+    #[command(
+        about = "Set the labels of a vault: `kknow vaults label Personal work ai`",
+        long_about = "Set the labels of a vault: `kknow vaults label Personal work ai`.\n\nThe list replaces the old one; without labels, the vault has none. `kknow mcp --label work` serves all vaults with the label."
+    )]
     Label { vault: String, labels: Vec<String> },
 }
 
 #[derive(Subcommand)]
 enum ProposalAction {
-    /// List proposals. The same as `kknow proposals` without a subcommand.
+    #[command(about = "List proposals. The same as `kknow proposals` without a subcommand")]
     List {
-        /// Also list reviewed proposals.
+        #[arg(help = "Also list reviewed proposals")]
         #[arg(long)]
         all: bool,
     },
-    /// Apply the edits of a proposal to the note.
+    #[command(about = "Apply the edits of a proposal to the note")]
     Accept {
-        /// Proposal ID from `kknow proposals`.
+        #[arg(help = "Proposal ID from `kknow proposals`")]
         id: String,
-        /// Only these edits, by number: `--only 1,3`. The other waiting edits
-        /// are rejected.
+        #[arg(help = "Only these edits, by number: `--only 1,3`. The other waiting edits are rejected")]
         #[arg(long, value_delimiter = ',')]
         only: Vec<usize>,
-        /// A note for the agent.
+        #[arg(help = "A note for the agent")]
         #[arg(long)]
         feedback: Option<String>,
     },
-    /// Reject all waiting edits of a proposal.
+    #[command(about = "Reject all waiting edits of a proposal")]
     Reject {
         id: String,
-        /// Why: the agent reads it and tries again.
+        #[arg(help = "Why: the agent reads it and tries again")]
         #[arg(long)]
         feedback: Option<String>,
     },
@@ -250,26 +234,24 @@ enum ProposalAction {
 
 #[derive(Subcommand)]
 enum TrashAction {
-    /// List entries. The same as `kknow trash` without a subcommand.
+    #[command(about = "List entries. The same as `kknow trash` without a subcommand")]
     List,
-    /// Put an entry back. Overwrites no note.
+    #[command(about = "Put an entry back. Overwrites no note")]
     Restore {
-        /// Entry ID from `kknow trash`.
+        #[arg(help = "Entry ID from `kknow trash`")]
         entry: String,
     },
-    /// Remove all entries for good.
+    #[command(about = "Remove all entries for good")]
     Empty,
 }
 
-/// What to run a command on. The same as `TargetKind` in the core, but with
-/// words for the terminal.
 #[derive(Clone, Copy, ValueEnum)]
 enum TargetChoice {
-    /// A note: `KKNOW_PATH` is its file.
+    #[value(help = "A note: `KKNOW_PATH` is its file")]
     Note,
-    /// A folder inside the notes directory.
+    #[value(help = "A folder inside the notes directory")]
     Folder,
-    /// The whole notes directory.
+    #[value(help = "The whole notes directory")]
     Vault,
 }
 
@@ -285,11 +267,11 @@ impl From<TargetChoice> for TargetKind {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum OnConflict {
-    /// Keep both versions: the remote one goes next to it as a copy.
+    #[value(help = "Keep both versions: the remote one goes next to it as a copy")]
     Both,
-    /// Keep the version on this device.
+    #[value(help = "Keep the version on this device")]
     Local,
-    /// Keep the version from the storage.
+    #[value(help = "Keep the version from the storage")]
     Remote,
 }
 
@@ -303,30 +285,22 @@ impl From<OnConflict> for ConflictPolicy {
     }
 }
 
-/// Where to sync.
-///
-/// There are no flags for access keys on purpose: `ps` shows the command
-/// line, and the shell history keeps it. kknow reads the keys from
-/// `KKNOW_S3_ACCESS_KEY` and `KKNOW_S3_SECRET_KEY`. If they are not set, it
-/// reads the usual `AWS_*` variables, like any other AWS tool.
 #[derive(Args)]
 struct S3Args {
-    /// S3 bucket.
+    #[arg(help = "S3 bucket")]
     #[arg(long, env = "KKNOW_S3_BUCKET")]
     bucket: Option<String>,
-    /// Storage address. For MinIO, this is http://localhost:9000.
+    #[arg(help = "Storage address. For MinIO, this is http://localhost:9000")]
     #[arg(long, env = "KKNOW_S3_ENDPOINT")]
     endpoint: Option<String>,
-    /// Region. The default is us-east-1.
+    #[arg(help = "Region. The default is us-east-1")]
     #[arg(long, env = "KKNOW_S3_REGION")]
     region: Option<String>,
-    /// Prefix inside the bucket, so one bucket can hold several vaults.
+    #[arg(help = "Prefix inside the bucket, so one bucket can hold several vaults")]
     #[arg(long, env = "KKNOW_S3_PREFIX")]
     prefix: Option<String>,
 }
 
-/// Where to sync: from the flags. If no bucket or folder is given, from the
-/// directory settings, which the window also reads.
 fn destination(
     workspace: &Workspace,
     folder: Option<PathBuf>,
@@ -362,22 +336,16 @@ fn main() -> ExitCode {
     }
 }
 
-/// kknow has its own exit code, except for `kknow run`: there the command owns it.
 fn run(cli: Cli) -> Result<ExitCode, String> {
-    // The vault list is outside the notes directories, so handle it before
-    // anything opens: `kknow vaults` works where there is no vault.
     if let Command::Vaults { action } = cli.command {
         vaults(action.unwrap_or(VaultAction::List))?;
         return Ok(ExitCode::SUCCESS);
     }
-    // The server can serve several vaults, so it opens them itself.
     if let Command::Mcp { labels } = &cli.command {
         serve_mcp(&cli.vault, labels)?;
         return Ok(ExitCode::SUCCESS);
     }
 
-    // A standalone file is a note without a vault, so its commands need none.
-    // `README.md` in a repository must not need `--vault`.
     match &cli.command {
         Command::Commands {
             file: Some(file),
@@ -402,8 +370,6 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     }
 
     let path = vault_path(&cli.vault)?;
-    // Commands need the vault ID and name: the ID limits their scope (`vaults`
-    // in the manifest), and the script sees the name.
     let (id, name) = vault_identity(&path);
     let mut workspace = Workspace::open(&path).map_err(|error| error.to_string())?;
 
@@ -438,9 +404,6 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             example,
             ..
         } => {
-            // With a target, show what applies. Without one, show the whole
-            // file: otherwise commands for notes are not visible until you
-            // name a note.
             let target = if target.is_some() || kind.is_some() {
                 let target = kknow_app::commands::resolve(
                     &workspace,
@@ -472,11 +435,9 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             .map_err(|error| error.to_string())?;
             code = run_command(&command, &target)?
         }
-        // Handled above: this command needs no vault.
         Command::Vaults { .. } => unreachable!(),
         Command::Trash { action } => trash(&mut workspace, action.unwrap_or(TrashAction::List))?,
         Command::Watch => watch(&mut workspace)?,
-        // Handled above: these commands open their vaults themselves.
         Command::Mcp { .. } => unreachable!(),
         Command::Sync {
             dry_run,
@@ -486,7 +447,6 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             action,
         } => {
             let mut config = destination(&workspace, folder, s3)?;
-            // The flag overrides the directory setting, but it is not set by default.
             if let Some(choice) = on_conflict {
                 config.policy = choice.into();
             }
@@ -501,7 +461,6 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     Ok(code)
 }
 
-/// The shared vault list and its path. The window reads the same file.
 fn load_registry() -> Result<(VaultRegistry, PathBuf), String> {
     let dir = kknow_app::vaults::config_dir()
         .ok_or("cannot find the settings folder: HOME is not set")?;
@@ -512,10 +471,6 @@ fn load_registry() -> Result<(VaultRegistry, PathBuf), String> {
     Ok((loaded.registry, VaultRegistry::path(dir)))
 }
 
-/// The notes directory: a path if it exists, otherwise a name from the vault list.
-///
-/// The order matters: `--vault .` and `--vault ~/notes` must work even when
-/// there is no vault list yet.
 fn vault_path(wanted: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(wanted);
     if path.is_dir() {
@@ -529,12 +484,6 @@ fn vault_path(wanted: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("not a folder and not a vault from the list: {wanted}"))
 }
 
-/// ID and name of the open directory.
-///
-/// The directory can be a path that is not in the vault list. Then the name
-/// comes from the folder, and the ID is the same name. Such a directory cannot
-/// limit a command scope (`vaults` in the manifest), and this is correct: a
-/// vault that is not in the list has no ID to refer to.
 fn vault_identity(path: &Path) -> (String, String) {
     let name = path
         .canonicalize()
@@ -598,10 +547,6 @@ fn vaults(action: VaultAction) -> Result<(), String> {
     Ok(())
 }
 
-/// `kknow mcp`: one vault from `--vault`, or all vaults with one of the labels.
-///
-/// The server takes the vaults when it starts. A vault that gets the label
-/// later comes in when the agent starts the server again.
 fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
     let entries: Vec<(String, String, Vec<String>, PathBuf)> = if labels.is_empty() {
         let path = vault_path(vault)?;
@@ -622,7 +567,6 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
         }
         found
             .into_iter()
-            // An external disk can be disconnected: the rest still work.
             .filter(|entry| {
                 let available = entry.available();
                 if !available {
@@ -658,7 +602,6 @@ fn serve_mcp(vault: &str, labels: &[String]) -> Result<(), String> {
         .iter()
         .map(|vault| vault.vault.name.as_str())
         .collect();
-    // stderr: stdout belongs to the protocol.
     eprintln!("kknow mcp: {}", names.join(", "));
 
     let mut vaults = mcp::Vaults::new(served);
@@ -695,7 +638,6 @@ fn show_vaults(registry: &VaultRegistry) {
         } else {
             "  ".to_string()
         };
-        // An unavailable directory stays in the list: an external disk can be disconnected.
         let state = if entry.available() {
             ""
         } else {
@@ -759,11 +701,6 @@ fn stats(workspace: &Workspace) {
     }
 }
 
-/// Vault size in human-readable form.
-///
-/// Nobody needs the exact byte count: people compare it with the file
-/// manager, which shows "12.3 MB". The divisor is 1024, as in Linux and older
-/// macOS: a kilobyte here is the memory kilobyte, not the marketing one.
 fn human_size(bytes: u64) -> String {
     const STEP: f64 = 1024.0;
     const UNITS: [&str; 3] = ["KB", "MB", "GB"];
@@ -904,8 +841,6 @@ fn bookmark(
     Ok(())
 }
 
-/// `--name`: a name for the bookmark on the line. The bookmark is set first if
-/// there is none, so one command is enough.
 fn name_bookmark(
     workspace: &mut Workspace,
     id: &NoteId,
@@ -1056,8 +991,6 @@ fn search(workspace: &Workspace, query: &str, limit: usize) -> Result<(), String
     Ok(())
 }
 
-/// Vault themes and global themes. The terminal cannot show them, but it tells
-/// why a theme does not work: the core checks the values, not the window.
 fn themes(workspace: &Workspace) {
     let global = kknow_app::vaults::config_dir().map(theme::global_dir);
     let set = workspace.themes(global.as_deref());
@@ -1100,12 +1033,6 @@ fn themes(workspace: &Workspace) {
     }
 }
 
-/// The commands of this machine and their targets.
-///
-/// There is one file per app, next to the vault registry, not in the notes
-/// directory: a command manifest is executable code, and it must not arrive
-/// through sync. So it is edited by hand, like themes, not in a form in the
-/// window.
 fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     let path = kknow_app::commands::config_path()
         .ok_or("cannot find the settings folder: HOME is not set")?;
@@ -1134,9 +1061,6 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
         set.commands.iter().collect()
     };
 
-    // "No commands" and "nothing applies to this target" are different cases.
-    // In the second case the file exists, `--example` does not help, and the
-    // user must check the command scope.
     if picked.is_empty() && set.problems.is_empty() {
         if set.is_empty() {
             println!("no commands: file {} is empty", path.display());
@@ -1161,7 +1085,6 @@ fn commands(target: Option<Target>, example: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Command scope as one line.
 fn scope(spec: &CommandSpec) -> String {
     let kinds: Vec<&str> = spec.targets.iter().map(|kind| of(*kind)).collect();
     let mut parts = vec![format!("targets: {}", kinds.join(", "))];
@@ -1186,11 +1109,6 @@ fn of(kind: TargetKind) -> &'static str {
     }
 }
 
-/// Runs a command and returns its exit code.
-///
-/// The command output goes to the same streams as in the command:
-/// `kknow run … | jq` must work. kknow writes its own messages to stderr so
-/// they do not mix with the command output.
 fn run_command(command: &str, target: &Target) -> Result<ExitCode, String> {
     let set = kknow_app::commands::load().map_err(|error| error.to_string())?;
     if set.get(command).is_none() {
@@ -1199,8 +1117,6 @@ fn run_command(command: &str, target: &Target) -> Result<ExitCode, String> {
         ));
     }
 
-    // Run through the set, not directly: only the set knows the shared
-    // environment of the file.
     let outcome = set
         .run(command, target)
         .map_err(|error| error.to_string())?;
@@ -1215,16 +1131,12 @@ fn report(outcome: &Outcome) -> Result<ExitCode, String> {
         eprintln!("(output is cut: only the start is shown)");
     }
     if outcome.timed_out {
-        // 124 is the code of `timeout(1)`: calling scripts already can tell
-        // "timed out" from "failed".
         eprintln!("the command ran out of time and was stopped");
         return Ok(ExitCode::from(124));
     }
 
     match outcome.code {
         Some(0) => Ok(ExitCode::SUCCESS),
-        // An exit code is a byte: `exit 256` in a shell also becomes zero, and
-        // a negative code is not possible here.
         Some(code) => Ok(ExitCode::from(u8::try_from(code).unwrap_or(1))),
         None => Err("the command was stopped by a signal".to_string()),
     }
@@ -1239,10 +1151,6 @@ fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> R
 
     let secret = s3_secret(&config);
 
-    // The terminal has no keychain, so it opens the key with the passphrase
-    // on each run. It also finds an encrypted storage that the settings do
-    // not mark: a storage connected with flags, or encrypted by the window
-    // of another vault.
     let storage =
         kknow_sync::storage(&config, secret.clone()).map_err(|error| error.to_string())?;
     let encrypted = config.encrypted
@@ -1299,9 +1207,6 @@ fn sync(workspace: &mut Workspace, mut config: RemoteConfig, dry_run: bool) -> R
     Ok(())
 }
 
-/// The app keeps the secret key in the OS keychain, but the terminal cannot
-/// get it from there: here it comes from an environment variable. A folder
-/// needs no secret.
 fn s3_secret(config: &RemoteConfig) -> Option<String> {
     match &config.provider {
         Provider::S3(_) => std::env::var("KKNOW_S3_SECRET_KEY").ok(),
@@ -1309,15 +1214,10 @@ fn s3_secret(config: &RemoteConfig) -> Option<String> {
     }
 }
 
-/// A secret from the variable, or from a prompt without an echo.
-///
-/// There is no flag on purpose, as for the S3 keys: `ps` shows the command
-/// line, and the shell history keeps it.
 fn passphrase(variable: &str, prompt: &str) -> Result<String, String> {
     secret(variable, prompt, "the storage is encrypted")
 }
 
-/// [`passphrase`] with the reason for the error when there is no terminal.
 fn secret(variable: &str, prompt: &str, reason: &str) -> Result<String, String> {
     if let Ok(value) = std::env::var(variable) {
         return Ok(value);
@@ -1330,12 +1230,10 @@ fn secret(variable: &str, prompt: &str, reason: &str) -> Result<String, String> 
     rpassword::prompt_password(prompt).map_err(|error| error.to_string())
 }
 
-/// A new passphrase: from the variable, or typed two times.
 fn new_passphrase(variable: &str) -> Result<String, String> {
     new_secret(variable, "passphrase", "the storage is encrypted")
 }
 
-/// A new secret: from the variable, or typed two times.
 fn new_secret(variable: &str, noun: &str, reason: &str) -> Result<String, String> {
     if let Ok(value) = std::env::var(variable) {
         return Ok(value);
@@ -1348,11 +1246,8 @@ fn new_secret(variable: &str, noun: &str, reason: &str) -> Result<String, String
     Ok(first)
 }
 
-/// The variable of the password of locked notes.
 const LOCK_VARIABLE: &str = "KKNOW_LOCK_PASSPHRASE";
 
-/// Opens the locked notes of the vault: with a new password for a vault
-/// without one, else with the password or the recovery code.
 fn open_lock(workspace: &mut Workspace) -> Result<(), String> {
     if workspace.lock_state().password {
         let typed = secret(
@@ -1380,7 +1275,6 @@ fn open_lock(workspace: &mut Workspace) -> Result<(), String> {
     Ok(())
 }
 
-/// `kknow lock`.
 fn lock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
     let id = find(workspace, raw)?.clone();
     if workspace.is_locked(&id) {
@@ -1394,7 +1288,6 @@ fn lock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// `kknow unlock`.
 fn unlock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
     let id = find(workspace, raw)?.clone();
     if !workspace.is_locked(&id) {
@@ -1408,7 +1301,6 @@ fn unlock(workspace: &mut Workspace, raw: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// `kknow sync encrypt`.
 fn encrypt(workspace: &Workspace, mut config: RemoteConfig) -> Result<(), String> {
     println!("storage: {}", config.location());
     let storage =
@@ -1417,8 +1309,6 @@ fn encrypt(workspace: &Workspace, mut config: RemoteConfig) -> Result<(), String
     let (_, code) =
         kknow_sync::encrypted::init(&*storage, &passphrase).map_err(|error| error.to_string())?;
 
-    // Mark the directory settings, if they are for this storage. A storage
-    // from flags has no settings: the next sync finds the key file anyway.
     let path = RemoteConfig::path(workspace.root());
     let saved = RemoteConfig::load(&path).map_err(|error| error.to_string())?;
     if saved.is_some_and(|saved| saved.location() == config.location()) {
@@ -1436,7 +1326,6 @@ fn encrypt(workspace: &Workspace, mut config: RemoteConfig) -> Result<(), String
     Ok(())
 }
 
-/// `kknow sync passphrase`.
 fn change_passphrase(config: &RemoteConfig) -> Result<(), String> {
     println!("storage: {}", config.location());
     let storage =
@@ -1452,12 +1341,6 @@ fn change_passphrase(config: &RemoteConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// A git sync from the terminal: fetch, merge, push.
-///
-/// The program is `KKNOW_GIT` or `git` from `PATH`: the terminal has the
-/// `PATH` of the user, so there is nothing to ask. The keychain token of the
-/// window is not reachable here, so the "token" way reads `KKNOW_GIT_TOKEN`.
-/// Commits stay a decision of the person: this command does not commit.
 fn sync_git(
     workspace: &mut Workspace,
     settings: &GitSettings,
@@ -1562,8 +1445,6 @@ fn trash(workspace: &mut Workspace, action: TrashAction) -> Result<(), String> {
     Ok(())
 }
 
-/// Age of a trash entry in whole days: the trash keeps entries for 30 days,
-/// so hours do not matter.
 fn days_ago(age: Duration) -> String {
     match age.as_secs() / (24 * 60 * 60) {
         0 => "today".to_string(),

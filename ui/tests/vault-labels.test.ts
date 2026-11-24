@@ -1,5 +1,3 @@
-// The label filter of the sidebar (`src/vault-labels.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

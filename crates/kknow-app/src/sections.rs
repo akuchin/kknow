@@ -1,28 +1,15 @@
-//! A part of a note for a hover preview or an embed: the section of a
-//! heading, the block of a `^id`, or the whole body.
-
 use kknow_core::NoteId;
 use kknow_index::{EmbedSource, ParsedNote};
 
 use crate::{Result, Workspace, subpath_line};
 
-/// A rendered part of a note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
-    /// HTML without line marks; images name their note (`data-note`).
     pub html: String,
-    /// 1-based line where the part starts; `None` for the whole note.
     pub line: Option<usize>,
 }
 
 impl Workspace {
-    /// Renders the part of note `id` that `subpath` names: `Heading`,
-    /// `Part#Heading` or `^block`, as after `#` in a link. Without a subpath,
-    /// the whole note without its frontmatter.
-    ///
-    /// `Ok(None)`: the note does not exist, or it has no such heading or
-    /// block. The text comes from the disk, as the other notes of a preview
-    /// are not open.
     pub fn render_section(&self, id: &NoteId, subpath: Option<&str>) -> Result<Option<Section>> {
         let Some(parsed) = self.parsed(id) else {
             return Ok(None);
@@ -39,8 +26,6 @@ impl Workspace {
     }
 }
 
-/// `![[note#Heading]]` reads the section from the disk, the same part that a
-/// hover preview shows.
 impl EmbedSource for Workspace {
     fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String> {
         let parsed = self.parsed(id)?;
@@ -49,7 +34,6 @@ impl EmbedSource for Workspace {
     }
 }
 
-/// The text of the part and the line where it starts.
 fn section_text(
     source: &str,
     parsed: &ParsedNote,
@@ -63,14 +47,11 @@ fn section_text(
     let lines: Vec<&str> = source.split_inclusive('\n').collect();
 
     let end = match parsed.headings.iter().find(|h| h.line == start) {
-        // A heading: up to the next heading of the same or a higher level.
         Some(heading) => parsed
             .headings
             .iter()
             .find(|next| next.line > start && next.level <= heading.level)
             .map_or(lines.len(), |next| next.line - 1),
-        // A block: its paragraph or list item, the lines around it up to an
-        // empty line or a heading.
         None => {
             let blank = |line: usize| lines.get(line - 1).is_none_or(|text| text.trim().is_empty());
             let heading = |line: usize| parsed.headings.iter().any(|h| h.line == line);

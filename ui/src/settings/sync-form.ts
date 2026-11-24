@@ -1,5 +1,3 @@
-/** The sync form of a vault: the provider, the S3 keys and the folder. */
-
 import { open } from "@tauri-apps/plugin-dialog";
 
 import {
@@ -13,50 +11,28 @@ import {
 import { bindDraft, clearDraftsUnder, draftValue, setDraft } from "../drafts";
 import { describeError, t, type Key } from "../i18n";
 
-/**
- * Draws the vault page again after a change. `vaults.ts` owns the page and
- * imports this module, so the call comes in through `initSyncForm`, not
- * through an import back.
- */
 let redraw: () => Promise<void> = async () => {};
 
 export function initSyncForm(onChange: () => Promise<void>): void {
   redraw = onChange;
 }
 
-/**
- * Vaults where "Git" is picked but not connected yet. Git needs an address
- * and maybe a token before anything is saved, so the choice lives here until
- * "Connect" succeeds.
- */
 const gitDrafts = new Set<string>();
 
-/** Whether the vault shows the git form before it is connected. */
 export function draftsGit(vault: VaultView): boolean {
   return gitDrafts.has(vault.id);
 }
 
-/**
- * The prefix of the field drafts of one sync form. The vault page draws
- * itself again after each change (a color, a label, the conflict policy), so
- * typed but unsaved fields live in drafts until "Save" or "Connect".
- */
 function formKey(vault: VaultView, kind: "s3" | "git"): string {
   return `sync:${vault.id}:${kind}:`;
 }
 
-/**
- * Changes the provider from the list: "do not sync" turns sync off, folder asks
- * for a folder, S3 switches the provider and shows the key form below.
- */
 export async function switchProvider(
   vault: VaultView,
   remote: SyncSettings | null,
   kind: string,
 ): Promise<void> {
   gitDrafts.delete(vault.id);
-  // Another provider is a new form: what was typed for the old one is not
-  // its setting.
   if (kind !== remote?.provider.kind) {
     clearDraftsUnder(formKey(vault, "s3"));
     clearDraftsUnder(formKey(vault, "git"));
@@ -82,9 +58,6 @@ export async function switchProvider(
     return;
   }
 
-  // The bucket and keys go into the form below; it appears once the provider
-  // is S3. The core does not save an empty bucket, so we use a placeholder
-  // name that the user edits right away.
   await saveSync(vault, remote, {
     provider: {
       kind: "s3",
@@ -97,15 +70,6 @@ export async function switchProvider(
   });
 }
 
-/**
- * S3 fields: bucket, endpoint, region, prefix, access key and secret.
- *
- * A button saves them, not each keystroke: half a typed endpoint is not a
- * setting yet. Until then each field is a draft, so a redraw of the page does
- * not erase it. The secret goes to the OS keychain and never comes back, so an
- * empty field means "keep the old one". The core keeps the key when the
- * address changes too: a new endpoint does not need the secret again.
- */
 export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
   const s3 = remote.provider.kind === "s3" ? remote.provider : null;
   const form = document.createElement("div");
@@ -160,7 +124,6 @@ export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
         },
       },
       text("secret"),
-      // A failed save keeps the drafts: the person fixes a field, not all.
       () => clearDraftsUnder(formKey(vault, "s3")),
     );
   };
@@ -170,13 +133,6 @@ export function s3Form(vault: VaultView, remote: SyncSettings): HTMLElement {
   return form;
 }
 
-/**
- * Git fields: the address, the way to sign in, the variable and the token.
- *
- * Nothing is saved before "Connect": an empty vault gets the repository
- * cloned into it, and a vault with `.git` takes the address of `origin`. The
- * address cannot change after that: one vault is one repository.
- */
 export function gitForm(vault: VaultView, remote: SyncSettings | null): HTMLElement {
   const git = remote?.provider.kind === "git" ? remote.provider : null;
   const form = document.createElement("div");
@@ -285,7 +241,6 @@ export async function pickFolder(vault: VaultView, remote: SyncSettings | null):
   await saveSync(vault, remote, { provider: { kind: "folder", path } });
 }
 
-/** Writes the vault sync settings with one field changed. */
 export async function saveSync(
   vault: VaultView,
   remote: SyncSettings | null,

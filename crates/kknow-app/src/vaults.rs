@@ -1,16 +1,3 @@
-//! Vault registry: the notes directories that kknow knows.
-//!
-//! A vault is a directory plus what the app knows about it: name, colour label
-//! and position in the list. Sync settings are not here: they are inside the
-//! directory (`.kknow/remote.json`). Moving them to a shared file would bring
-//! back a bug we removed: a second vault in someone else's bucket.
-//!
-//! The window and the CLI share the registry. Otherwise "Work" in the app and
-//! `kknow --vault work` in the shell would be two different lists. The file path
-//! comes as an argument: the core must not know about Tauri or where the
-//! platform keeps settings. [`config_dir`] is here only so that both frontends
-//! ask for the same place.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,18 +8,10 @@ use crate::{Error, Result};
 
 pub const REGISTRY_FILE: &str = "vaults.json";
 
-/// File from the previous version: one remembered directory. The registry is
-/// built from it.
 pub const LEGACY_FILE: &str = "last-vault.txt";
 
-/// Number of vaults that hotkeys ⌘1…⌘9 open.
 pub const HOTKEYS: usize = 9;
 
-/// Vault label colour.
-///
-/// The set is fixed, not any `#hex` from settings: the label is next to UI text,
-/// and a random shade would be unreadable on a dark theme. The theme sets the
-/// actual values (`--label-*`); here is only the name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LabelColor {
@@ -66,48 +45,32 @@ impl LabelColor {
     }
 }
 
-/// One vault in the list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultEntry {
-    /// Stable ID that commands and events use. The name can change, the ID
-    /// cannot.
     pub id: String,
     pub name: String,
     pub path: PathBuf,
     pub color: LabelColor,
-    /// Text labels, for example `work`. They group vaults: `kknow mcp --label
-    /// work` serves all vaults with the label. Not the same as the colour
-    /// label above: that one is a mark for the eye, these are for selection.
-    ///
-    /// An old registry has no field, so it reads as empty, and an empty list
-    /// is not written. Thus the format version stays the same.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<String>,
 }
 
 impl VaultEntry {
-    /// Checks that the directory exists. A missing one (an external disk, a
-    /// cloud folder not downloaded yet) stays in the list as unavailable.
     pub fn available(&self) -> bool {
         self.path.is_dir()
     }
 }
 
-/// Current registry format version.
 pub const VERSION: u32 = 1;
 
-/// The list of vaults and which one is active.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultRegistry {
-    /// Format version: unlike the directory settings, the registry lives through
-    /// several releases and gets new fields.
     #[serde(default = "current_version")]
     version: u32,
     #[serde(default)]
     vaults: Vec<VaultEntry>,
-    /// ID of the active vault.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     active: Option<String>,
 }
@@ -116,8 +79,6 @@ fn current_version() -> u32 {
     VERSION
 }
 
-/// An empty registry already has the current version: `#[derive(Default)]` would
-/// write version zero and make the field useless.
 impl Default for VaultRegistry {
     fn default() -> Self {
         VaultRegistry {
@@ -128,13 +89,9 @@ impl Default for VaultRegistry {
     }
 }
 
-/// Result of reading the registry.
 #[derive(Debug)]
 pub struct Loaded {
     pub registry: VaultRegistry,
-    /// The file did not parse: it is moved aside and the list starts empty. A
-    /// silent "list is empty" looks like "list is lost", so the problem goes up
-    /// to the status bar.
     pub problem: Option<String>,
 }
 
@@ -143,8 +100,6 @@ impl VaultRegistry {
         config_dir.as_ref().join(REGISTRY_FILE)
     }
 
-    /// Reads the registry. No file gives an empty list. A broken file also does,
-    /// plus a problem message and a backup copy next to it.
     pub fn load(path: &Path) -> Result<Loaded> {
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,
@@ -179,7 +134,6 @@ impl VaultRegistry {
         }
     }
 
-    /// Writes through a temporary file, like the manifest and the settings.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
@@ -193,8 +147,6 @@ impl VaultRegistry {
         fs::rename(&temp, path).map_err(|source| Error::io(path, source))
     }
 
-    /// Repairs the values that were read: the active vault must exist, and IDs
-    /// must be unique. People edit the file by hand, so repair it, do not panic.
     fn tidy(&mut self) {
         let mut seen: Vec<String> = Vec::new();
         self.vaults.retain(|entry| {
@@ -222,7 +174,6 @@ impl VaultRegistry {
         self.vaults.iter().find(|entry| entry.id == id)
     }
 
-    /// The active vault: the main window works with it.
     pub fn active(&self) -> Option<&VaultEntry> {
         self.active.as_deref().and_then(|id| self.get(id))
     }
@@ -235,7 +186,6 @@ impl VaultRegistry {
         Ok(())
     }
 
-    /// The vault for ⌘1…⌘9 is a position in the list.
     pub fn by_hotkey(&self, number: usize) -> Option<&VaultEntry> {
         if number == 0 || number > HOTKEYS {
             return None;
@@ -243,10 +193,6 @@ impl VaultRegistry {
         self.vaults.get(number - 1)
     }
 
-    /// Finds a vault by ID, name or path.
-    ///
-    /// The CLI needs this: `kknow --vault work` and `kknow --vault ~/notes` must
-    /// lead to the same place.
     pub fn find(&self, needle: &str) -> Option<&VaultEntry> {
         if let Some(entry) = self.get(needle) {
             return Some(entry);
@@ -265,12 +211,6 @@ impl VaultRegistry {
         self.vaults.iter().find(|entry| entry.path == path)
     }
 
-    /// The vault that contains the file, and the note the file is in it.
-    ///
-    /// A file from a known directory opens as a note of that vault, not as a
-    /// single file. Then it has links, backlinks and search, and one note does
-    /// not show as two rows. The vault does not treat a file in a hidden folder
-    /// (`.kknow`, `.trash`) as a note, so such a file stays single.
     pub fn locate(&self, path: &Path) -> Option<(&VaultEntry, NoteId)> {
         let path = path.canonicalize().ok()?;
         let entry = self
@@ -288,10 +228,6 @@ impl VaultRegistry {
         NoteId::from_relative_path(relative).map(|id| (entry, id))
     }
 
-    /// Adds the directory and makes it active if no vault is active.
-    ///
-    /// The path is canonicalized: macOS replaces `/var` with `/private/var`, and
-    /// without this one directory could get into the list twice.
     pub fn add(&mut self, path: impl AsRef<Path>, name: Option<String>) -> Result<&VaultEntry> {
         let path = path.as_ref();
         if !path.is_dir() {
@@ -304,8 +240,6 @@ impl VaultRegistry {
         if let Some(existing) = self.vaults.iter().find(|entry| entry.path == path) {
             return Err(Error::DuplicateVault(existing.path.clone()));
         }
-        // Nested vaults would share files: two watchers on one directory and two
-        // syncs to different remotes would split the notes apart.
         if let Some(other) = self
             .vaults
             .iter()
@@ -335,7 +269,6 @@ impl VaultRegistry {
         Ok(added)
     }
 
-    /// Removes the vault from the list. The files stay on disk.
     pub fn remove(&mut self, id: &str) -> Result<VaultEntry> {
         let index = self
             .vaults
@@ -345,7 +278,6 @@ impl VaultRegistry {
 
         let removed = self.vaults.remove(index);
         if self.active.as_deref() == Some(id) {
-            // Another vault becomes active: the window must show something.
             self.active = self.vaults.first().map(|entry| entry.id.clone());
         }
         Ok(removed)
@@ -365,8 +297,6 @@ impl VaultRegistry {
         Ok(())
     }
 
-    /// Replaces the labels of the vault. The labels go through
-    /// [`clean_labels`], so the stored form is always the same.
     pub fn set_labels<'a>(
         &mut self,
         id: &str,
@@ -376,10 +306,6 @@ impl VaultRegistry {
         Ok(())
     }
 
-    /// Vaults with at least one of the labels, in list order.
-    ///
-    /// "At least one", not "all": `--label work --label study` is a person
-    /// who wants both groups, not the vaults that are in both.
     pub fn with_labels<'a>(&self, labels: impl IntoIterator<Item = &'a str>) -> Vec<&VaultEntry> {
         let wanted = clean_labels(labels);
         self.vaults
@@ -395,7 +321,6 @@ impl VaultRegistry {
             .ok_or_else(|| Error::UnknownVault(id.to_string()))
     }
 
-    /// ID from the name; a number is added if the ID is taken.
     fn free_id(&self, name: &str) -> String {
         let base = slug(name);
         if self.get(&base).is_none() {
@@ -407,8 +332,6 @@ impl VaultRegistry {
             .expect("a free ID exists")
     }
 
-    /// The first label colour not in use. When all are in use, start the cycle
-    /// again.
     fn free_color(&self) -> LabelColor {
         LabelColor::ALL
             .into_iter()
@@ -417,13 +340,6 @@ impl VaultRegistry {
     }
 }
 
-/// Labels in one form: no `#` in front, lower case, spaces become hyphens.
-/// Empty labels and repeats go away, the order stays.
-///
-/// One form is necessary because a person types the label in two places: in
-/// the settings and in `--label`. `Work`, `#work` and ` work ` must be the
-/// same label. Spaces become hyphens because a label is one word on the
-/// command line.
 pub fn clean_labels<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut labels: Vec<String> = Vec::new();
     for label in raw {
@@ -441,18 +357,12 @@ pub fn clean_labels<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     labels
 }
 
-/// The directory name is the default vault name.
 fn folder_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
-/// ID from a name: letters and digits stay, everything else becomes a hyphen.
-///
-/// Cyrillic is not transliterated: the ID is for the machine, not for people,
-/// so a Cyrillic ID is as good as a Latin one. A name without letters and
-/// digits gives `vault`.
 fn slug(name: &str) -> String {
     let mut out = String::new();
     for symbol in name.to_lowercase().chars() {
@@ -471,11 +381,6 @@ fn slug(name: &str) -> String {
     }
 }
 
-/// The app settings directory.
-///
-/// It matches what Tauri gives (`app_config_dir` for `dev.kknow.desktop`). Both
-/// frontends call it, so the window and the CLI always use one registry file,
-/// not two similar ones.
 pub fn config_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
 
@@ -492,11 +397,6 @@ pub fn config_dir() -> Option<PathBuf> {
         .map(|dir| dir.join("kknow"))
 }
 
-/// Reads the registry. On first use, it moves in the directory that the
-/// previous version remembered.
-///
-/// Shared entry point for the window and the CLI: the migration must happen
-/// once and the same way, no matter which one starts first.
 pub fn open(config_dir: &Path) -> Result<Loaded> {
     let path = VaultRegistry::path(config_dir);
     let mut loaded = VaultRegistry::load(&path)?;
@@ -507,10 +407,6 @@ pub fn open(config_dir: &Path) -> Result<Loaded> {
     Ok(loaded)
 }
 
-/// Turns the directory from the previous version into a one-vault registry.
-///
-/// Then the old file is deleted: there is nothing to migrate a second time, and
-/// a remaining file would look like a second source of truth.
 pub fn migrate_legacy(config_dir: &Path, registry: &mut VaultRegistry) -> Result<bool> {
     let legacy = config_dir.join(LEGACY_FILE);
     let Ok(text) = fs::read_to_string(&legacy) else {
@@ -648,7 +544,6 @@ mod tests {
         let path = folder(home.path(), "notes");
         registry.add(&path, None).unwrap();
 
-        // The same directory by another path: canonicalization removes the `.`.
         let indirect = path.join(".");
         assert!(matches!(
             registry.add(&indirect, None),
@@ -819,7 +714,6 @@ mod tests {
             !home.path().join(LEGACY_FILE).exists(),
             "второго источника правды остаться не должно"
         );
-        // The second run has nothing to migrate.
         assert!(!migrate_legacy(home.path(), &mut registry).unwrap());
     }
 

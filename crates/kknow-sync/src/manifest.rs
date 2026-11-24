@@ -1,14 +1,3 @@
-//! The manifest: a list of notes with content hashes.
-//!
-//! One format describes three states: what is on disk, what is in the cloud,
-//! and what we saw at the end of the last sync. Sync is the comparison of
-//! these three lists.
-//!
-//! The manifest has no modification time on purpose. Clocks on two machines
-//! differ, and S3 sets its own upload time, so the "newer" file by time is
-//! often the older one by content. A content hash has no such problem: the
-//! bytes are the same or they are not.
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,25 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result};
 
-/// Where the vault keeps its last known state.
-///
-/// The directory is hidden, so the vault does not see it as a note.
 pub const STATE_PATH: &str = ".kknow/sync.json";
 
-/// Format version. Do not touch a manifest from a newer format: this is
-/// better than a silent reduction to what this build understands.
 const FORMAT: u32 = 1;
 
-/// A note as sync sees it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-    /// blake3 hash of the contents, in hex.
     pub hash: String,
-    /// Size in bytes. Only for people who read the manifest.
     pub size: u64,
-    /// The note is locked ([`crate::locked`]). A conflict on it always gives
-    /// a copy: the policy cannot pick a side of two texts it cannot read.
-    /// The field came after format 1; an older build ignores it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
 }
@@ -54,8 +32,6 @@ impl Entry {
         }
     }
 
-    /// The first eight hash characters. A person can tell them apart, and they
-    /// are enough to name a conflict copy.
     pub fn short_hash(&self) -> &str {
         &self.hash[..8.min(self.hash.len())]
     }
@@ -65,12 +41,10 @@ pub fn hash(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
-/// The state of a set of notes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Wire", into = "Wire")]
 pub struct Manifest {
     notes: BTreeMap<NoteId, Entry>,
-    /// Shared files of `.kknow` (see [`crate::shared`]) by their path.
     files: BTreeMap<String, Entry>,
 }
 
@@ -79,11 +53,6 @@ impl Manifest {
         Self::default()
     }
 
-    /// The vault state on disk: reads and hashes each note.
-    ///
-    /// A full walk on each sync looks wasteful, but blake3 hashes 20 MB faster
-    /// than the disk reads them. The trick "same size and time means same
-    /// contents" would save milliseconds and add a whole class of bugs.
     pub fn of_vault(vault: &Vault) -> Result<Self> {
         let mut notes = BTreeMap::new();
         for id in vault.ids() {
@@ -154,24 +123,18 @@ impl Manifest {
     }
 
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
-        // The decoy of an encrypted storage, as a device without the key
-        // reads it. Without this check, the error would be "manifest of
-        // version 2", which says nothing about the passphrase.
         if crate::encrypted::is_decoy(bytes) {
             return Err(crate::Error::Locked);
         }
         Ok(serde_json::from_slice(bytes)?)
     }
 
-    /// Indented JSON: the manifest stays in the cloud for years, and one day a
-    /// person will read or fix it by hand.
     pub fn to_json(&self) -> Vec<u8> {
         let mut bytes = serde_json::to_vec_pretty(self).expect("the manifest serializes");
         bytes.push(b'\n');
         bytes
     }
 
-    /// Reads the state from disk. No file means no sync happened yet.
     pub fn load(path: &Path) -> Result<Self> {
         match fs::read(path) {
             Ok(bytes) => Manifest::from_json(&bytes),
@@ -180,8 +143,6 @@ impl Manifest {
         }
     }
 
-    /// Writes the state through a temporary file: an interrupted write leaves
-    /// the old manifest, not half of the new one.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
@@ -193,23 +154,14 @@ impl Manifest {
     }
 }
 
-/// Path to the saved vault state.
 pub fn state_path(vault: &Vault) -> PathBuf {
     vault.root().join(STATE_PATH)
 }
 
-/// The manifest on disk and in the cloud.
-///
-/// Note keys are strings in JSON and [`NoteId`] in memory, so the format is a
-/// separate type. This is also the place that validates IDs from a remote
-/// manifest instead of trusting them.
 #[derive(Serialize, Deserialize)]
 struct Wire {
     format: u32,
     notes: BTreeMap<String, Entry>,
-    /// Added after format 1 without a new version: an older build ignores the
-    /// field, and the next sync of a newer build finds the objects again
-    /// (`reconcile`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     files: BTreeMap<String, Entry>,
 }

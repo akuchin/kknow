@@ -1,10 +1,3 @@
-//! Commands attached to a note, a folder or a vault.
-//!
-//! This module only translates between the window and `kknow-run`: the list of
-//! commands for a target, and the run. The core decides if a command applies
-//! to a target. The window does not filter by itself, otherwise its rule could
-//! differ from the CLI.
-
 use std::collections::BTreeMap;
 
 use kknow_run::spec::Problem;
@@ -15,39 +8,24 @@ use tauri::ipc::Channel;
 
 use crate::state::{AppState, Error, Result};
 
-/// A menu command: the label and what the window needs to decide.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CommandView {
     id: String,
     name: String,
-    /// What runs it. The window shows this as the second line of the menu item.
     kind: String,
-    /// Ask before the run.
     confirm: bool,
 }
 
-/// What to show in the target menu.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct CommandList {
     commands: Vec<CommandView>,
-    /// Problems in the commands file. Users edit it by hand, so we must report
-    /// a typo. Otherwise the command silently does not appear, and kknow looks
-    /// broken.
     problems: Vec<Problem>,
 }
 
-/// Resolves the target the window named.
-///
-/// The core computes the path from the note ID or the folder name. The
-/// frontend sends only a name, so this call cannot point a command at a file
-/// outside the vault. `reveal_note` uses the same approach.
-///
-/// A standalone file comes as `file`, an absolute path. The path must be in
-/// the list of opened files, as for `save_file`: a person picked that file.
 fn target_of(
     state: &AppState,
     vault: Option<&str>,
@@ -59,7 +37,6 @@ fn target_of(
         .ok_or_else(|| Error::Run(kknow_run::Error::UnknownKind(kind.to_string())))?;
 
     if let Some(file) = file {
-        // A file is a note: it is not a folder and not a vault.
         if kind != TargetKind::Note {
             return Err(Error::UnknownFile(file.to_string()));
         }
@@ -110,7 +87,6 @@ pub fn list_commands(
     })
 }
 
-/// One output line of a running command, for the output popup.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -119,21 +95,6 @@ pub struct RunLine {
     text: String,
 }
 
-/// Runs the command, sends its output line by line and returns its result.
-///
-/// `(async)` is required. The command is an external program and can run for a
-/// long time. Without it, Tauri runs the command on the main thread, and the
-/// window freezes for that time.
-///
-/// The lines go through a channel of this call, not through an app event as
-/// the sync progress does. A channel belongs to one run: two runs at the same
-/// time cannot mix their lines, and the lines come in order. `run` is the ID
-/// that [`stop_command`] uses.
-///
-/// The vault lock is released before the run starts: only path resolution
-/// takes it. Otherwise a one-minute upload to an external service delays the
-/// note autosave. Sync is split into "plan, network, write" for the same
-/// reason.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 pub fn run_command(
@@ -161,7 +122,6 @@ pub fn run_command(
 
     let stop = state.start_run(&run);
     let watch = Watch {
-        // A closed window drops the channel; the command still ends normally.
         line: &|stream, text| {
             let _ = lines.send(RunLine {
                 stream,
@@ -170,40 +130,25 @@ pub fn run_command(
         },
         stop: &stop,
     };
-    // Run through the set, not directly: only the set knows the shared env.
     let outcome = set.run_watched(&command, &resolved, &watch);
     state.end_run(&run);
     Ok(outcome?)
 }
 
-/// Asks a running command to stop. A run that already ended is no error: the
-/// click and the end can cross.
 #[tauri::command]
 pub fn stop_command(state: State<'_, AppState>, run: String) {
     state.stop_run(&run);
 }
 
-/// The whole manifest, as the settings form edits it.
-///
-/// Unlike [`list_commands`], this includes **all** entries, also invalid ones.
-/// Users fix them in the same form. Losing them on save is worse than showing
-/// them with a problem.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS), ts(rename = "CommandManifest"))]
 pub struct ManifestView {
-    /// File location: the form shows the path and can open it in Finder.
     path: String,
     commands: Vec<CommandSpec>,
-    /// Environment shared by all commands in the file.
     env: BTreeMap<String, String>,
     problems: Vec<Problem>,
-    /// Available runners. The core owns this list. If the window kept its own
-    /// copy, the "Run it with" field could one day offer what the core cannot
-    /// run.
     kinds: Vec<String>,
-    /// The file did not parse. The form does not offer edits then: a save
-    /// would erase what we could not parse.
     broken: Option<String>,
 }
 
@@ -223,17 +168,12 @@ impl ManifestView {
     }
 }
 
-/// The manifest for the settings form.
-///
-/// A missing file is not an error: the form shows the shipped commands, and
-/// the first save writes them with the changes of the user.
 #[tauri::command(async)]
 pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 
     Ok(match Manifest::load(&path) {
         Ok(manifest) => ManifestView::new(&path, manifest, None),
-        // Parse failed: the form shows the problem and offers Finder.
         Err(kknow_run::Error::Manifest { reason, .. }) => {
             ManifestView::new(&path, Manifest::default(), Some(reason))
         }
@@ -241,13 +181,6 @@ pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
     })
 }
 
-/// Writes the whole manifest and returns it with its problems.
-///
-/// The whole file, not one command: the file is small, and a partial write
-/// needs a copy in the window and a check of which version is newer. Invalid
-/// entries are saved like the others. A command without a script is
-/// unfinished, not a reason to refuse the save. Otherwise the user cannot
-/// close the form halfway.
 #[tauri::command(async)]
 pub fn save_commands(
     state: State<'_, AppState>,
@@ -266,12 +199,6 @@ pub fn save_commands(
     Ok(ManifestView::new(&path, manifest, None))
 }
 
-/// Shows the commands file in the file manager. If there is no file, writes the
-/// shipped commands to it.
-///
-/// Users edit commands in the settings form, but the file is still there. It is
-/// useful to look at it, copy it to another machine, or fix what the form
-/// cannot show, for example an unclosed bracket in JSON.
 #[tauri::command(async)]
 pub fn reveal_commands(state: State<'_, AppState>) -> Result<()> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
@@ -291,7 +218,6 @@ mod tests {
     use tauri::Manager;
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
 
-    /// A vault with a note in a folder.
     fn vault() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("Docs")).unwrap();
@@ -300,11 +226,6 @@ mod tests {
         dir
     }
 
-    /// An app with a ready commands file.
-    ///
-    /// The file is in a temporary folder. The real one is in the settings of
-    /// the person who runs the tests. `cargo test` must not read it or depend
-    /// on its content.
     fn app(root: &Path, commands: &str) -> (tempfile::TempDir, tauri::App<MockRuntime>) {
         let config = tempfile::tempdir().unwrap();
         let file = config.path().join("commands.json");
@@ -320,7 +241,6 @@ mod tests {
         (config, app)
     }
 
-    /// [`run_command`] without a look at the lines.
     fn run_plain(
         state: State<'_, AppState>,
         command: String,
@@ -396,8 +316,6 @@ mod tests {
 
         assert!(outcome.ok(), "{outcome:?}");
         let (path, kind) = outcome.stdout.split_once('|').expect("две части");
-        // `Path::ends_with` compares whole components, so it accepts the
-        // separator of either platform; `str::ends_with` would want `\` here.
         assert!(Path::new(path).ends_with("Docs/Свод.md"), "{path}");
         assert_eq!(kind, "note");
     }
@@ -417,12 +335,6 @@ mod tests {
         )
         .unwrap();
 
-        // By default the command starts in the vault root. It gets the target
-        // itself from `$KKNOW_PATH`.
-        //
-        // The script leaves a file where it started, instead of printing the
-        // directory: `pwd` of Git Bash prints an MSYS path that Windows cannot
-        // resolve, and on macOS `/var` is a symlink to `/private/var`.
         assert!(outcome.ok(), "{outcome:?}");
         assert!(
             dir.path().join("от-корня").exists(),
@@ -456,8 +368,6 @@ mod tests {
         let dir = vault();
         let (_config, app) = app(dir.path(), SAMPLE);
 
-        // "echo" is declared only for notes. It cannot run on a vault, even
-        // without the menu.
         assert!(matches!(
             run_plain(app.state(), "echo".into(), "vault".into(), None, None, None),
             Err(Error::Run(kknow_run::Error::NotApplicable { .. }))
@@ -475,8 +385,6 @@ mod tests {
         ));
     }
 
-    /// A standalone file gets the commands for notes. The window sends its
-    /// path, and the path must be one that a person opened.
     #[test]
     fn a_standalone_file_gets_the_note_commands() {
         let dir = vault();
@@ -486,7 +394,6 @@ mod tests {
         fs::write(&readme, "# Проект\n").unwrap();
         let raw = || Some(readme.to_string_lossy().into_owned());
 
-        // Not opened yet: the window cannot point a command at any file.
         assert!(list_commands(app.state(), "note".into(), None, None, raw()).is_err());
 
         let state = app.state::<AppState>();
@@ -514,7 +421,6 @@ mod tests {
         assert!(outcome.ok(), "{outcome:?}");
         assert_eq!(outcome.stdout, format!("{}|note", path.display()));
 
-        // A file is a note, never a folder or a vault.
         assert!(list_commands(app.state(), "vault".into(), None, None, file()).is_err());
     }
 
@@ -551,8 +457,6 @@ mod tests {
         );
     }
 
-    /// The form edits the whole file, so a save must lose nothing. A broken
-    /// command reaches the form with a problem and is saved back.
     #[test]
     fn the_form_sees_the_broken_command_and_saves_it_back() {
         let dir = vault();
@@ -565,22 +469,17 @@ mod tests {
         assert!(opened.broken.is_none());
         assert!(opened.kinds.contains(&"shell".to_string()));
 
-        // Edit one field: the kind "phyton" becomes valid.
         let mut commands = opened.commands;
         commands[2].kind = "python".to_string();
         let saved = save_commands(app.state(), commands, BTreeMap::new()).unwrap();
 
         assert!(saved.problems.is_empty());
         assert_eq!(edit_commands(app.state()).unwrap().commands.len(), 3);
-        // It shows in the menu at once. No restart is necessary: the file is
-        // read on each request.
         let listed = list_commands(app.state(), "vault".into(), None, None, None).unwrap();
         assert!(listed.problems.is_empty());
         assert!(listed.commands.iter().any(|view| view.id == "плохая"));
     }
 
-    /// An unclosed bracket is the only case the form refuses to edit. It could
-    /// not read the file, and a save would erase the content.
     #[test]
     fn a_broken_file_reaches_the_form_as_a_complaint() {
         let dir = vault();
@@ -592,7 +491,6 @@ mod tests {
         assert!(opened.commands.is_empty());
     }
 
-    /// No file yet means the shipped commands in the form, not an error.
     #[test]
     fn no_file_yet_shows_the_shipped_commands() {
         let dir = vault();
@@ -610,8 +508,6 @@ mod tests {
         assert!(opened.broken.is_none());
     }
 
-    /// Without a commands file there are no commands. Other tests use this,
-    /// and so does the app without a settings folder.
     #[test]
     fn no_file_means_no_commands() {
         let dir = vault();
@@ -626,8 +522,6 @@ mod tests {
         assert!(listed.problems.is_empty());
     }
 
-    /// The window sees the lines while the command runs, and its "stop" ends
-    /// the run by the ID it gave.
     #[test]
     fn lines_come_through_the_channel_and_stop_ends_the_run() {
         let dir = vault();
@@ -669,7 +563,6 @@ mod tests {
 
         assert!(outcome.stopped, "{outcome:?}");
         assert!(outcome.millis < 20_000, "{outcome:?}");
-        // The run is gone from the list: a late stop does nothing.
         assert!(!app.state::<AppState>().stop_run("запуск-1"));
     }
 }

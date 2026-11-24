@@ -1,9 +1,3 @@
-// Changes to notes and folders: create, rename, move, duplicate and delete,
-// the inline rename in the tree and the new note form. The row menu of a
-// note or folder lives here too: most of its items are such changes.
-//
-// The module does not touch the DOM on import.
-
 import { formKeys, matches } from "../actions";
 import { api, type CommandTarget } from "../api";
 import { t } from "../i18n";
@@ -30,15 +24,12 @@ import { fail, setStatus } from "./status";
 import { collator, foldersIn, isLockedNote, openSidebar, refreshTree, renderTree } from "./tree";
 import { copyText } from "./util";
 
-/** Steps of higher zones that the edits zone starts. */
 export interface EditHooks {
-  /** Makes a vault active: the core creates notes in the active vault. */
   switchVault: (id: string) => Promise<void>;
 }
 
 let hooks: EditHooks;
 
-/** Takes the hooks and wires the new note form. */
 export function initEdits(calls: EditHooks): void {
   hooks = calls;
   el.newNote.onclick = () => toggleNewNoteForm("note");
@@ -62,28 +53,16 @@ export function initEdits(calls: EditHooks): void {
   };
 }
 
-/**
- * Command menu for a target.
- *
- * The core returns the full list: the manifest decides if a command applies to
- * this note, folder or vault. A copy of this rule in the window could drift
- * from the terminal.
- */
 export async function openCommandMenu(anchor: HTMLElement, target: CommandTarget): Promise<void> {
   const items = await commandItems(target);
   if (!items) return;
 
-  // Section order follows file managers: create, then rename and move, then
-  // clipboard and system, then user commands, and delete last, away from the
-  // rest.
   const creation: MenuSection[] = [];
   const files: MenuSection[] = [];
   const system: MenuSection[] = [];
   const removal: MenuSection[] = [];
   const vaultId = target.vault;
 
-  // Rename and move are shared by folders and notes: the core does both as a
-  // move to a new path.
   const rename: MenuItem = {
     label: t("commands.rename"),
     glyph: "pencil",
@@ -98,8 +77,6 @@ export async function openCommandMenu(anchor: HTMLElement, target: CommandTarget
     run: () => openMoveMenu(anchor, target),
   };
 
-  // A folder menu starts with creation in it. An inactive vault becomes active
-  // first, because the core creates in the active vault.
   if (target.kind === "folder" && target.name && vaultId) {
     const folder = target.name;
     const inMine = async (mode: "note" | "folder") => {
@@ -164,7 +141,6 @@ export async function openCommandMenu(anchor: HTMLElement, target: CommandTarget
           key: "D",
           run: () => void duplicateNote(note, vaultId),
         },
-        // A locked note can only lose its lock; a plain one can get it.
         isLockedNote(vaultId, note)
           ? {
               label: t("commands.note.removeLock"),
@@ -225,25 +201,15 @@ export async function openCommandMenu(anchor: HTMLElement, target: CommandTarget
     ...creation,
     ...files,
     ...system,
-    // The menu opens from the row or the header, so it is clear whose
-    // commands these are: the title does not repeat the name.
     { title: t("commands.title"), items },
     ...removal,
     editCommandsSection(),
   ]);
 }
 
-/**
- * Inline rename of a note or folder in the tree.
- *
- * The input holds the file name, not the title: the title lives in the note
- * text and is edited there. The folder stays the same; "Move to…" changes it.
- */
 function startTreeRename(target: CommandTarget): void {
   const { name, vault: vaultId } = target;
   if (!name || !vaultId) return;
-  // The input goes into a tree row. A rename from the header menu cannot
-  // reach it while the sidebar is collapsed, so open the sidebar.
   openSidebar();
 
   const folder = folderOf(name);
@@ -264,13 +230,6 @@ function startTreeRename(target: CommandTarget): void {
   );
 }
 
-/**
- * Rename input in place of a tree row. Vaults, folders and notes share it:
- * their rows have the same layout, a button plus the row buttons.
- *
- * The input is not inside the row button (it would not get clicks there);
- * the button hides instead.
- */
 export function renameInTree(
   row: HTMLElement | null,
   buttonSelector: string,
@@ -298,7 +257,6 @@ export function renameInTree(
     if (saving && wanted && wanted !== initial) {
       await save(wanted);
     }
-    // The redraw restores the row with either the new or the old name.
     renderTree();
   };
 
@@ -311,16 +269,9 @@ export function renameInTree(
       void finish(false);
     }
   };
-  // Blur saves, as tree rename does everywhere.
   input.onblur = () => void finish(true);
 }
 
-/**
- * "Move to…" menu: a list of vault folders instead of a submenu.
- *
- * Our menu has no submenus, and one item does not justify them: a second list
- * in the same place reads just as well.
- */
 function openMoveMenu(anchor: HTMLElement, target: CommandTarget): void {
   const { name, vault: vaultId } = target;
   if (!name || !vaultId) return;
@@ -329,7 +280,6 @@ function openMoveMenu(anchor: HTMLElement, target: CommandTarget): void {
   const parent = folderOf(name);
   const choices = ["", ...foldersIn(vaultId)]
     .filter((folder) => folder !== parent)
-    // A folder cannot move into itself.
     .filter(
       (folder) =>
         target.kind !== "folder" || (folder !== name && !folder.startsWith(`${name}/`)),
@@ -351,11 +301,6 @@ function openMoveMenu(anchor: HTMLElement, target: CommandTarget): void {
   openMenu(anchor, [{ title: t("commands.move.title", { name: leaf }), items }]);
 }
 
-/**
- * Renames or moves a note. An open note stays open under the new name.
- * Pending edits are saved before the move: else they would go to the old path
- * and bring the file back.
- */
 async function renameNote(
   id: string,
   to: string,
@@ -377,10 +322,6 @@ async function renameNote(
   }
 }
 
-/**
- * Renames or moves a folder. An open note inside it moves too, and so do the
- * mode and the font size of every note inside.
- */
 async function renameFolder(
   name: string,
   to: string,
@@ -404,12 +345,10 @@ async function renameFolder(
   }
 }
 
-/** "Renamed", plus the number of notes whose links the core rewrote. */
 function movedStatus(done: "status.renamed" | "status.moved", relinked: number): string {
   return relinked > 0 ? `${t(done)} · ${t("status.relinked", { count: relinked })}` : t(done);
 }
 
-/** Copies a note next to it and opens the copy, since that is the goal. */
 async function duplicateNote(id: string, vaultId: string): Promise<void> {
   try {
     const copy = await api.duplicateNote(id, vaultId);
@@ -421,7 +360,6 @@ async function duplicateNote(id: string, vaultId: string): Promise<void> {
   }
 }
 
-/** Opens the note file in an external app after pending edits are saved. */
 async function openExternally(id: string, vaultId: string): Promise<void> {
   await flushPendingSave();
   try {
@@ -447,7 +385,6 @@ async function revealFolder(name: string, vaultId: string): Promise<void> {
   }
 }
 
-/** Absolute path inside a vault, for the clipboard. */
 function absolutePath(vaultId: string, relative: string): string | null {
   const root =
     vaultId === state.vault?.id
@@ -481,12 +418,9 @@ async function createFolder(name: string): Promise<void> {
   }
 }
 
-/** Deletes a note after confirmation. An open note also leaves the editor. */
 async function removeNote(id: string, vaultId: string): Promise<void> {
   if (!window.confirm(t("confirm.deleteNote", { name: id }))) return;
 
-  // Drop pending edits of the deleted note: a save after the delete would
-  // create the file again.
   const isCurrent = vaultId === state.vault?.id && state.note?.id === id;
   if (isCurrent) cancelPendingSave();
 
@@ -500,7 +434,6 @@ async function removeNote(id: string, vaultId: string): Promise<void> {
   }
 }
 
-/** Deletes a folder with all its notes after confirmation. */
 async function removeFolder(name: string, vaultId: string): Promise<void> {
   if (!window.confirm(t("confirm.deleteFolder", { name }))) return;
 
@@ -518,15 +451,8 @@ async function removeFolder(name: string, vaultId: string): Promise<void> {
   }
 }
 
-/** What the form creates. Notes and folders share the input; only the action differs. */
 let newNoteMode: "note" | "folder" = "note";
 
-/**
- * Opens the new note or folder form. The prefix is the target folder.
- *
- * The folder goes into the input as text, not into hidden state: the user sees
- * the path and can erase it. The form always does exactly what it shows.
- */
 export function openNewNoteForm(prefix = "", mode: "note" | "folder" = "note"): void {
   newNoteMode = mode;
   el.newNoteName.placeholder = t(
@@ -535,23 +461,16 @@ export function openNewNoteForm(prefix = "", mode: "note" | "folder" = "note"): 
   el.newNoteForm.hidden = false;
   el.newNoteName.value = prefix;
   el.newNoteName.focus();
-  // Cursor at the end: the user types the name after the folder.
   el.newNoteName.setSelectionRange(prefix.length, prefix.length);
 }
 
-/** Folder of the open note. ⌘N creates the next note there. */
 function currentFolderPrefix(): string {
-  // A separate file path is not a vault folder: the new note goes to the root.
   if (state.note?.file) return "";
   const parts = state.note?.id.split("/") ?? [];
   parts.pop();
   return parts.length > 0 ? `${parts.join("/")}/` : "";
 }
 
-/**
- * Sidebar buttons and ⌘N. A second click on the same button hides the form.
- * The form is in the sidebar, so a collapsed sidebar opens first.
- */
 export function toggleNewNoteForm(mode: "note" | "folder"): void {
   if (!el.newNoteForm.hidden && newNoteMode === mode) {
     el.newNoteForm.hidden = true;

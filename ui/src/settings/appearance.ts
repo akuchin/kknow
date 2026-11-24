@@ -1,5 +1,3 @@
-/** The "Appearance" section: the theme, note labels and custom themes. */
-
 import { api, type NoteLabel, type Theme } from "../api";
 import { themeName, themeProblemText } from "../core-text";
 import { describeError, t } from "../i18n";
@@ -51,8 +49,6 @@ export async function renderAppearance(): Promise<void> {
     ),
   );
 
-  // Theme problems show here too: a theme lives in the vault or in the shared
-  // folder, and the person who put it there will fix it.
   const warnings = themes.flatMap((theme) => theme.warnings.map(themeProblemText));
   for (const problem of [...problems, ...warnings]) {
     const note = document.createElement("p");
@@ -86,13 +82,6 @@ export async function renderAppearance(): Promise<void> {
   }
 }
 
-/**
- * A custom theme row: its source and, for a vault theme, "Make shared".
- *
- * A shared or built-in theme needs no button: all vaults already see it. A vault theme
- * with a shared namesake hides that namesake, so it gets the same button, but
- * the button updates the shared copy.
- */
 function themeRow(theme: Theme): HTMLElement {
   if (theme.source !== "vault") {
     const label = document.createElement("span");

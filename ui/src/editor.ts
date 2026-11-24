@@ -48,7 +48,6 @@ import { addNoteInCell } from "./table-widget";
 const theme = EditorView.theme({
   "&": {
     height: "100%",
-    // The window sets the factor, per file (`note-scale.ts`).
     fontSize: "calc(15px * var(--note-scale, 1))",
     backgroundColor: "transparent",
     color: "var(--text)",
@@ -56,15 +55,8 @@ const theme = EditorView.theme({
   ".cm-content": {
     fontFamily: "var(--font-text)",
     lineHeight: "1.65",
-    // The left padding is smaller by the marker gutter width (`gutter.ts`):
-    // the text starts where it did before the gutter.
     padding: "24px 28px 40vh 6px",
     caretColor: "var(--accent)",
-    // Without this, a wide code block would stretch the editor content, and the
-    // whole text would scroll sideways. This way only the block scrolls.
-    // `max-width: 100%` is not enough: the content shares the scroller row with
-    // the gutter, so it would overflow by the gutter width. A flex item with
-    // `min-width: 0` takes only the space that is left.
     minWidth: "0",
   },
   "&.cm-focused": { outline: "none" },
@@ -72,16 +64,10 @@ const theme = EditorView.theme({
   ".cm-selectionBackground, ::selection": {
     backgroundColor: "var(--selection) !important",
   },
-  // The selection is one rectangle per line: full width for widgets (table,
-  // code block, diagram), line length for text. With rounded corners the
-  // difference looks like a highlighter stroke, not like broken rectangles.
   ".cm-selectionBackground": {
     borderRadius: "4px",
   },
 
-  // Note search panel. CodeMirror has its own colors for it and picks light or
-  // dark by its own setting, not by our variables, so the panel and its fields
-  // are restyled completely.
   ".cm-panels": {
     backgroundColor: "var(--bg-soft)",
     color: "var(--text)",
@@ -118,8 +104,6 @@ const theme = EditorView.theme({
     cursor: "pointer",
   },
 
-  // Match color derives from the theme accent, so it stays visible on both
-  // light and dark backgrounds.
   ".cm-searchMatch": {
     backgroundColor: "color-mix(in oklab, var(--accent) 35%, transparent)",
     borderRadius: "3px",
@@ -128,8 +112,6 @@ const theme = EditorView.theme({
     backgroundColor: "color-mix(in oklab, var(--accent) 70%, transparent)",
   },
 
-  // Link and tag completion. CodeMirror draws it for a light page with a
-  // monospace font, so it is restyled here, in the same scope.
   ".cm-tooltip.cm-tooltip-autocomplete": {
     backgroundColor: "var(--bg-raised)",
     color: "var(--text)",
@@ -167,33 +149,16 @@ const theme = EditorView.theme({
   },
 });
 
-/**
- * Marks a selection that spans several lines.
- *
- * Widgets need it. A table, code block and diagram are plain DOM, and the mouse
- * selects text in them the browser way. Inside one line this is right: it lets
- * users read and copy a table. But when the selection spans the document, a
- * second per-cell highlight lies over the CodeMirror band, and together they
- * look like boxes with gaps instead of one band. So during such a selection
- * the widgets' own selection is off (`styles.css`, `[data-selection="block"]`).
- */
 const blockSelection = EditorView.contentAttributes.compute(["selection"], (state) => {
   const across = state.selection.ranges.some(
     (range) =>
       !range.empty &&
       state.doc.lineAt(range.from).from !== state.doc.lineAt(range.to).from,
   );
-  // An empty object means "nothing to add"; the explicit type lets both
-  // branches share one type.
   const attrs: Record<string, string> = across ? { "data-selection": "block" } : {};
   return attrs;
 });
 
-/**
- * Search panel labels: CodeMirror reads them from this map, keyed by the
- * English phrase in its source. The values come from the UI dictionary, so the
- * panel language follows the window language.
- */
 const PHRASES = {
   Find: t("editor.search.find"),
   Replace: t("editor.search.replace"),
@@ -212,13 +177,6 @@ const PHRASES = {
   "on line": t("editor.search.onLine"),
 };
 
-/**
- * Wraps or unwraps the selection with a paired marker: `**`, `*`, `~~`.
- *
- * A second press removes the markers, both when they surround the selection
- * and when they are selected with the text. With no selection it inserts an
- * empty pair and puts the cursor between the markers, as other editors do.
- */
 function toggleInline(marker: string) {
   return (view: EditorView): boolean => {
     const { state } = view;
@@ -245,8 +203,6 @@ function toggleInline(marker: string) {
       }
 
       return {
-        // Both insert positions use old document coordinates: CodeMirror
-        // handles the shift from the first insert.
         changes: [
           { from, insert: marker },
           { from: to, insert: marker },
@@ -259,14 +215,12 @@ function toggleInline(marker: string) {
   };
 }
 
-/** Bold, italic, strikethrough. */
 const formatKeymap = [
   ...bindings("format.bold", toggleInline("**")),
   ...bindings("format.italic", toggleInline("*")),
   ...bindings("format.strike", toggleInline("~~")),
 ];
 
-/** Tab, ⇧Tab and the move keys on a list item; outside a list they pass. */
 const listKeymap = [
   { key: "Tab", run: shiftCommand(1) },
   { key: "Shift-Tab", run: shiftCommand(-1) },
@@ -274,29 +228,16 @@ const listKeymap = [
   ...bindings("item.down", moveCommand(1)),
 ];
 
-/**
- * Links between notes in the editor: the window gives the vault data and
- * opens the target. A standalone file gives no notes.
- */
 export interface EditorLinks {
-  /** The notes of the vault for `[[` and the tags for `#`. */
   notes(): readonly LinkNote[];
-  /** Headings and blocks of the note that a link target finds. */
   anchors(target: string): Promise<LinkAnchors | null>;
-  /** Opens the target of a link: `note`, `note#Heading`, `#^block`. */
   follow(target: string): void;
-  /**
-   * ⌘ and the pointer are on a link (`null`: no longer): the window shows a
-   * preview at the pointer.
-   */
   peek?(target: string | null, x: number, y: number): void;
 }
 
-/** Completion, ⌘-click and the `link.follow` key. */
 function links(options: EditorLinks) {
   return [
     autocompletion({
-      // Only our source: the Markdown language also offers HTML tags.
       override: [linkCompletion({ ...options, headings: headingsOf })],
       icons: false,
     }),
@@ -312,12 +253,6 @@ function links(options: EditorLinks) {
   ];
 }
 
-/**
- * Where the user was reading a note: cursor and scroll.
- *
- * The scroll is a CodeMirror snapshot, not a pixel count: it is tied to a line,
- * so after heights change (widgets, line wrapping) it shows the same text.
- */
 export interface EditorPosition {
   anchor: number;
   head: number;
@@ -326,32 +261,18 @@ export interface EditorPosition {
 
 export interface EditorOptions {
   onChange: (text: string) => void;
-  /** Agent notes in the open text, for the list in the window header. */
   onNotes?: (notes: AgentNote[]) => void;
-  /** The user changed a bookmark; `marks` holds all bookmarks after it. */
   onBookmark?: (marks: BookmarkMark[], change: BookmarkChange) => void;
-  /** The `bookmark.next` and `bookmark.previous` keys in the editor. */
   onBookmarkStep?: (direction: 1 | -1) => void;
-  /** Saves a pasted image; without it a paste of an image does nothing special. */
   saveImage?: SaveImage;
-  /** Links to other notes: completion and ⌘-click. See `setLinks`. */
   links?: EditorLinks;
 }
 
-/** A CodeMirror wrapper that exposes only the text. */
 export class Editor {
   private view: EditorView;
   private options: EditorOptions;
-  /**
-   * Whether to draw the markup right in the text.
-   *
-   * It is off while the preview is open: two renderings side by side are
-   * useless, and with the result on the right, plain markdown fits the left.
-   */
   private live = true;
-  /** Line numbers in the gutter: a window setting, like `live`. */
   private lineNumbers = false;
-  /** Zones that follow edits besides `onChange`: the side panel outline. */
   private textListeners: (() => void)[] = [];
 
   constructor(parent: HTMLElement, options: EditorOptions) {
@@ -366,26 +287,18 @@ export class Editor {
       extensions: [
         history(),
         drawSelection(),
-        // Panel on top: at the bottom it covered the text being searched.
         search({ top: true }),
-        // Tab, Enter and the arrows in a table; outside a table they do nothing.
         tableEditing(),
         EditorState.phrases.of(PHRASES),
-        // Search goes first: ⌘F and ⌘G must reach it, not the editor.
-        // The list keys go before the default ones: ⌥↑ on a list item moves
-        // the item with its children, elsewhere the default moves the line.
         keymap.of([
           ...searchKeymap,
           ...formatKeymap,
           ...listKeymap,
-          // Before the defaults: CodeMirror binds ⌘⌥↑ and ⌘⌥↓ to extra cursors.
           ...bindings("bookmark.next", () => (options.onBookmarkStep?.(1), true)),
           ...bindings("bookmark.previous", () => (options.onBookmarkStep?.(-1), true)),
           ...defaultKeymap,
           ...historyKeymap,
         ]),
-        // GFM base, not CommonMark: the core renders tables, and the editor
-        // parser must see them the same way.
         markdown({ base: markdownLanguage, codeLanguages, completeHTMLTags: false }),
         options.links ? links(options.links) : [],
         livePreview(),
@@ -407,8 +320,6 @@ export class Editor {
           }
           const changed = bookmarkChanged(update);
           if (changed) options.onBookmark?.(bookmarkMarks(update.state), changed.change);
-          // Notes come from the syntax tree, which a long note builds in the
-          // background after opening, so tree updates also trigger a report.
           if (update.docChanged || syntaxTree(update.startState) !== syntaxTree(update.state)) {
             this.reportNotes();
           }
@@ -417,22 +328,13 @@ export class Editor {
     });
   }
 
-  /**
-   * Takes the vault data for links. The next text (`setText`) gets `[[`
-   * completion and ⌘-click; the window calls this at startup, before a note
-   * opens.
-   */
   setLinks(links: EditorLinks): void {
     this.options = { ...this.options, links };
   }
 
-  /** Replaces the whole document; the undo history starts over. */
   setText(text: string): void {
     this.view.setState(this.createState(text));
-    // The new state does not know live preview is off: that is a window
-    // setting, not a document one.
     this.applyLive();
-    // A state replacement does not call update listeners, so report notes by hand.
     this.reportNotes();
   }
 
@@ -444,10 +346,6 @@ export class Editor {
     revealNote(this.view, note);
   }
 
-  /**
-   * Adds a note to words selected in the preview: match `index` of `total`.
-   * Returns `false` if no single matching place exists in the source.
-   */
   addNoteFromPreview(words: string, index: number, total: number, text: string): boolean {
     const to = previewAnchor(this.view.state, words, index, total);
     if (to === null) return false;
@@ -455,29 +353,19 @@ export class Editor {
     return true;
   }
 
-  /** Adds a note to words selected in a closed table cell: match `index` of `total` in the cell. */
   addNoteInCell(cell: Element, words: string, index: number, total: number, text: string): boolean {
     return addNoteInCell(this.view, cell, words, index, total, text);
   }
 
-  /** The scrolling element: a popup over the text and the side panel follow its scroll. */
   get scroller(): HTMLElement {
     return this.view.scrollDOM;
   }
 
-  /** Lets the window return here when the note opens again. */
   getPosition(): EditorPosition {
     const { anchor, head } = this.view.state.selection.main;
     return { anchor, head, scroll: this.view.scrollSnapshot() };
   }
 
-  /**
-   * Restores the cursor and scroll.
-   *
-   * The file can change outside and get shorter, so positions are clamped:
-   * CodeMirror clamps the scroll itself, the cursor is clamped here. Without a
-   * position (the note was not opened before) the start stays, set by `setText`.
-   */
   setPosition(position: EditorPosition | undefined): void {
     if (!position) return;
     const length = this.view.state.doc.length;
@@ -490,20 +378,14 @@ export class Editor {
     });
   }
 
-  /** Bookmark lines in the current text, 1-based. */
   getBookmarks(): number[] {
     return bookmarkLines(this.view.state);
   }
 
-  /** Bookmarks with their names, sorted by line. */
   getBookmarkMarks(): BookmarkMark[] {
     return bookmarkMarks(this.view.state);
   }
 
-  /**
-   * Call after `setText`, which clears bookmarks.
-   * `enabled` is false for separate files: they cannot have bookmarks.
-   */
   setBookmarks(marks: BookmarkMark[], enabled: boolean): void {
     setBookmarkMarks(this.view, marks, enabled);
   }
@@ -512,38 +394,29 @@ export class Editor {
     toggleBookmark(this.view);
   }
 
-  /** `line` is 1-based. */
   toggleBookmarkLine(line: number): void {
     toggleBookmarkAt(this.view, line);
   }
 
-  /**
-   * Puts the cursor at the line start and the line in the middle of the view,
-   * or at its top (`start`): a heading from the outline starts its section.
-   */
   goToLine(line: number, at: "center" | "start" = "center"): void {
     goToLine(this.view, line, at);
     this.view.focus();
   }
 
-  /** Goes to the next (`1`) or previous (`-1`) bookmark; returns its line or `null`. */
   goToBookmark(direction: 1 | -1): number | null {
     const line = goToBookmark(this.view, direction);
     if (line !== null) this.view.focus();
     return line;
   }
 
-  /** Calls `listener` after each edit of the text. */
   onText(listener: () => void): void {
     this.textListeners.push(listener);
   }
 
-  /** The 1-based line at the top of the visible part of the text. */
   topLine(): number {
     return this.lineAtHeight(this.view.scrollDOM.scrollTop);
   }
 
-  /** The 1-based line at the bottom of the visible part of the text. */
   bottomLine(): number {
     const scroller = this.view.scrollDOM;
     return this.lineAtHeight(scroller.scrollTop + scroller.clientHeight - 1);
@@ -555,15 +428,10 @@ export class Editor {
     return view.state.doc.lineAt(view.lineBlockAtHeight(height).from).number;
   }
 
-  /** The headings of the current text, also with unsaved edits. */
   getHeadings(): Heading[] {
     return headingsOf(this.view.state);
   }
 
-  /**
-   * Sets the task box on 1-based `line` to `done`, as one undo step.
-   * Returns `false` if the line has no box: the text changed meanwhile.
-   */
   setTask(line: number, done: boolean): boolean {
     const doc = this.view.state.doc;
     if (line < 1 || line > doc.lines) return false;
@@ -578,17 +446,12 @@ export class Editor {
     return true;
   }
 
-  /**
-   * The text position under a window point, or `null` outside the editor.
-   * A hidden editor (the "Read" mode) is never under the point.
-   */
   dropPosition(x: number, y: number): number | null {
     const target = document.elementFromPoint(x, y);
     if (!target || !this.view.dom.contains(target)) return null;
     return this.view.posAtCoords({ x, y }, false);
   }
 
-  /** Inserts image links at `at`, or in place of the selection. */
   insertImages(links: string[], at?: number): void {
     insertImageLinks(this.view, links, at);
   }
@@ -601,12 +464,6 @@ export class Editor {
     this.view.focus();
   }
 
-  /**
-   * Turns live preview on or off.
-   *
-   * It uses an effect, not a new state: ⌘Z keeps working as before, and the
-   * cursor stays where it was.
-   */
   setLive(on: boolean): void {
     if (this.live === on) return;
     this.live = on;
@@ -623,23 +480,10 @@ export class Editor {
     this.view.dispatch({ effects: liveEnabled.of(this.live) });
   }
 
-  /**
-   * Opens note search and focuses its field.
-   *
-   * The window calls it too, not only ⌘F in the editor: searching the note
-   * makes sense even when focus is, for example, in the note list.
-   */
   openSearch(): void {
     openSearchPanel(this.view);
   }
 
-  /**
-   * Font size as a factor of the normal size.
-   *
-   * It uses a CSS variable, not a new theme: the theme is part of the state, and
-   * replacing it would reset the undo history. Line heights need a new measure:
-   * CodeMirror does not notice a font change itself.
-   */
   setScale(scale: number): void {
     const dom = this.view.dom;
     if (scale === 1) dom.style.removeProperty("--note-scale");
@@ -647,8 +491,6 @@ export class Editor {
     this.view.requestMeasure();
   }
 
-  /** Redraws diagrams: mermaid colors come from its config, not from CSS. */
-  /** Embedded notes changed: the embeds of live preview load again. */
   redrawEmbeds(): void {
     clearEmbeds();
     if (this.view.state.doc.toString().includes("![[")) {

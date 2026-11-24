@@ -7,7 +7,6 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("a note is created, renamed, deleted and restored from the trash", async ({ page }) => {
-  // Create: the sidebar button opens the name field.
   await page.locator("#new-note").click();
   await expect(page.locator("#new-note-form")).toBeVisible();
   await page.locator("#new-note-name").fill("Drafts/From the test");
@@ -16,7 +15,6 @@ test("a note is created, renamed, deleted and restored from the trash", async ({
   await expect(page.locator("#note-title")).toHaveText("From the test");
   await expect(noteRow(page, "Drafts/From the test")).toHaveClass(/active/);
 
-  // Rename in place: the input takes the file name, the folder stays.
   await openRowMenu(page, noteRow(page, "Drafts/From the test"));
   await menuItem(page, t("commands.rename")).click();
   const input = page.locator("#note-list input.tree-rename");
@@ -28,7 +26,6 @@ test("a note is created, renamed, deleted and restored from the trash", async ({
   await expect(noteRow(page, "Drafts/Renamed")).toHaveClass(/active/);
   await expect(page.locator("#note-title")).toHaveText("Renamed");
 
-  // Delete: the window asks first.
   page.once("dialog", async (dialog) => {
     expect(dialog.message()).toBe(t("confirm.deleteNote", { name: "Drafts/Renamed" }));
     await dialog.accept();
@@ -39,8 +36,6 @@ test("a note is created, renamed, deleted and restored from the trash", async ({
   await expect(noteRow(page, "Drafts/Renamed")).toHaveCount(0);
   await expect(page.locator("#note-title")).toHaveText(t("topbar.note.empty"));
 
-  // The trash node lists it; a click shows it read-only, and "Restore" puts
-  // it back and opens it.
   const trash = page.locator('.trash-row[data-vault="notes"] button.trash');
   await expect(trash.locator(".tree-count")).toHaveText("3");
   await trash.click();
@@ -65,7 +60,6 @@ test("a folder collapses and a note opens in a collapsed branch", async ({ page 
   await expect(folder).toHaveAttribute("aria-expanded", "false");
   await expect(noteRow(page, "Projects/kknow")).toHaveCount(0);
 
-  // A link opens the note; the tree expands to show it.
   await noteRow(page, "Rust").click();
   await page.locator("#preview a", { hasText: "Projects/kknow" }).click();
   await expect(page.locator("#note-title")).toHaveText("kknow");

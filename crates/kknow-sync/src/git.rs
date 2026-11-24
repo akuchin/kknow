@@ -1,27 +1,3 @@
-//! A git repository as the other end of sync.
-//!
-//! Git does not fit [`SyncProvider`](crate::SyncProvider): it has commits,
-//! branches and its own merge, so it is a different algorithm, not one more
-//! implementation of the trait. It also is not ours to write again: kknow runs
-//! the `git` program of the user. Thus SSH keys, credential helpers,
-//! `~/.gitconfig` and LFS work as they work in the terminal.
-//!
-//! The rules:
-//!
-//! - one vault is one repository, and the vault root is the repository root;
-//! - the person stages and commits by hand; sync is fetch, merge and push;
-//! - a conflict leaves no `<<<<<<<` marks in a note. The local version stays
-//!   in place and the remote one goes to a copy next to it, as with the other
-//!   providers ([`CONFLICT_MARK`]);
-//! - the settings of this machine (`.kknow/remote.json`, `.kknow/sync.json`)
-//!   and the trash go to `.git/info/exclude`. The rest of `.kknow` (bookmarks,
-//!   themes, commands) is part of the repository.
-//!
-//! All operations are synchronous, as the rest of the sync core. The network
-//! steps ([`Git::fetch`], [`Git::push`]) do not touch the files, and
-//! [`Git::merge`] does not use the network. So the window holds the vault lock
-//! only for the merge.
-
 use crate::shared::Merge;
 use std::fs;
 use std::io::ErrorKind;
@@ -33,22 +9,10 @@ use serde::Serialize;
 use crate::plan::CONFLICT_MARK;
 use crate::{Error, Result};
 
-/// The environment variable that carries the token to the credential helper.
-/// The token never goes into the arguments, the URL or `.git/config`.
 const TOKEN_VARIABLE: &str = "KKNOW_GIT_TOKEN";
 
-/// A credential helper for one run of git: it answers with the token.
-///
-/// The empty helper before it removes the helpers of the user for this run.
-/// Otherwise git would also save our token in the keychain of the user. The
-/// user name does not matter for GitHub and GitLab tokens, but it must not be
-/// empty.
 const TOKEN_HELPER: &str = "credential.helper=!f() { echo username=x-access-token; echo \"password=$KKNOW_GIT_TOKEN\"; }; f";
 
-/// The lines that kknow adds to `.git/info/exclude`.
-///
-/// This file is local: kknow does not change the `.gitignore` of the user,
-/// and the rule does not travel to other machines.
 const EXCLUDE: &[&str] = &[
     "/.kknow/remote.json",
     "/.kknow/sync.json",
@@ -59,35 +23,24 @@ const EXCLUDE: &[&str] = &[
 
 const EXCLUDE_HEADER: &str = "# kknow: the settings of this machine and the trash";
 
-/// Names that do not make a folder "not empty" for a clone: the service
-/// folders of kknow and the file that Finder leaves everywhere.
 const SERVICE_NAMES: &[&str] = &[".kknow", ".trash", ".DS_Store"];
 
-/// The name of the remote. kknow works with one remote and does not ask.
 const REMOTE: &str = "origin";
 
-/// The branch for a new repository when the remote one is empty.
 const DEFAULT_BRANCH: &str = "main";
 
-/// The identity for a commit when git has none. Without it, `git commit`
-/// fails on a fresh machine, and the message about `user.email` does not
-/// help a person who only writes notes.
 const FALLBACK_NAME: &str = "kknow";
 const FALLBACK_EMAIL: &str = "kknow@localhost";
 
-/// The `git` program and the vault it works in.
 #[derive(Debug, Clone)]
 pub struct Git {
     program: PathBuf,
     root: PathBuf,
     token: Option<String>,
     env: Vec<(String, String)>,
-    /// Joins two versions of a shared file of `.kknow` on a merge conflict,
-    /// as the S3 sync does (see [`crate::shared`]).
     merge: Option<Merge>,
 }
 
-/// What changed in one file, separately for the index and the work tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -96,68 +49,49 @@ pub enum ChangeKind {
     Modified,
     Deleted,
     Renamed,
-    /// A new file that git does not track yet. It is only in the work tree.
     Untracked,
-    /// A merge stopped in this file. kknow resolves conflicts itself, so this
-    /// shows only after a merge that someone ran outside kknow.
     Conflicted,
 }
 
-/// One changed file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitChange {
-    /// The path from the vault root with `/`.
     pub path: String,
-    /// The old path of a renamed file.
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub from: Option<String>,
-    /// The change in the index: what the next commit takes.
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub staged: Option<ChangeKind>,
-    /// The change in the work tree that is not in the index.
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub unstaged: Option<ChangeKind>,
 }
 
-/// The state of the repository for the changes panel.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GitStatus {
-    /// The current branch; `None` for a detached HEAD.
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub branch: Option<String>,
-    /// Local commits that the remote does not have yet, as of the last fetch.
     pub ahead: usize,
-    /// Remote commits that are not here yet, as of the last fetch.
     pub behind: usize,
     pub changes: Vec<GitChange>,
 }
 
-/// A conflict that the merge resolved with a copy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitConflict {
-    /// The file that keeps the local version.
     pub path: String,
-    /// The copy with the remote version.
     pub copy: String,
 }
 
-/// What a merge did to the files.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Merged {
-    /// Files that the merge changed, added or removed.
     pub changed: Vec<String>,
     pub conflicts: Vec<GitConflict>,
 }
 
-/// What a whole sync did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GitReport {
     pub merged: Merged,
-    /// Commits that went to the remote.
     pub pushed: usize,
 }
 
@@ -172,22 +106,16 @@ impl Git {
         }
     }
 
-    /// The function that joins two versions of a shared file. Without it a
-    /// shared file gets a conflict copy, as a note does.
     pub fn with_merge(mut self, merge: Merge) -> Self {
         self.merge = Some(merge);
         self
     }
 
-    /// The token for HTTPS. `None` leaves the sign-in to git: its credential
-    /// helper or the SSH agent.
     pub fn with_token(mut self, token: Option<String>) -> Self {
         self.token = token.filter(|token| !token.is_empty());
         self
     }
 
-    /// One more variable for each run of git. The tests use it to hide the
-    /// configuration of the person who runs them.
     pub fn with_env(mut self, name: &str, value: impl AsRef<Path>) -> Self {
         self.env.push((
             name.to_string(),
@@ -200,18 +128,15 @@ impl Git {
         &self.root
     }
 
-    /// `git version`: the check that the path in the settings is git.
     pub fn version(&self) -> Result<String> {
         let out = self.text(&["version"])?;
         Ok(out.trim().to_string())
     }
 
-    /// Whether the vault is already a repository.
     pub fn is_repository(root: &Path) -> bool {
         root.join(".git").exists()
     }
 
-    /// The URL of `origin`, if the repository has it.
     pub fn origin(&self) -> Result<Option<String>> {
         match self.text(&["remote", "get-url", REMOTE]) {
             Ok(url) => Ok(Some(url.trim().to_string())),
@@ -220,17 +145,6 @@ impl Git {
         }
     }
 
-    /// Connects the vault to a repository and gives its URL.
-    ///
-    /// There are two cases, and all others are an error:
-    ///
-    /// - the vault is already a repository: the URL comes from `origin`, and
-    ///   `url` matters only if there is no `origin` yet;
-    /// - the vault is empty: kknow makes a repository and checks out the
-    ///   default branch of `url`. An empty remote repository is also fine.
-    ///
-    /// A folder with notes and no `.git` is refused. Two histories of the same
-    /// notes cannot merge without questions that kknow cannot ask well.
     pub fn attach(&self, url: Option<&str>) -> Result<String> {
         let url = url.map(str::trim).filter(|url| !url.is_empty());
         if let Some(url) = url {
@@ -256,8 +170,6 @@ impl Git {
             return Err(Error::GitNotEmpty);
         }
 
-        // Ask the remote first. If the address or the token is wrong, the
-        // vault stays as it was, without a half-made `.git`.
         let branch = self.remote_default_branch(url)?;
 
         self.run(&["init", "-q"])?;
@@ -269,15 +181,11 @@ impl Git {
         if let Some(branch) = branch {
             self.fetch()?;
             let tracked = format!("{REMOTE}/{branch}");
-            // `-f`: the service files of kknow can be in the folder already,
-            // and the remote versions win. The folder had no notes.
             self.run(&["checkout", "-q", "-f", "-B", &branch, "--track", &tracked])?;
         }
         Ok(url.to_string())
     }
 
-    /// The vault must be the root of its repository: one vault, one
-    /// repository. A vault inside a code repository would commit the code too.
     fn check_root(&self) -> Result<()> {
         let top = self.text(&["rev-parse", "--show-toplevel"])?;
         let top = fs::canonicalize(top.trim()).map_err(|source| Error::io(top.trim(), source))?;
@@ -289,11 +197,6 @@ impl Git {
         }
     }
 
-    /// The default branch of a remote repository; `None` if it is empty.
-    ///
-    /// Usually the remote `HEAD` names it. A bare repository made by hand can
-    /// have a `HEAD` that points to a branch nobody pushed; then `main`,
-    /// `master` or the first branch, in this order.
     fn remote_default_branch(&self, url: &str) -> Result<Option<String>> {
         let out = self.text(&["ls-remote", "--symref", url])?;
         let mut head = None;
@@ -322,7 +225,6 @@ impl Git {
             .or_else(|| branches.first().cloned()))
     }
 
-    /// Adds the kknow lines to `.git/info/exclude`, once.
     pub fn exclude(&self) -> Result<()> {
         let path = self.root.join(".git/info/exclude");
         let current = match fs::read_to_string(&path) {
@@ -359,10 +261,6 @@ impl Git {
         fs::write(&path, text).map_err(|source| Error::io(&path, source))
     }
 
-    /// Changed files, the branch and the distance to the remote.
-    ///
-    /// The exclude lines are checked here too, not only on attach: a vault
-    /// connected by an older version gets the lines that came later.
     pub fn status(&self) -> Result<GitStatus> {
         self.exclude()?;
         let out = self.run(&[
@@ -374,8 +272,6 @@ impl Git {
         ])?;
         let mut status = parse_status(&String::from_utf8_lossy(&out));
 
-        // Before the first push the branch has no upstream, and git gives no
-        // distance. All local commits are then unpushed.
         if let Some(branch) = &status.branch
             && !self.exists(&format!("refs/remotes/{REMOTE}/{branch}"))
             && self.head().is_some()
@@ -385,7 +281,6 @@ impl Git {
         Ok(status)
     }
 
-    /// Adds files to the index. A deleted file goes in as a deletion.
     pub fn stage(&self, paths: &[String]) -> Result<()> {
         if paths.is_empty() {
             return Ok(());
@@ -395,10 +290,6 @@ impl Git {
         self.run(&args).map(drop)
     }
 
-    /// Takes files out of the index. The work tree stays as it is.
-    ///
-    /// `git reset` and not `git restore --staged`: the second one fails before
-    /// the first commit, because there is no HEAD to restore from.
     pub fn unstage(&self, paths: &[String]) -> Result<()> {
         if paths.is_empty() {
             return Ok(());
@@ -408,12 +299,6 @@ impl Git {
         self.run(&args).map(drop)
     }
 
-    /// The unified diff of one file: of the index against HEAD when `staged`,
-    /// else of the work tree against the index. `from` is the old path of a
-    /// rename, so the diff shows the rename and not a new file.
-    ///
-    /// An untracked file is not in the index, and `git diff` does not see it.
-    /// For it the diff compares the file with nothing (`--no-index`).
     pub fn diff(&self, path: &str, from: Option<&str>, staged: bool) -> Result<String> {
         let mut args = vec!["diff", "--no-color", "--no-ext-diff", "-M"];
         if staged {
@@ -428,14 +313,6 @@ impl Git {
         self.text(&args)
     }
 
-    /// Throws away the changes of one file. The caller must keep the work
-    /// tree version first (kknow moves it to the trash): git cannot give it
-    /// back.
-    ///
-    /// With `staged`, the file goes back to HEAD in the index and the work
-    /// tree; a file that HEAD does not have leaves the index. A rename also
-    /// brings back `from`. Without `staged`, the work tree file goes back to
-    /// the index version; an untracked file has none and stays deleted.
     pub fn discard(&self, path: &str, from: Option<&str>, staged: bool) -> Result<()> {
         if !staged {
             if !self.text(&["ls-files", "--", path])?.is_empty() {
@@ -453,8 +330,6 @@ impl Git {
         Ok(())
     }
 
-    /// `git diff --no-index` exits with 1 when the files differ, and that is
-    /// the usual case here, not an error.
     fn text_of_diff(&self, args: &[&str]) -> Result<String> {
         let output = self
             .command()
@@ -467,7 +342,6 @@ impl Git {
         }
     }
 
-    /// Commits the index.
     pub fn commit(&self, message: &str) -> Result<()> {
         let message = message.trim();
         if message.is_empty() {
@@ -479,7 +353,6 @@ impl Git {
             .map(drop)
     }
 
-    /// `-c user.name=… -c user.email=…` when git has no identity of its own.
     fn identity(&self) -> Vec<String> {
         let mut args = Vec::new();
         for (key, fallback) in [("user.name", FALLBACK_NAME), ("user.email", FALLBACK_EMAIL)] {
@@ -491,16 +364,10 @@ impl Git {
         args
     }
 
-    /// Network, part one: gets the remote commits. The files do not change.
     pub fn fetch(&self) -> Result<()> {
         self.run(&["fetch", "-q", "--prune", REMOTE]).map(drop)
     }
 
-    /// Merges the remote branch into the current one. No network.
-    ///
-    /// git merges edits in different parts of a note by itself. Only the
-    /// parts that both sides changed are a conflict, and then the whole local
-    /// file stays and the remote one goes to a copy.
     pub fn merge(&self) -> Result<Merged> {
         let branch = self.branch()?;
         let remote = format!("refs/remotes/{REMOTE}/{branch}");
@@ -515,7 +382,6 @@ impl Git {
         }
 
         let mut merged = Merged::default();
-        // A merge commit needs an identity, as a commit does.
         let mut args = self.identity();
         args.extend(["merge", "-q", "--no-edit", &remote].map(String::from));
         if let Err(error) = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>()) {
@@ -536,7 +402,6 @@ impl Git {
         Ok(merged)
     }
 
-    /// Network, part two: sends the local commits. Gives their count.
     pub fn push(&self) -> Result<usize> {
         let Some(_) = self.head() else {
             return Ok(0);
@@ -554,14 +419,11 @@ impl Git {
 
         match self.run(&["push", "-q", "-u", REMOTE, &branch]) {
             Ok(_) => Ok(ahead),
-            // Someone pushed between our fetch and our push.
             Err(Error::Git(message)) if message.contains("rejected") => Err(Error::RemoteChanged),
             Err(error) => Err(error),
         }
     }
 
-    /// The whole sync for the terminal: fetch, merge, push. The window runs
-    /// the three steps itself, so that it holds the vault only for the merge.
     pub fn sync(&self) -> Result<GitReport> {
         self.fetch()?;
         let merged = self.merge()?;
@@ -569,7 +431,6 @@ impl Git {
         Ok(GitReport { merged, pushed })
     }
 
-    /// Writes both versions of each conflicted file and adds them to the index.
     fn resolve(&self, paths: &[String]) -> Result<Vec<GitConflict>> {
         let mut conflicts = Vec::new();
         for path in paths {
@@ -578,8 +439,6 @@ impl Git {
             let file = self.root.join(path);
 
             match (ours, theirs) {
-                // A copy of a shared file does nothing: no part of the app
-                // reads it. Both versions go into one file instead.
                 (Some(ours), Some(theirs))
                     if crate::shared::is_shared(path) && self.merge.is_some() =>
                 {
@@ -598,8 +457,6 @@ impl Git {
                         copy,
                     });
                 }
-                // One side deleted the file and the other changed it. The
-                // changed version stays: nothing is lost.
                 (Some(kept), None) | (None, Some(kept)) => {
                     write(&file, &kept)?;
                     self.run(&["add", "--", path])?;
@@ -612,7 +469,6 @@ impl Git {
         Ok(conflicts)
     }
 
-    /// The content of a file at a merge stage: 2 is ours, 3 is theirs.
     fn stage_blob(&self, stage: u8, path: &str) -> Result<Option<Vec<u8>>> {
         match self.run(&["show", &format!(":{stage}:{path}")]) {
             Ok(bytes) => Ok(Some(bytes)),
@@ -660,7 +516,6 @@ impl Git {
         Ok(String::from_utf8_lossy(&self.run(args)?).into_owned())
     }
 
-    /// Runs git and gives its standard output.
     fn run(&self, args: &[&str]) -> Result<Vec<u8>> {
         let output = self
             .command()
@@ -682,8 +537,6 @@ impl Git {
 
     fn command(&self) -> Command {
         let mut command = Command::new(&self.program);
-        // On Windows a console program started from the window opens a
-        // console window of its own; the flag starts git without one.
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -693,11 +546,8 @@ impl Git {
         command
             .current_dir(&self.root)
             .stdin(Stdio::null())
-            // No questions: there is nobody at a terminal to answer them, and
-            // git would wait forever.
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GCM_INTERACTIVE", "never")
-            // A stalled connection fails after half a minute instead of never.
             .args([
                 "-c",
                 "http.lowSpeedLimit=1000",
@@ -720,8 +570,6 @@ impl Git {
     }
 }
 
-/// A token in the URL would go to `.git/config` and `.kknow/remote.json` as
-/// plain text. The token has its own field for this reason.
 fn check_url(url: &str) -> Result<()> {
     let Some((_, rest)) = url.split_once("://") else {
         return Ok(());
@@ -735,7 +583,6 @@ fn check_url(url: &str) -> Result<()> {
     }
 }
 
-/// Whether a folder has nothing but service files.
 fn is_empty(root: &Path) -> Result<bool> {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
@@ -752,11 +599,6 @@ fn is_empty(root: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// The path of the copy for the remote version: `dir/Note (conflict 3f9a1c2b).md`.
-///
-/// The same mark as the other providers use, so the window finds the copies in
-/// the same way. The hash makes the name stable: the same version gives the
-/// same copy.
 pub fn conflict_copy(path: &str, theirs: &[u8]) -> String {
     let hash = blake3::hash(theirs).to_hex();
     let short = &hash.as_str()[..8];
@@ -778,8 +620,6 @@ fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::write(path, bytes).map_err(|source| Error::io(path, source))
 }
 
-/// The error text of git without its hints: a hint is advice for the terminal,
-/// not for a person in the window.
 fn failure_text(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     let lines: Vec<&str> = text
@@ -794,12 +634,6 @@ fn failure_text(stderr: &[u8]) -> String {
     }
 }
 
-/// A git failure with its cause, when it is a common one.
-///
-/// git has no error codes, only text. These lines are stable for years, and
-/// a text that matches none of them stays `Error::Git` with the text of git.
-/// The checks look at the remote part of the message only: a local failure
-/// (a merge, a commit) has none of these words.
 fn classify(message: String) -> Error {
     let has = |needles: &[&str]| needles.iter().any(|needle| message.contains(needle));
     if has(&[
@@ -840,7 +674,6 @@ fn classify(message: String) -> Error {
     }
 }
 
-/// The line of a git message that says what failed, without `fatal:`.
 fn first_line(message: &str) -> String {
     let line = message
         .lines()
@@ -853,9 +686,6 @@ fn first_line(message: &str) -> String {
         .to_string()
 }
 
-/// A merge that did not start: uncommitted edits are in files that the merge
-/// must change. The file names come from the git message, one per line with a
-/// tab before it.
 fn local_changes(error: Error) -> Error {
     let Error::Git(message) = &error else {
         return error;
@@ -881,11 +711,6 @@ fn kind(code: char) -> Option<ChangeKind> {
     }
 }
 
-/// Reads `git status --porcelain=v2 -z --branch`.
-///
-/// The format is for programs: fields split by spaces, records by NUL, and
-/// the path is the last field, so a space in a name does not break it. A
-/// rename has its old path in the next record.
 fn parse_status(out: &str) -> GitStatus {
     let mut status = GitStatus::default();
     let mut records = out.split('\0').filter(|record| !record.is_empty());
@@ -948,8 +773,6 @@ fn parse_status(out: &str) -> GitStatus {
 mod tests {
     use super::*;
 
-    /// git with the configuration of the person who runs the tests hidden:
-    /// no global identity, no credential helper, no default branch name.
     fn git(root: &Path, home: &Path) -> Git {
         Git::new("git", root)
             .with_env("GIT_CONFIG_GLOBAL", home.join("gitconfig"))
@@ -985,7 +808,6 @@ mod tests {
             self.remote.to_string_lossy().into_owned()
         }
 
-        /// A vault on one more machine, connected to the remote.
         fn machine(&self, name: &str) -> Git {
             let root = self.base.join(name);
             fs::create_dir_all(&root).unwrap();
@@ -1032,7 +854,6 @@ mod tests {
         laptop.sync().unwrap();
         let desk = world.machine("desk");
 
-        // Different lines on two machines: git merges them itself.
         put(&laptop, "Index.md", "РАЗ\nдва\nтри\n");
         commit_all(&laptop, "ноутбук");
         laptop.sync().unwrap();
@@ -1077,7 +898,6 @@ mod tests {
             "слияние закоммичено"
         );
 
-        // The other machine gets both versions with the next sync.
         laptop.sync().unwrap();
         assert_eq!(read(&laptop, &conflict.copy), "с ноутбука\n");
     }
@@ -1092,8 +912,6 @@ mod tests {
         laptop.sync().unwrap();
         let desk = world.machine("desk");
 
-        // Each side changes a different line of the plain text. A plain note
-        // would merge; the sealed text is one line, so it cannot.
         let theirs = key.seal("LINE ONE\nline two\n").unwrap();
         put(&laptop, "Diary.md", &theirs);
         commit_all(&laptop, "laptop");
@@ -1223,18 +1041,15 @@ mod tests {
         put(&laptop, "Старое.md", "старое\n");
         commit_all(&laptop, "старт");
 
-        // Work tree side: back to the index, the staged part stays.
         put(&laptop, "Index.md", "раз\nдва\n");
         laptop.stage(&["Index.md".to_string()]).unwrap();
         put(&laptop, "Index.md", "раз\nдва\nтри\n");
         laptop.discard("Index.md", None, false).unwrap();
         assert_eq!(read(&laptop, "Index.md"), "раз\nдва\n");
 
-        // Index side: back to HEAD in the index and the work tree.
         laptop.discard("Index.md", None, true).unwrap();
         assert_eq!(read(&laptop, "Index.md"), "раз\n");
 
-        // A staged rename brings the old name back; the new one leaves the index.
         fs::rename(
             laptop.root().join("Старое.md"),
             laptop.root().join("Новое.md"),
@@ -1247,7 +1062,6 @@ mod tests {
         laptop.discard("Новое.md", Some("Старое.md"), true).unwrap();
         assert_eq!(read(&laptop, "Старое.md"), "старое\n");
 
-        // A staged new file leaves the index; an untracked one is left alone.
         put(&laptop, "Новая.md", "текст\n");
         laptop.stage(&["Новая.md".to_string()]).unwrap();
         laptop.discard("Новая.md", None, true).unwrap();
@@ -1293,7 +1107,6 @@ mod tests {
 
         assert_eq!(paths, vec![".kknow/bookmarks.json".to_string()]);
 
-        // A second attach does not repeat the lines.
         laptop.attach(None).unwrap();
         let exclude = fs::read_to_string(laptop.root().join(".git/info/exclude")).unwrap();
         assert_eq!(exclude.matches("/.kknow/remote.json").count(), 1);
@@ -1366,9 +1179,6 @@ mod tests {
         assert!(error.to_string().contains("not found"), "{error}");
     }
 
-    /// The texts are from real git runs: an HTTPS address with no network, a
-    /// private repository with no token, a wrong SSH key, GitHub with no
-    /// such repository.
     #[test]
     fn network_and_sign_in_failures_are_named() {
         let cases = [
@@ -1423,8 +1233,6 @@ mod tests {
         );
     }
 
-    /// The helper is shell text inside a `-c` value: a wrong quote would give
-    /// git an empty password. `git credential fill` asks it as a push would.
     #[test]
     fn the_token_reaches_git_through_the_helper_only() {
         use std::io::Write;

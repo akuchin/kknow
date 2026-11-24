@@ -1,9 +1,3 @@
-// Separate files: the file list, opening from Finder and from the dialog,
-// drag and drop and image attachments.
-//
-// Only this module calls `state.setFiles`. The module does not touch the DOM
-// on import.
-
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { api, type CommandTarget, type DragDrop, type FileEntry, type Opened } from "../api";
@@ -29,16 +23,8 @@ import { fail, setStatus } from "./status";
 import { copyText } from "./util";
 import { adoptVaults, refreshVaults } from "./vaults";
 
-/**
- * "Drop here" hint while a folder is dragged over the window.
- *
- * It lives in `body`, not `#app`: `#app` is a grid, and the hint needs the
- * whole window, not a grid cell. Pointer events pass through it: the shell
- * handles the drag, and the hint has nothing to click.
- */
 let dropHint: HTMLDivElement;
 
-/** Adds the drop hint and wires the "Open file…" button. */
 export function initFiles(): void {
   dropHint = document.createElement("div");
   dropHint.className = "drop-hint";
@@ -48,10 +34,8 @@ export function initFiles(): void {
   el.openFile.onclick = () => void pickFile();
 }
 
-/** Extensions the window opens as a separate file. They match the vault ones. */
 const MARKDOWN = /\.(md|markdown|mdown)$/i;
 
-/** Reloads the separate file list. The core forgets missing files on the way. */
 export async function refreshFiles(): Promise<void> {
   try {
     state.setFiles(await api.listFiles());
@@ -61,13 +45,6 @@ export async function refreshFiles(): Promise<void> {
   renderFiles();
 }
 
-/**
- * Separate files as a flat list in open order.
- *
- * Rows show the file name, not the title: titles would need a disk read per
- * file, and people know `README.md` by its name. The folder on the second
- * line tells two `README.md` files apart.
- */
 function renderFiles(): void {
   el.fileList.replaceChildren(...state.files.map(fileItem));
   markActive(state.note?.id ?? null);
@@ -104,10 +81,6 @@ function fileItem(entry: FileEntry): HTMLLIElement {
   return item;
 }
 
-/**
- * Menu of a standalone file. It has the note commands too: a file is a note
- * without a vault. The order is the same as in the note menu.
- */
 export async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promise<void> {
   const target: CommandTarget = { kind: "note", file: entry.path };
   const items = await commandItems(target);
@@ -150,7 +123,6 @@ export async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promi
   ]);
 }
 
-/** Removes a file from the list. An open file closes; the file on disk stays. */
 async function forgetFile(entry: FileEntry): Promise<void> {
   if (state.note?.id === entry.path) {
     await flushPendingSave();
@@ -166,10 +138,6 @@ async function forgetFile(entry: FileEntry): Promise<void> {
   }
 }
 
-/**
- * Shows what the user asked to open: a file from a known vault opens as its
- * note, anything else as a separate file.
- */
 async function openPath(opened: Opened): Promise<void> {
   if (opened.kind === "note") {
     await refreshVaults();
@@ -180,7 +148,6 @@ async function openPath(opened: Opened): Promise<void> {
   await openFileView(opened.path);
 }
 
-/** An open request from Finder. The core holds it until the window takes it. */
 export async function takeOpened(): Promise<boolean> {
   try {
     const opened = await api.takeOpenedFile();
@@ -193,7 +160,6 @@ export async function takeOpened(): Promise<boolean> {
   }
 }
 
-/** "Open file…": the dialog, ⌘O and the button above the file list. */
 export async function pickFile(): Promise<void> {
   const picked = await open({
     multiple: false,
@@ -203,10 +169,6 @@ export async function pickFile(): Promise<void> {
   await openFiles([picked]);
 }
 
-/**
- * Opens files by path, from the dialog or drag and drop. All go into the list,
- * the last one opens, and a bad path does not cancel the others.
- */
 async function openFiles(paths: string[]): Promise<void> {
   let last: Opened | null = null;
   let problem: string | null = null;
@@ -223,7 +185,6 @@ async function openFiles(paths: string[]): Promise<void> {
   if (problem) setStatus(problem, "error");
 }
 
-/** Dropped paths: folders become vaults, markdown files open. */
 async function adoptDropped(paths: string[]): Promise<void> {
   const markdown = paths.filter((path) => MARKDOWN.test(path));
   const folders = paths.filter((path) => !MARKDOWN.test(path));
@@ -231,10 +192,6 @@ async function adoptDropped(paths: string[]): Promise<void> {
   if (markdown.length > 0) await openFiles(markdown);
 }
 
-/**
- * Saves a pasted image of the open note. The core puts it into `attachments/`
- * of the vault, or next to a standalone file. Returns the path for the link.
- */
 export async function savePastedImage(name: string, bytes: Uint8Array): Promise<string | null> {
   if (!state.note) return null;
   try {
@@ -245,11 +202,6 @@ export async function savePastedImage(name: string, bytes: Uint8Array): Promise<
   }
 }
 
-/**
- * Image files dropped on the editor: the core copies them into `attachments/`,
- * and the links go to the drop point. The note can change during the copy;
- * then the links have no place to go.
- */
 async function attachDropped(paths: string[], at: number): Promise<void> {
   const note = state.note;
   if (!note) return;
@@ -267,11 +219,6 @@ async function attachDropped(paths: string[], at: number): Promise<void> {
   if (problem) setStatus(t("image.saveFailed", { error: problem }), "error");
 }
 
-/**
- * A drag over the window or a drop. A folder dropped on the window becomes a
- * vault; a markdown file opens as a separate file. An image dropped on the
- * open note goes into the note.
- */
 export function takeDrop({ over, paths, point }: DragDrop): void {
   dropHint.hidden = !over;
   if (paths.length === 0) return;

@@ -1,5 +1,3 @@
-/** The "Commands" section: the command list and the form of one command. */
-
 import { api, type CommandManifest, type CommandSpec, type TargetKind } from "../api";
 import { commandName, commandProblemText, problemCommand } from "../core-text";
 import { describeError, t, type Key } from "../i18n";
@@ -7,44 +5,20 @@ import { iconMarkup } from "../icons";
 import { chips, field, heading, row, select, toggle } from "./controls";
 import { state, view } from "./state";
 
-/** Target kinds in form order. */
 const TARGETS: { kind: TargetKind; label: Key }[] = [
   { kind: "note", label: "settings.commands.target.note" },
   { kind: "folder", label: "settings.commands.target.folder" },
   { kind: "vault", label: "settings.commands.target.vault" },
 ];
 
-/** Command manifest: the form edits all of it and writes the file on each change. */
 let manifest: CommandManifest | null = null;
-/**
- * The command open in the "Commands" section, by index, not by ID. The form
- * shows empty and duplicate IDs so the user can fix them, and the selection
- * must survive that.
- */
 let pickedCommand = 0;
 
-/**
- * Commands section: the list on the left, the selected command form on the
- * right.
- *
- * The manifest used to be edited in a text editor: the menu revealed the file
- * in the file manager. The form knows what a text editor does not: the
- * available runners, the possible targets, and the environment the command
- * gets. It also shows core problems next to the list, not after the first
- * failed run.
- *
- * The form edits the whole manifest and writes it on each change. There is no
- * "save" button, as in other settings. An invalid entry is saved like the
- * others: a command without a script is unfinished, not a reason to block the
- * window from closing.
- */
 export async function renderCommands(): Promise<void> {
   const page = document.createElement("div");
   page.className = "settings-page";
 
   try {
-    // The vault list is for the vaults field: a command can apply to some
-    // vaults only, and picking them by name is easier.
     [manifest, state.vaults] = await Promise.all([api.editCommands(), api.listVaults()]);
   } catch (error) {
     page.append(heading(t("settings.section.commands")), problem(describeError(error)));
@@ -52,8 +26,6 @@ export async function renderCommands(): Promise<void> {
     return;
   }
 
-  // Broken JSON is the only case the form refuses to edit: it could not read
-  // the file, and a save would erase what is there.
   if (manifest.broken) {
     page.append(
       heading(t("settings.section.commands")),
@@ -79,7 +51,6 @@ export async function renderCommands(): Promise<void> {
   renderCommandForm(page);
 }
 
-/** Command list on the left: label, runner and whether it has problems. */
 function fillCommandList(list: HTMLElement): void {
   const count = document.createElement("p");
   count.className = "settings-vault-count";
@@ -105,8 +76,6 @@ function fillCommandList(list: HTMLElement): void {
     text.append(name, detail);
     button.append(text);
 
-    // A problem names its command by ID. The window has no own validation on
-    // purpose: it could only differ from the core for the worse.
     if (manifest!.problems.some((entry) => problemCommand(entry) === command.id)) {
       const dot = document.createElement("span");
       dot.className = "status-dot";
@@ -135,7 +104,6 @@ function fillCommandList(list: HTMLElement): void {
   list.append(tools);
 }
 
-/** The form of one command, with the file-wide settings below it. */
 function renderCommandForm(page: HTMLElement): void {
   page.replaceChildren();
 
@@ -153,8 +121,6 @@ function renderCommandForm(page: HTMLElement): void {
   name.className = "settings-name";
   name.value = command.name;
   name.placeholder = t("settings.commands.untitled");
-  // On `change`, not on each keystroke: each save writes the file, and one
-  // label would mean thirty writes.
   name.onchange = () => {
     command.name = name.value;
     void saveCommands();
@@ -174,10 +140,6 @@ function renderCommandForm(page: HTMLElement): void {
     field(t("settings.commands.id"), id, t("settings.commands.id.detail", { id: command.id })),
   );
 
-  // The runner in the file can be unknown to the core: a typo there is the
-  // most common problem. Then it goes first in the list. An empty field would
-  // hide exactly what the core complains about, and the user would fix it
-  // blind.
   const kinds = manifest!.kinds.includes(command.kind)
     ? manifest!.kinds
     : [command.kind, ...manifest!.kinds];
@@ -202,7 +164,6 @@ function renderCommandForm(page: HTMLElement): void {
   program.placeholder = t("settings.commands.program.placeholder");
   program.spellcheck = false;
   program.onchange = () => {
-    // An empty field means "the runner default", not a program with an empty name.
     command.program = program.value.trim() || null;
     void saveCommands();
   };
@@ -283,8 +244,6 @@ function renderCommandForm(page: HTMLElement): void {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
-    // Note fields reach the script as variables, so the list under the script
-    // is rebuilt right here: this is where the user looks at it.
     void saveCommands(true);
   };
   page.append(
@@ -355,11 +314,7 @@ function renderCommandForm(page: HTMLElement): void {
   page.append(...fileSection());
 }
 
-/** File-wide part: problems, path and variables shared by all commands. */
 function fileSection(): HTMLElement[] {
-  // Problems have their own block because they change most often. The core
-  // recomputes them on each change, and a fixed command must stop showing
-  // problems at once, not after a section switch.
   const problems = document.createElement("div");
   problems.className = "settings-problems";
   fillProblems(problems);
@@ -381,12 +336,10 @@ function fileSection(): HTMLElement[] {
   return parts;
 }
 
-/** The file location row with a reveal button. */
 function commandsFile(): HTMLElement {
   const path = document.createElement("span");
   path.className = "settings-path";
   path.textContent = manifest!.path;
-  // The path is cut with an ellipsis; the tooltip shows all of it.
   path.title = manifest!.path;
 
   const finder = document.createElement("button");
@@ -406,15 +359,6 @@ function commandsFile(): HTMLElement {
   return line;
 }
 
-/**
- * The environment the script gets.
- *
- * The list is not decoration. The target path comes as a variable, not as a
- * text substitution, and without the list it is not clear how a command
- * learns its target. The list depends on the command: `$KKNOW_NOTE` shows only
- * if the command targets notes, and the required fields turn into the exact
- * names to type in the script.
- */
 function commandVars(command: CommandSpec): HTMLElement {
   const box = document.createElement("details");
   box.className = "settings-vars";
@@ -452,13 +396,6 @@ function commandVars(command: CommandSpec): HTMLElement {
   return box;
 }
 
-/**
- * Variable name for a note field: `confluence-id` → `KKNOW_FM_CONFLUENCE_ID`.
- *
- * It repeats `variable_name` from `crates/kknow-run/src/lib.rs`. The copy is
- * intentional and safe: it is a hint in the form, not a rule. The core does
- * the real work, so if the rules differ, only the hint is wrong, not the run.
- */
 function variableName(key: string): string | null {
   let name = "";
   for (const symbol of key) {
@@ -471,14 +408,6 @@ function variableName(key: string): string | null {
   return `KKNOW_FM_${trimmed}`;
 }
 
-/**
- * Name and value pairs.
- *
- * A row without a name is not a variable: an empty row lives in the form, not
- * in the manifest. So "add a variable" appends it straight to the markup, and
- * saves and rebuilds nothing. A rebuild would move the cursor out of the field
- * where the user is about to type the name.
- */
 function envEditor(
   env: Record<string, string>,
   onChange: (env: Record<string, string>) => void,
@@ -495,8 +424,6 @@ function envEditor(
     return next;
   };
 
-  // The button goes in first, and rows are inserted before it. It marks the
-  // end of the list, so it does not need to move down for each new variable.
   const add = document.createElement("button");
   add.className = "ghost";
   add.type = "button";
@@ -519,7 +446,6 @@ function envEditor(
     text.placeholder = t("settings.commands.env.value");
     text.spellcheck = false;
 
-    // An erased name removes the variable, so a row needs no remove button.
     name.onchange = () => onChange(collect());
     text.onchange = () => onChange(collect());
 
@@ -536,7 +462,6 @@ function envEditor(
   return box;
 }
 
-/** Non-empty, trimmed lines of a text field. */
 function lines(text: string): string[] {
   return text
     .split("\n")
@@ -560,20 +485,10 @@ function fillProblems(box: HTMLElement): void {
   box.replaceChildren(...manifest!.problems.map((entry) => problem(commandProblemText(entry))));
 }
 
-/**
- * Writes the manifest and updates what depends on it.
- *
- * `rebuild` rebuilds the form. Toggles and lists that change the form content
- * use it. Typed text does not: a rebuild would move the cursor out of the
- * field.
- */
 async function saveCommands(rebuild = false): Promise<void> {
   if (!manifest) return;
 
   try {
-    // Take only the problems from the answer, not the whole manifest. Form
-    // fields hold references to entries of this manifest. A new manifest would
-    // send the next edit to an entry that is no longer in the list.
     manifest.problems = (await api.saveCommands(manifest.commands, manifest.env)).problems;
   } catch (error) {
     console.error(error);
@@ -595,7 +510,6 @@ async function addCommand(): Promise<void> {
   manifest.commands.push({
     id: freshId(),
     name: t("settings.commands.new"),
-    // The first runner is `shell`: it exists everywhere and needs nothing extra.
     kind: manifest.kinds[0] ?? "shell",
     script: "",
     targets: ["note", "folder", "vault"],
@@ -614,7 +528,6 @@ async function addCommand(): Promise<void> {
   await saveCommands(true);
 }
 
-/** An unused ID. The terminal uses it to call the command, so it is ASCII. */
 function freshId(): string {
   const used = new Set(manifest!.commands.map((command) => command.id));
   if (!used.has("command")) return "command";

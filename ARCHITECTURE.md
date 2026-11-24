@@ -25,6 +25,9 @@ plugins (first, S3-compatible storage); full-text search; themes.
 3. **Sync is a plugin behind a trait.** S3 (Amazon Simple Storage Service) is
    the first implementation of `SyncProvider`. It is not a function inside the
    core. The next backend must not need changes to the algorithm.
+4. **The code has no comments.** Names, small functions and types say what
+   the code does. This document says why. A comment goes out of date without
+   a test to show it, so the project allows none (see "No comments" below).
 
 ## Stack
 
@@ -52,6 +55,7 @@ crates/
   kknow-app     Workspace, vault registry, app settings, themes, watcher
   kknow-cli     the kknow binary — the same thing in the terminal
 src-tauri/      commands on top of kknow-app, background watchers, keychain
+tools/no-comments  the check that the code has no comments (a dev tool, not a part of the app)
 ui/             the interface: TypeScript, Vite, CodeMirror 6; two windows — main and settings
 testdata/vault  a small vault for manual checks
 site/           the user documentation: VitePress, `.github/workflows/docs.yml` publishes it
@@ -2958,6 +2962,34 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   directly in the report. Thus `login` is off by default, and the template uses
   `fish`, which does not need it.
 
+### No comments
+
+Rust, TypeScript and CSS files have no comments, doc comments included. Two
+tests enforce the rule, so a comment fails the build in CI:
+
+- `tools/no-comments` (a workspace member, so `cargo test --workspace` runs
+  it) scans every `.rs` and `.css` file with a small lexer. The lexer knows
+  strings, raw strings, char literals and lifetimes, so `"http://"` or `'/'`
+  is not a comment.
+- `ui/tests/no-comments.test.ts` (part of `pnpm ui:test`) scans the
+  TypeScript of `ui/` and `site/.vitepress/`. It reads comments from the
+  TypeScript parser, because a regular expression literal such as `/\/\//`
+  cannot be told from a comment without a parser. It keeps compiler
+  directives: `// @ts-expect-error`, `// @ts-ignore`, `/// <reference ...>`
+  and `/* @vite-ignore */`.
+
+`pnpm comments:strip` removes all comments with the same two scanners. It
+also removes the blank line that a removed comment leaves.
+
+Some text that looks like documentation is data:
+
+- The CLI help comes from `#[command(about = ..., long_about = ...)]` and
+  `#[arg(help = ..., long_help = ...)]`. Clap does not read doc comments
+  any more.
+- `ui/src/bindings.ts` is generated without a header. The
+  `bindings_match_the_rust_types` test fails when the file is out of date
+  (`KKNOW_BLESS=1 cargo test -p kknow-desktop bindings` writes it again).
+
 ## Commands
 
 Run everything **from the repository root**. `tauri` searches for
@@ -3088,6 +3120,9 @@ modes, the settings window). The tests find elements by markup ids and by the
 strings of `locales/ru.json`, not by functions of the window code, so they stay valid
 when the window code moves between modules. Each test gets a fresh page, and
 thus a fresh copy of the stubs.
+
+`tools/no-comments` and `ui/tests/no-comments.test.ts` fail on any comment in
+the code ("No comments" gives the reasons).
 
 `ui/tests/source-guards.test.ts` (part of `pnpm ui:test`) checks the layout of
 the code, not its behaviour. It fails on an import cycle in `ui/src`, on a

@@ -1,14 +1,3 @@
-//! `kknow mcp`: the MCP server on stdin and stdout.
-//!
-//! The protocol is in `kknow_app::mcp`; here is only the stdio transport.
-//! The agent starts `kknow mcp --vault <vault>` (one vault) or
-//! `kknow mcp --label <label>` (all vaults with the label) as a child process.
-//! Each message is one line of JSON-RPC 2.0. The window has the same server
-//! over HTTP; this one works on a machine without the window.
-//!
-//! stdout belongs to the protocol. Nothing else may print there: one stray
-//! line breaks the session. Warnings go to stderr.
-
 use std::io::{self, BufRead, Write};
 
 use kknow_app::Workspace;
@@ -16,15 +5,12 @@ use kknow_app::mcp::{self, Host, PARSE_ERROR, VaultRef};
 use kknow_app::watch::VaultWatcher;
 use serde_json::Value;
 
-/// One vault that the server serves.
 pub struct Served {
     pub vault: VaultRef,
     pub workspace: Workspace,
-    /// Without a watcher the server still works, but sees only its own writes.
     pub watcher: Option<VaultWatcher>,
 }
 
-/// The vaults of the process. They are taken once, at the start.
 pub struct Vaults {
     refs: Vec<VaultRef>,
     served: Vec<Served>,
@@ -38,9 +24,6 @@ impl Vaults {
         }
     }
 
-    /// Takes the file changes that the watchers collected. The window or the
-    /// agent itself can change notes between two calls, and a search must not
-    /// show the old text.
     fn catch_up(&mut self) {
         for vault in &mut self.served {
             let Some(watcher) = &vault.watcher else {
@@ -72,7 +55,6 @@ impl Host for Vaults {
     }
 }
 
-/// Reads requests until stdin closes. The client closes it to stop the server.
 pub fn serve(vaults: &mut Vaults, input: impl BufRead, mut output: impl Write) -> io::Result<()> {
     for line in input.lines() {
         let line = line?;

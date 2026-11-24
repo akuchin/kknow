@@ -1,16 +1,3 @@
-/**
- * Bookmarks in the editor: the gutter marker and how it moves with edits.
- *
- * The core stores bookmarks (`.kknow/bookmarks.json`), but the editor knows
- * where they are now. Edits shift lines, so the line number from the open
- * call soon becomes wrong. That is why the state keeps text positions, not
- * numbers, and each edit maps them. Line numbers come from the positions on
- * request; on save they go to the core.
- *
- * Each position carries the bookmark name. The user edits names here (the
- * marker menu, `bookmark-menu.ts`), so names go to the core with the lines.
- */
-
 import {
   RangeSet,
   StateEffect,
@@ -22,19 +9,12 @@ import { EditorView, GutterMarker, type ViewUpdate } from "@codemirror/view";
 
 import type { BookmarkMark } from "./api";
 
-/** Replaces all bookmarks. Line numbers start at 1. */
 const setMarks = StateEffect.define<BookmarkMark[]>();
 
-/** What the user did to a bookmark. */
 export type BookmarkChange = "set" | "removed" | "named" | "unnamed";
 
-/**
- * The user changed a bookmark. It comes together with `setMarks`. The window
- * uses it to tell this from a note load and sends bookmarks to the core.
- */
 const changed = StateEffect.define<{ line: number; change: BookmarkChange }>();
 
-/** Whether bookmarks are allowed: standalone files have none. */
 const setEnabled = StateEffect.define<boolean>();
 
 const enabled = StateField.define<boolean>({
@@ -47,7 +27,6 @@ const enabled = StateField.define<boolean>({
   },
 });
 
-/** A bookmark in the state: its line start when it was set, and its name. */
 interface Placed {
   pos: number;
   name?: string;
@@ -60,17 +39,10 @@ const positions = StateField.define<Placed[]>({
       if (effect.is(setMarks)) return toPositions(tr.state, effect.value);
     }
     if (!tr.docChanged) return value;
-    // `1`: an insert exactly at the position pushes the position right. So
-    // Enter at the start of a bookmarked line moves the bookmark with the
-    // text and does not leave it on the new empty line.
     return value.map((placed) => ({ ...placed, pos: tr.changes.mapPos(placed.pos, 1) }));
   },
 });
 
-/**
- * The ribbon in the gutter (`gutter.ts`). A click on it removes the bookmark.
- * It has no `title`: `bookmark-menu.ts` shows the name on hover.
- */
 class BookmarkMarker extends GutterMarker {
   toDOM(): Node {
     const dom = document.createElement("span");
@@ -81,10 +53,6 @@ class BookmarkMarker extends GutterMarker {
 
 const marker = new BookmarkMarker();
 
-/**
- * The gutter asks for its markers on each update, so they are kept in a field
- * and built again only when the positions change.
- */
 const markers = StateField.define<RangeSet<GutterMarker>>({
   create: (state) => markersOf(state),
   update: (value, tr) =>
@@ -101,10 +69,6 @@ function toPositions(state: EditorState, marks: BookmarkMark[]): Placed[] {
     .map(({ line, name }) => ({ pos: state.doc.line(line).from, ...(name ? { name } : {}) }));
 }
 
-/**
- * Sorted bookmarks without duplicates: lines merged by an edit count once.
- * Of merged bookmarks, the first one with a name keeps it.
- */
 function marksOf(state: EditorState): BookmarkMark[] {
   const byLine = new Map<number, BookmarkMark>();
   for (const { pos, name } of state.field(positions)) {
@@ -124,7 +88,6 @@ export function bookmarks(): Extension {
   return [enabled, positions, markers];
 }
 
-/** Bookmark markers for the gutter. */
 export function bookmarkMarkers(state: EditorState): RangeSet<GutterMarker> {
   return state.field(markers, false) ?? RangeSet.empty;
 }
@@ -137,12 +100,10 @@ export function hasBookmark(state: EditorState, line: number): boolean {
   return linesOf(state).includes(line);
 }
 
-/** The name of the bookmark on `line`, or `null` if it has none. */
 export function bookmarkName(state: EditorState, line: number): string | null {
   return marksOf(state).find((mark) => mark.line === line)?.name ?? null;
 }
 
-/** The bookmark the user changed in this update, or `null`. */
 export function bookmarkChanged(
   update: ViewUpdate,
 ): { line: number; change: BookmarkChange } | null {
@@ -158,20 +119,14 @@ export function bookmarkLines(state: EditorState): number[] {
   return linesOf(state);
 }
 
-/** Bookmarks with names, sorted by line. They go to the core on save. */
 export function bookmarkMarks(state: EditorState): BookmarkMark[] {
   return marksOf(state);
 }
 
-/** Bookmarks of the open note; `on` tells whether bookmarks are allowed. */
 export function setBookmarkMarks(view: EditorView, marks: BookmarkMark[], on: boolean): void {
   view.dispatch({ effects: [setEnabled.of(on), setMarks.of(on ? marks : [])] });
 }
 
-/**
- * Sets or removes the bookmark on `line`. The window sends bookmarks to the
- * core: it learns about the change from `bookmarkToggled`.
- */
 export function toggleBookmarkAt(view: EditorView, line: number): void {
   const { state } = view;
   if (!bookmarksEnabled(state)) return;
@@ -185,10 +140,6 @@ export function toggleBookmarkAt(view: EditorView, line: number): void {
   });
 }
 
-/**
- * Names the bookmark on `line`; an empty `name` removes the name. A line
- * without a bookmark is left alone. The window learns from `bookmarkChanged`.
- */
 export function nameBookmarkAt(view: EditorView, line: number, name: string): void {
   const marks = marksOf(view.state);
   const mark = marks.find((each) => each.line === line);
@@ -202,18 +153,11 @@ export function nameBookmarkAt(view: EditorView, line: number, name: string): vo
   });
 }
 
-/** Toggles the bookmark on the cursor line. */
 export function toggleBookmark(view: EditorView): void {
   const { state } = view;
   toggleBookmarkAt(view, state.doc.lineAt(state.selection.main.head).number);
 }
 
-/**
- * The bookmark line to go to from `cursorLine`: the next one (`1`) or the
- * previous one (`-1`). After the last one it wraps to the first, and the
- * other way round. A bookmark on the cursor line is neither next nor previous.
- * `lines` is sorted ascending. Without bookmarks the result is `null`.
- */
 export function adjacentBookmark(
   lines: number[],
   cursorLine: number,
@@ -225,10 +169,6 @@ export function adjacentBookmark(
   return before.length > 0 ? before[before.length - 1] : lines[lines.length - 1];
 }
 
-/**
- * Moves the cursor to the next or the previous bookmark of the note. Returns
- * the line, or `null` when the note has no bookmarks (nothing changes).
- */
 export function goToBookmark(view: EditorView, direction: 1 | -1): number | null {
   const { state } = view;
   const cursor = state.doc.lineAt(state.selection.main.head).number;
@@ -237,7 +177,6 @@ export function goToBookmark(view: EditorView, direction: 1 | -1): number | null
   return line;
 }
 
-/** Puts the cursor at the line start and scrolls the line to the middle. */
 export function goToLine(view: EditorView, line: number, at: "center" | "start" = "center"): void {
   const target = Math.min(Math.max(line, 1), view.state.doc.lines);
   const pos = view.state.doc.line(target).from;

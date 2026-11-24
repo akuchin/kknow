@@ -1,17 +1,3 @@
-/**
- * The bookmark marker as a control: a hover shows the bookmark name, a right
- * click opens a small menu to name, rename or remove the bookmark.
- *
- * The handlers sit on the editor root and look at the event target
- * (delegation): the marker is a gutter element (`.cm-bookmark-gutter`), and
- * the gutter builds its elements again on updates. The line comes from the
- * pointer height, which is the same for the text and for a gutter.
- *
- * The right click listener captures the event on the root. So it runs before
- * other context menu handlers in the editor, and a click on a marker does not
- * also open them.
- */
-
 import type { Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 
@@ -22,7 +8,6 @@ import { openMenu } from "./menu";
 
 const GUTTER_MARKER = ".cm-bookmark-gutter";
 
-/** The bookmarked line under the pointer, if the pointer is on its marker. */
 function markerLine(view: EditorView, event: MouseEvent): number | null {
   const target = event.target instanceof Element ? event.target : null;
   if (!target?.closest(GUTTER_MARKER)) return null;
@@ -31,11 +16,6 @@ function markerLine(view: EditorView, event: MouseEvent): number | null {
   return hasBookmark(view.state, line) ? line : null;
 }
 
-/**
- * The menu module places a menu at a button. A right click has no button, so
- * an empty element at the pointer stands in for it. When the menu closes, it
- * gives focus back to its anchor; the anchor passes it on to the editor.
- */
 let anchor: HTMLElement | null = null;
 let anchorView: EditorView | null = null;
 
@@ -96,10 +76,6 @@ function openBookmarkMenu(view: EditorView, line: number, x: number, y: number):
   ]);
 }
 
-/**
- * A field at the pointer for the bookmark name. Enter and a blur save, Esc
- * cancels, as the rename field in the sidebar does.
- */
 function editName(view: EditorView, line: number, x: number, y: number): void {
   const box = document.createElement("div");
   box.className = "menu bookmark-name";
@@ -139,10 +115,6 @@ function editName(view: EditorView, line: number, x: number, y: number): void {
 }
 
 const markerControls = ViewPlugin.define((view) => {
-  /**
-   * The title is on the editor root. The gutter builds its markers again on
-   * updates, so a title on the marker element would not keep the name.
-   */
   let title: string | null = null;
   const showTitle = (next: string | null): void => {
     if (next === title) return;

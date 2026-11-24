@@ -1,7 +1,3 @@
-// Tests for the note outline (`src/outline.ts`). Node runs them as is: it
-// strips the types itself, and the module imports only packages. Run:
-// `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -10,7 +6,6 @@ import { EditorState } from "@codemirror/state";
 
 import { currentHeading, headingsOf } from "../src/outline.ts";
 
-/** The same parser as in the editor: GFM. */
 function outline(text: string) {
   return headingsOf(EditorState.create({ doc: text, extensions: markdown({ base: markdownLanguage }) }));
 }
@@ -73,6 +68,5 @@ test("the current heading is the last one at or above the top line", () => {
   assert.equal(currentHeading(headings, 15), 1);
   assert.equal(currentHeading(headings, 99), 2);
   assert.equal(currentHeading([], 5), -1);
-  // At the end of the note the last heading on the screen wins.
   assert.equal(currentHeading(headings, 15, 25), 2);
 });

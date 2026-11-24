@@ -17,7 +17,6 @@ test("an accepted edit changes the note and a rejected one does not", async ({ p
   const edits = page.locator("#proposals-list .proposal-edit");
   await expect(edits).toHaveCount(2);
   await expect(edits.first().locator("ins")).toContainText("the compiler complains");
-  // The second edit stays out.
   await edits.nth(1).getByRole("checkbox").uncheck();
   await page.locator(".proposal-feedback").fill("skip the second one");
   await page.getByRole("button", { name: t("panel.proposals.apply") }).click();
@@ -68,10 +67,8 @@ test("a reply to one thread keeps the text typed under another", async ({ page }
 
   await expect(statusMessage(page)).toHaveText(t("status.replySent"));
   await expect(first.locator(".thread-messages")).toContainText("answer to the question");
-  // The list was drawn again, and the second field is still open with its text.
   await expect(second.locator("textarea")).toBeVisible();
   await expect(second.locator("textarea")).toHaveValue("a draft for later");
-  // The sent field is empty and closed again.
   await expect(first.locator("textarea")).toBeHidden();
   await expect(first.locator("textarea")).toHaveValue("");
 });

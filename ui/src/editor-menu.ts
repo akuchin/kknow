@@ -1,17 +1,3 @@
-/**
- * The editor context menu: a right click in the text.
- *
- * It is the same menu as on the sidebar rows (`menu.ts`), with the shortcut
- * next to each item, so the user learns the keys from it. It has a comment
- * (an agent note), a bookmark and the clipboard. The note and the bookmark
- * work without a selection: the note then goes to the whole paragraph, the
- * bookmark to the line. The main editor also has the Confluence page of the
- * note (`confluence.ts`).
- *
- * Note editors of table cells have it too. There bookmarks are off: a cell
- * is not a line of the note.
- */
-
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
@@ -21,7 +7,6 @@ import { bookmarksEnabled, hasBookmark, toggleBookmarkAt } from "./bookmarks";
 import { t } from "./i18n";
 import { openMenuAt, type MenuItem, type MenuSection } from "./menu";
 
-/** Longer text in an item detail is cut: the menu stays narrow. */
 const DETAIL_LENGTH = 40;
 
 function shorten(text: string): string {
@@ -108,10 +93,6 @@ function pageItems(view: EditorView): MenuItem[] {
   ];
 }
 
-/**
- * Cut, copy and paste through the clipboard API: the menu takes the focus
- * from the text, and the `execCommand` way needs it there.
- */
 function clipboardItems(view: EditorView): MenuItem[] {
   const { state } = view;
   const selected = state.selection.ranges
@@ -152,15 +133,11 @@ function clipboardItems(view: EditorView): MenuItem[] {
 }
 
 function open(event: MouseEvent, view: EditorView): boolean {
-  // A cell editor inside this one has its own menu, and a closed table cell
-  // is a widget: its text selection belongs to the browser, not to us.
   const target = event.target as HTMLElement;
   if (event.defaultPrevented || target.closest(".cm-editor") !== view.dom) return false;
   const table = target.closest(".cm-table");
   if (table && view.dom.contains(table)) return false;
 
-  // A right click outside the selection moves the cursor there first, as in
-  // other editors: the menu is about the place under the pointer.
   const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
   const inside = view.state.selection.ranges.some(
     (range) => pos !== null && pos >= range.from && pos <= range.to && !range.empty,

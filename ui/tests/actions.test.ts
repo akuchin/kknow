@@ -1,6 +1,3 @@
-// Checks for the action keys (`src/actions.ts`): how a key reads on each
-// system and which events press it. Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -17,7 +14,6 @@ import {
   useKeymap,
 } from "../src/actions.ts";
 
-/** A key press as the browser gives it; only the fields that matter here. */
 function press(code: string, mods: Partial<Record<"meta" | "ctrl" | "alt" | "shift", boolean>> = {}) {
   return {
     code,
@@ -106,7 +102,6 @@ test("conflicts: another action, the system, a vault, the editor", () => {
   assert.deepEqual(conflictOf("Mod-q", "note.new", [], true), { kind: "system" });
   assert.deepEqual(conflictOf("Mod-3", "note.new", [], true), { kind: "vault" });
   assert.deepEqual(conflictOf("Mod-d", "note.new", ["Mod-d"], true), { kind: "editor" });
-  // The editor has ⌘I as "select node", but italic overrides it.
   assert.equal(conflictOf("Mod-i", "format.italic", ["Mod-i"], true), null);
   assert.equal(conflictOf("Mod-j", "note.new", ["Mod-d"], true), null);
 });

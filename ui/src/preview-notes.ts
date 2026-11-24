@@ -1,61 +1,29 @@
-/**
- * Agent notes from the preview, in "Read" and "Side by side" modes.
- *
- * The preview is HTML from the core and is not editable, so this is only a
- * popup: select words, get a "For agent" button, and it opens a task form. The
- * note goes into the source through the editor (`addNoteFromPreview`), then to
- * the file and back to the preview, like any edit.
- *
- * Next to "For agent" is "Bookmark": its source line comes from the line marks
- * that the core puts into the HTML (`preview-lines.ts`).
- *
- * The preview does not know where the words are in the source. It passes the
- * words and their index among equal matches in the visible preview text.
- * Matches in code count neither here nor in the source: a note cannot go into code.
- */
-
 import { icon } from "./icons";
 import { formKeys, matches, withShortcut } from "./actions";
 import { t } from "./i18n";
 import { lineAt } from "./preview-lines";
 
 export interface PreviewNotesOptions {
-  /** Notes are allowed only while the preview is visible. */
   enabled: () => boolean;
-  /**
-   * The element whose text the match index counts, for a selection in `node`;
-   * `null` means no popup there. Without it, the whole root counts.
-   */
   scope?: (node: Node) => Element | null;
-  /** Returns `false` if no single matching place exists in the source. `within` is the scope. */
   add: (words: string, index: number, total: number, text: string, within: Element) => boolean;
-  /** Reports that the note was not added. */
   fail: (message: string) => void;
-  /** Separate files cannot have bookmarks. */
   bookmarkable: () => boolean;
-  /** Toggles a bookmark on a source line. */
   bookmark: (line: number) => void;
 }
 
-/** Preview words and their index among equal matches: the source lookup uses both. */
 interface PreviewWords {
   words: string;
   index: number;
   total: number;
 }
 
-/** Selected words with their range: the popup sticks to it. */
 interface Picked extends PreviewWords {
   range: Range;
   within: Element;
 }
 
 
-/**
- * Text where a note is useless or impossible: code, diagrams and embeds. The
- * text of an embed belongs to a different note: the open one has no such
- * words, and they must not count among its matches.
- */
 const SKIPPED = "pre, code, svg, .embed";
 
 export class PreviewNotes {
@@ -69,28 +37,24 @@ export class PreviewNotes {
   ) {
     this.dom.className = "cm-agent-popup preview-note-popup";
     this.dom.hidden = true;
-    // A click inside the popup must not clear the preview selection.
     this.dom.addEventListener("mousedown", (event) => {
       if (!(event.target instanceof HTMLTextAreaElement)) event.preventDefault();
     });
     document.body.append(this.dom);
 
     document.addEventListener("selectionchange", () => {
-      // An open form is left alone: focusing it clears the selection anyway.
       if (!this.form) this.update();
     });
     root.addEventListener("scroll", () => this.place());
     window.addEventListener("resize", () => this.place());
   }
 
-  /** ⌘⇧M: opens the form if the button is shown over the selection. */
   openForm(): boolean {
     if (!this.picked || this.form) return false;
     this.showForm();
     return true;
   }
 
-  /** Called when the note or the mode changes. */
   hide(): void {
     this.picked = null;
     this.form = false;
@@ -120,7 +84,6 @@ export class PreviewNotes {
     this.place();
   }
 
-  /** The "Bookmark" popup button: uses the line where the selection starts. */
   private bookmark(): void {
     const picked = this.picked;
     if (!picked) return;
@@ -134,10 +97,6 @@ export class PreviewNotes {
     document.getSelection()?.removeAllRanges();
   }
 
-  /**
-   * The selection line in the preview, for ⌘⇧B in "Read" mode. Any selection
-   * works here, not only one with the popup: even one across several paragraphs.
-   */
   selectedLine(): number | null {
     const selection = document.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
@@ -146,12 +105,6 @@ export class PreviewNotes {
     return lineAt(this.root, range.startContainer, range.startOffset);
   }
 
-  /**
-   * The preview selection: the words and their index among equal matches.
-   *
-   * The index uses the joined visible text: a word highlighted by a note is
-   * split into several text nodes, but in the source it is continuous.
-   */
   private pick(): Picked | null {
     const selection = document.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
@@ -162,18 +115,12 @@ export class PreviewNotes {
     if (!within) return null;
 
     const words = range.toString();
-    // The anchor is one line without `»`, as in the editor.
     if (words.trim() === "" || /[\n»]/.test(words)) return null;
 
     const found = this.count(within, range.startContainer, range.startOffset, words);
     return found && { ...found, range: range.cloneRange(), within };
   }
 
-  /**
-   * The index of `words` that start in `node` at `offset`, among equal matches
-   * in the visible text of `within`. `null` if the start or the words touch
-   * code: notes and bookmarks do not belong there.
-   */
   private count(within: Element, node: Node, offset: number, words: string): PreviewWords | null {
     let text = "";
     let start = -1;
@@ -218,7 +165,6 @@ export class PreviewNotes {
         picked.within,
       );
       if (!added) {
-        // Keep the form open so the typed task is not lost.
         this.options.fail(t("preview.note.ambiguous", { words: picked.words }));
         return;
       }
@@ -250,13 +196,11 @@ export class PreviewNotes {
     field.focus();
   }
 
-  /** Above the selection start, as in the editor, and inside the window. */
   private place(): void {
     if (this.dom.hidden || !this.picked) return;
     const rects = this.picked.range.getClientRects();
     const rect = rects[0] ?? this.picked.range.getBoundingClientRect();
     const pane = this.root.getBoundingClientRect();
-    // The words scrolled out of view: the popup has nothing to stick to.
     if (!this.form && (rect.bottom < pane.top || rect.top > pane.bottom)) {
       this.dom.style.visibility = "hidden";
       return;

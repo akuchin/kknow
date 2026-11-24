@@ -55,6 +55,10 @@ pnpm ui:test        # UI unit tests
 pnpm ui:e2e         # smoke tests in Chromium on the stubs
 ```
 
+The code has no comments. `cargo test --workspace` and `pnpm ui:test` fail on
+a comment in a Rust, TypeScript or CSS file. `pnpm comments:strip` removes
+them. Names and types say what the code does, and `ARCHITECTURE.md` says why.
+
 The sync tests against a real S3 have the `#[ignore]` mark. They need the local S3 of `docker-compose.yml`:
 
 ```bash

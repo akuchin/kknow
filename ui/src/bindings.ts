@@ -1,952 +1,151 @@
-// Generated from the Rust types by `src-tauri/src/bindings.rs`. Do not edit:
-// run `KKNOW_BLESS=1 cargo test -p kknow-desktop bindings` instead.
+export type AppSettings = { locale: string, theme: string, noteLabel: NoteLabel, viewMode: ViewMode, openLastNote: boolean, lineNumbers: boolean, noteScale: number, autoUpdate: boolean, gitPath?: string | null, };
 
-export type AppSettings = { 
-/**
- * UI language.
- */
-locale: string, 
-/**
- * Theme ID: built-in `light`/`dark` or a theme from the vault.
- */
-theme: string, 
-/**
- * What the note tree shows for a note: its title or its file name.
- */
-noteLabel: NoteLabel, 
-/**
- * Mode for a note that does not have its own mode yet.
- */
-viewMode: ViewMode, 
-/**
- * Open the last note at startup.
- */
-openLastNote: boolean, 
-/**
- * Line numbers in the editor gutter.
- */
-lineNumbers: boolean, 
-/**
- * Font size in percents for a note that does not have its own size yet.
- */
-noteScale: number, 
-/**
- * Check for a new version in the background and download it. The new
- * version starts after a restart. A developer build never checks.
- */
-autoUpdate: boolean, 
-/**
- * The `git` program for vaults that sync through git. kknow asks for it
- * and does not guess: an app from the Dock does not have the `PATH` of
- * the terminal, and `/usr/bin/git` on macOS can be a stub that offers to
- * install Xcode tools.
- */
-gitPath?: string | null, };
+export type BacklinkLineView = { id: string, title: string, line: number, before: string, text: string, after: string, };
 
-/**
- * A link to the open note, where it stands in the source note.
- */
-export type BacklinkLineView = { 
-/**
- * The source note.
- */
-id: string, title: string, 
-/**
- * 1-based line in the source note.
- */
-line: number, 
-/**
- * The line text before the link, cut to a few words.
- */
-before: string, 
-/**
- * The link as written.
- */
-text: string, after: string, };
-
-/**
- * Built-in theme that the manifest goes on top of.
- *
- * A theme can set only a few variables, and the rest must come from somewhere:
- * a dark theme with a default white background is not a theme.
- */
 export type Base = "light" | "dark";
 
-/**
- * A bookmark as the editor sees it: a line of the open text and a name.
- * The window gets these with the note and sends them back on save.
- */
-export type BookmarkMark = { 
-/**
- * Line number, starting from 1.
- */
-line: number, name?: string, };
+export type BookmarkMark = { line: number, name?: string, };
 
-/**
- * A bookmark in the palette list.
- */
 export type BookmarkView = { note: string, title: string, folder: string | null, line: number, text: string, name?: string, };
 
-/**
- * What changed in one file, separately for the index and the work tree.
- */
 export type ChangeKind = "added" | "modified" | "deleted" | "renamed" | "untracked" | "conflicted";
 
-/**
- * The working directory of a command.
- */
 export type CommandCwd = "vault" | "target";
 
-/**
- * What to show in the target menu.
- */
-export type CommandList = { commands: Array<CommandView>, 
-/**
- * Problems in the commands file. Users edit it by hand, so we must report
- * a typo. Otherwise the command silently does not appear, and kknow looks
- * broken.
- */
-problems: Array<CommandProblem>, };
+export type CommandList = { commands: Array<CommandView>, problems: Array<CommandProblem>, };
 
-/**
- * The whole manifest, as the settings form edits it.
- *
- * Unlike [`list_commands`], this includes **all** entries, also invalid ones.
- * Users fix them in the same form. Losing them on save is worse than showing
- * them with a problem.
- */
-export type CommandManifest = { 
-/**
- * File location: the form shows the path and can open it in Finder.
- */
-path: string, commands: Array<CommandSpec>, 
-/**
- * Environment shared by all commands in the file.
- */
-env: { [key in string]: string }, problems: Array<CommandProblem>, 
-/**
- * Available runners. The core owns this list. If the window kept its own
- * copy, the "Run it with" field could one day offer what the core cannot
- * run.
- */
-kinds: Array<string>, 
-/**
- * The file did not parse. The form does not offer edits then: a save
- * would erase what we could not parse.
- */
-broken: string | null, };
+export type CommandManifest = { path: string, commands: Array<CommandSpec>, env: { [key in string]: string }, problems: Array<CommandProblem>, kinds: Array<string>, broken: string | null, };
 
-/**
- * What is wrong with the commands file or with one of its entries.
- *
- * It is data, not a ready text: the CLI prints `Display`, and the window
- * translates `problem.command.<code>` with the fields, in its own language.
- */
 export type CommandProblem = { "code": "file", path: string, detail: string, } | { "code": "noId" } | { "code": "duplicateId", id: string, } | { "code": "noName", id: string, } | { "code": "emptyScript", id: string, } | { "code": "unknownKind", id: string, kind: string, known: string, } | { "code": "noTargets", id: string, };
 
-/**
- * One command as written in the manifest.
- */
-export type CommandSpec = { 
-/**
- * Stable name. The CLI and the app call the command by it.
- */
-id: string, 
-/**
- * Menu label.
- */
-name: string, 
-/**
- * Runner kind: `shell`, `bash`, `fish`, `zsh`, `python`.
- */
-kind: string, 
-/**
- * Script text.
- *
- * The target path is **not** inserted into it. It comes as an environment
- * variable. See [`crate::run`] for the reason.
- */
-script: string, 
-/**
- * Target kinds for the command. The default is all kinds: a manifest with
- * four fields must work, and the user can narrow the scope later.
- */
-targets: Array<TargetKind>, 
-/**
- * Vault IDs; empty means all vaults.
- */
-vaults: Array<string>, 
-/**
- * Path patterns from the vault root; empty means any path.
- */
-match: Array<string>, 
-/**
- * Note metadata fields that the command needs to appear.
- *
- * This binds a command parameter to a file, not to the manifest. A note
- * with `confluence: 123456789` (in frontmatter or a comment) gets the
- * "Send to Confluence" item, and other notes do not. An empty value counts
- * as missing: `confluence:` without a number does not match.
- */
-requires: Array<string>, 
-/**
- * Read the shell profile before the run.
- *
- * An app opened from Finder gets `PATH` from launchd, not from a shell,
- * and that `PATH` is minimal. The flag uses `sh -lc` instead of `sh -c`.
- * The default is off: the profile takes time and can print text into the
- * same stream that we show as command output.
- */
-login: boolean, 
-/**
- * Overrides the default program: python from a virtual environment, a
- * custom build tool, any program from `PATH` or a full path.
- */
-program?: string | null, cwd: CommandCwd, timeoutSeconds: number, 
-/**
- * Ask before the run. Only the app does this; the CLI has nobody to ask.
- */
-confirm: boolean, 
-/**
- * Extra environment variables for the process.
- */
-env?: { [key in string]: string }, };
+export type CommandSpec = { id: string, name: string, kind: string, script: string, targets: Array<TargetKind>, vaults: Array<string>, match: Array<string>, requires: Array<string>, login: boolean, program?: string | null, cwd: CommandCwd, timeoutSeconds: number, confirm: boolean, env?: { [key in string]: string }, };
 
-/**
- * A menu command: the label and what the window needs to decide.
- */
-export type CommandView = { id: string, name: string, 
-/**
- * What runs it. The window shows this as the second line of the menu item.
- */
-kind: string, 
-/**
- * Ask before the run.
- */
-confirm: boolean, };
+export type CommandView = { id: string, name: string, kind: string, confirm: boolean, };
 
-/**
- * Which version wins when both sides changed the same note.
- */
 export type ConflictPolicy = "keepBoth" | "preferLocal" | "preferRemote";
 
-/**
- * The decision on one edit.
- */
 export type EditState = "pending" | "accepted" | "rejected";
 
-/**
- * The result of turning encryption on.
- */
-export type EncryptionOn = { 
-/**
- * The person must write it down: it is shown only this one time.
- */
-recoveryCode: string, settings: SyncSettings, };
+export type EncryptionOn = { recoveryCode: string, settings: SyncSettings, };
 
 export type ErrorView = { code: string, params: { [key in string]: string }, message: string, };
 
-/**
- * A loose file in the sidebar.
- */
-export type FileEntry = { path: string, 
-/**
- * File name with extension. The title needs a disk read, and the list
- * must show at once.
- */
-name: string, 
-/**
- * The parent folder: it tells two `README.md` files apart.
- */
-folder: string, };
+export type FileEntry = { path: string, name: string, folder: string, };
 
-/**
- * Result of saving a loose file. Same as for a note, but the copy is a path.
- */
 export type FileSaveOutcome = { "status": "saved", note: FileView, } | { "status": "conflict", note: FileView, copy: string, };
 
-/**
- * An open file. It has the same shape as a vault note, so the window shows
- * both in one editor. Here `id` is the absolute path, and `file` tells them
- * apart.
- */
 export type FileView = { id: string, title: string, content: string, html: string, backlinks: Array<LinkRef>, outgoing: Array<LinkRef>, tags: Array<string>, file: boolean, };
 
-/**
- * Where the token for a git repository comes from.
- */
 export type GitAuth = "system" | "token" | "env";
 
-/**
- * One changed file.
- */
-export type GitChange = { 
-/**
- * The path from the vault root with `/`.
- */
-path: string, 
-/**
- * The old path of a renamed file.
- */
-from?: string | null, 
-/**
- * The change in the index: what the next commit takes.
- */
-staged?: ChangeKind | null, 
-/**
- * The change in the work tree that is not in the index.
- */
-unstaged?: ChangeKind | null, };
+export type GitChange = { path: string, from?: string | null, staged?: ChangeKind | null, unstaged?: ChangeKind | null, };
 
-/**
- * Settings of a git repository.
- */
-export type GitSettings = { 
-/**
- * The address of the repository. For a vault that was already a
- * repository, it is the URL of `origin`.
- */
-url: string, auth: GitAuth, 
-/**
- * The variable name for [`GitAuth::Env`], for example `GITHUB_TOKEN`.
- */
-env?: string | null, };
+export type GitSettings = { url: string, auth: GitAuth, env?: string | null, };
 
-/**
- * The state of the repository for the changes panel.
- */
-export type GitStatus = { 
-/**
- * The current branch; `None` for a detached HEAD.
- */
-branch?: string | null, 
-/**
- * Local commits that the remote does not have yet, as of the last fetch.
- */
-ahead: number, 
-/**
- * Remote commits that are not here yet, as of the last fetch.
- */
-behind: number, changes: Array<GitChange>, };
+export type GitStatus = { branch?: string | null, ahead: number, behind: number, changes: Array<GitChange>, };
 
-/**
- * A global search result: a normal result plus the vault it came from.
- */
 export type GlobalResult = { vault: string, vaultName: string, color: string, id: string, title: string, folder: string | null, snippet: string, };
 
-/**
- * A heading of a note.
- */
 export type HeadingView = { level: number, text: string, line: number, };
 
-/**
- * Why an entry of the file, or the whole file, was skipped.
- *
- * It is data, not a ready text: the window translates `problem.key.<code>`
- * with the fields, in its own language.
- */
 export type KeyProblem = { "code": "file", path: string, detail: string, } | { "code": "notAList", action: string, } | { "code": "notAString", action: string, } | { "code": "noKey", action: string, key: string, } | { "code": "unknownModifier", action: string, key: string, modifier: string, } | { "code": "repeatedModifier", action: string, key: string, modifier: string, } | { "code": "unknownKey", action: string, key: string, name: string, };
 
-/**
- * Action ID → its keys.
- */
 export type Keymap = { [key in string]: Array<string> };
 
-/**
- * The keys for the windows.
- */
-export type KeymapView = { keys: Keymap, 
-/**
- * The file path, for the hint on the keys page.
- */
-file: string | null, 
-/**
- * Skipped entries of a hand-edited file.
- */
-problems: Array<KeyProblem>, };
+export type KeymapView = { keys: Keymap, file: string | null, problems: Array<KeyProblem>, };
 
-/**
- * The note or the part of it that a link names, for a hover preview.
- */
-export type LinkPreview = { id: string, title: string, 
-/**
- * HTML without line marks; images name their note.
- */
-html: string, 
-/**
- * 1-based line of the heading or block; `null` for the whole note.
- */
-line: number | null, 
-/**
- * The link names a heading or block that the note does not have: the
- * preview shows the whole note.
- */
-partMissing: boolean, 
-/**
- * A locked note: `html` is empty, and the preview shows a lock. Its
- * text never goes to a preview, also in an unlocked session.
- */
-locked: boolean, };
+export type LinkPreview = { id: string, title: string, html: string, line: number | null, partMissing: boolean, locked: boolean, };
 
 export type LinkRef = { id: string, title: string, label: string | null, };
 
-/**
- * Where a link in the editor leads, and the anchors of that note for
- * completion.
- */
-export type LinkTargetView = { 
-/**
- * The note ID.
- */
-id: string, 
-/**
- * 1-based line of the `#Heading` or `#^block`; `null` opens the top.
- */
-line: number | null, headings: Array<HeadingView>, 
-/**
- * Block IDs without the caret.
- */
-blocks: Array<string>, };
+export type LinkTargetView = { id: string, line: number | null, headings: Array<HeadingView>, blocks: Array<string>, };
 
-/**
- * The lock state of a vault.
- */
-export type LockStateView = { 
-/**
- * The vault has a password for locked notes.
- */
-password: boolean, 
-/**
- * Locked notes open: the key is in memory.
- */
-unlocked: boolean, };
+export type LockStateView = { password: boolean, unlocked: boolean, };
 
-/**
- * Which app opens markdown now.
- */
-export type MarkdownAssociation = { 
-/**
- * The platform lets the app set the default handler from here.
- */
-supported: boolean, 
-/**
- * Bundle ID of the app that opens `.md` now.
- */
-current: string | null, 
-/**
- * The current handler is kknow.
- */
-ours: boolean, };
+export type MarkdownAssociation = { supported: boolean, current: string | null, ours: boolean, };
 
-/**
- * What the window shows about the server.
- */
-export type McpStatus = { enabled: boolean, port: number, 
-/**
- * The server listens now.
- */
-running: boolean, 
-/**
- * Why the server does not listen, for example a port in use.
- */
-error: string | null, 
-/**
- * For the setup snippets: the agent sends it in `Authorization`.
- */
-token: string, };
+export type McpStatus = { enabled: boolean, port: number, running: boolean, error: string | null, token: string, };
 
-/**
- * A place where the name of the open note stands as plain text.
- */
-export type MentionView = { 
-/**
- * The note with the mention.
- */
-id: string, title: string, line: number, before: string, 
-/**
- * The name as written.
- */
-text: string, after: string, 
-/**
- * Byte range of the name in the source; `link_mention` takes it back.
- */
-start: number, end: number, };
+export type MentionView = { id: string, title: string, line: number, before: string, text: string, after: string, start: number, end: number, };
 
-/**
- * What the note tree shows for a note.
- */
 export type NoteLabel = "title" | "file";
 
-export type NoteSummary = { id: string, title: string, folder: string | null, tags: Array<string>, 
-/**
- * The file is a locked note: the tree shows a lock.
- */
-locked: boolean, };
+export type NoteSummary = { id: string, title: string, folder: string | null, tags: Array<string>, locked: boolean, };
 
-export type NoteView = { id: string, title: string, content: string, html: string, backlinks: Array<LinkRef>, outgoing: Array<LinkRef>, tags: Array<string>, 
-/**
- * Bookmarks in this text: 1-based lines with optional names.
- */
-bookmarks: Array<BookmarkMark>, 
-/**
- * Threads of the `@agent#id` comments of this note.
- */
-threads: Array<Thread>, 
-/**
- * Proposals of agents for this note that wait for review.
- */
-proposals: Array<ProposalView>, 
-/**
- * The file is a locked note.
- */
-locked: boolean, 
-/**
- * A locked note in a locked session: `content` and `html` are empty,
- * and the window shows the password field instead of the text.
- */
-closed: boolean, };
+export type NoteView = { id: string, title: string, content: string, html: string, backlinks: Array<LinkRef>, outgoing: Array<LinkRef>, tags: Array<string>, bookmarks: Array<BookmarkMark>, threads: Array<Thread>, proposals: Array<ProposalView>, locked: boolean, closed: boolean, };
 
-/**
- * What was opened from outside or from the window, and how to show it.
- */
 export type Opened = { "kind": "note", vault: string, id: string, } | { "kind": "file", path: string, };
 
-/**
- * One replacement: `old` becomes `new`.
- */
 export type ProposalEdit = { old: string, new: string, state: EditState, };
 
-/**
- * The state of the whole proposal. It is computed from the edits, not
- * stored: a stored copy could disagree with them.
- */
 export type ProposalStatus = "pending" | "accepted" | "rejected" | "partial";
 
-/**
- * A proposal for the window: the record and, for each edit, whether its
- * place is still in the note.
- */
-export type ProposalView = { status: ProposalStatus, 
-/**
- * `stale[i]` is true when edit `i` waits and its `old` is not exactly
- * once in the note now.
- */
-stale: Array<boolean>, id: string, 
-/**
- * Note ID ([`NoteId::as_str`]).
- */
-note: string, 
-/**
- * Why the agent suggests this, in its words.
- */
-reason: string, 
-/**
- * The program that made the proposal, if it said.
- */
-author?: string, 
-/**
- * The comment thread that this proposal answers. Its review closes or
- * opens the thread again.
- */
-comment?: string, 
-/**
- * The note does not exist yet: the only edit has an empty `old` and the
- * whole text in `new`.
- */
-create: boolean, created: number, updated: number, edits: Array<ProposalEdit>, 
-/**
- * What the person said on review. The agent reads it with
- * `proposal_status` and tries again.
- */
-feedback?: string, };
+export type ProposalView = { status: ProposalStatus, stale: Array<boolean>, id: string, note: string, reason: string, author?: string, comment?: string, create: boolean, created: number, updated: number, edits: Array<ProposalEdit>, feedback?: string, };
 
-/**
- * The kind of storage on the other end.
- *
- * Cloud drive services do not get their own variants: they sync a plain
- * folder, so for kknow they are [`Provider::Folder`] with a path. Git is a
- * variant here only as a setting: it has commits and its own conflict model,
- * that is, a different algorithm (`crate::git`), not a trait implementation.
- */
 export type Provider = { "kind": "s3" } & S3Settings | { "kind": "folder", path: string, } | { "kind": "git" } & GitSettings;
 
-/**
- * Storage address and conflict policy.
- *
- * Unlike the manifest, this file has no format version: only kknow on the
- * same machine writes and reads it. The old format (S3 fields at the root)
- * is detected by the shape of the file, see [`Stored`].
- */
-export type RemoteConfig = { provider: Provider, policy: ConflictPolicy, 
-/**
- * Auto sync interval in minutes. `0` turns auto sync off.
- *
- * This is a directory setting, not an app setting: a work vault can sync
- * every five minutes, and an archive on an external disk never.
- */
-autoSyncMinutes: number, 
-/**
- * The storage is encrypted. The key is not here: it is in the keychain
- * or comes from the passphrase.
- */
-encrypted?: boolean, };
+export type RemoteConfig = { provider: Provider, policy: ConflictPolicy, autoSyncMinutes: number, encrypted?: boolean, };
 
-/**
- * A moved note: its new ID and the number of notes whose links changed.
- */
 export type RenamedNote = { id: string, relinked: number, };
 
-/**
- * What a person decided in one review.
- */
-export type Review = { 
-/**
- * Indexes of the edits to apply.
- */
-accept: Array<number>, 
-/**
- * Indexes of the edits to drop.
- */
-reject: Array<number>, feedback?: string, };
+export type Review = { accept: Array<number>, reject: Array<number>, feedback?: string, };
 
-/**
- * One output line of a running command, for the output popup.
- */
 export type RunLine = { stream: RunStream, text: string, };
 
-/**
- * The result of a command run.
- */
-export type RunOutcome = { 
-/**
- * Command ID, so the app knows which command the report is for.
- */
-command: string, 
-/**
- * Exit code; `None` if the process was killed (timeout or signal).
- */
-code: number | null, stdout: string, stderr: string, 
-/**
- * The command exceeded `timeoutSeconds` and was stopped.
- */
-timedOut: boolean, 
-/**
- * The caller asked to stop the command ([`Watch::stop`]), and it was
- * killed.
- */
-stopped: boolean, 
-/**
- * The output is cut: only its start is kept.
- */
-truncated: boolean, 
-/**
- * Run time; the app shows it next to the exit code.
- */
-millis: number, };
+export type RunOutcome = { command: string, code: number | null, stdout: string, stderr: string, timedOut: boolean, stopped: boolean, truncated: boolean, millis: number, };
 
-/**
- * The stream an output line came from.
- */
 export type RunStream = "stdout" | "stderr";
 
-/**
- * Settings of S3-compatible storage: AWS, MinIO, R2.
- */
-export type S3Settings = { bucket: string, 
-/**
- * Storage address. AWS does not need it.
- */
-endpoint?: string | null, region?: string | null, 
-/**
- * Prefix inside the bucket, so one bucket can hold several vaults.
- */
-prefix?: string | null, 
-/**
- * Access key ID. It is not a secret: it is the login for the secret key,
- * and AWS keeps it in plain text in `~/.aws/credentials`.
- */
-accessKeyId?: string | null, };
+export type S3Settings = { bucket: string, endpoint?: string | null, region?: string | null, prefix?: string | null, accessKeyId?: string | null, };
 
-/**
- * Save result for the window.
- */
 export type SaveOutcome = { "status": "saved", note: NoteView, } | { "status": "conflict", note: NoteView, copy: string, };
 
-export type SearchResult = { id: string, title: string, folder: string | null, 
-/**
- * Snippet with highlighted matches; its HTML is already escaped.
- */
-snippet: string, };
+export type SearchResult = { id: string, title: string, folder: string | null, snippet: string, };
 
-/**
- * A conflict: both sides edited the same note.
- */
-export type SyncConflict = { 
-/**
- * The note that keeps the local version.
- */
-id: string, 
-/**
- * The copy that holds the remote version.
- */
-copy: string, };
+export type SyncConflict = { id: string, copy: string, };
 
-/**
- * What the sync did.
- */
-export type SyncReport = { uploaded: number, downloaded: number, removedLocal: number, removedRemote: number, 
-/**
- * Commits that went to a git repository. The other providers have no
- * commits, so it is zero for them.
- */
-pushed: number, conflicts: Array<SyncConflict>, };
+export type SyncReport = { uploaded: number, downloaded: number, removedLocal: number, removedRemote: number, pushed: number, conflicts: Array<SyncConflict>, };
 
-/**
- * Sync settings as the UI sees them.
- */
-export type SyncSettings = { 
-/**
- * Remote storage address as a string, to show to the user.
- */
-location: string, 
-/**
- * The secret key is already in the keyring. The form cannot show it, but
- * it must say that the key exists.
- */
-hasSecret: boolean, 
-/**
- * Whether a secret is needed at all. A folder has none, so the form hides
- * the key fields for it.
- */
-needsSecret: boolean, 
-/**
- * The data key of an encrypted storage is in the keyring. Without it,
- * the window asks for the passphrase.
- */
-hasKey: boolean, provider: Provider, policy: ConflictPolicy, 
-/**
- * Auto sync interval in minutes. `0` turns auto sync off.
- *
- * This is a directory setting, not an app setting: a work vault can sync
- * every five minutes, and an archive on an external disk never.
- */
-autoSyncMinutes: number, 
-/**
- * The storage is encrypted. The key is not here: it is in the keychain
- * or comes from the passphrase.
- */
-encrypted?: boolean, };
+export type SyncSettings = { location: string, hasSecret: boolean, needsSecret: boolean, hasKey: boolean, provider: Provider, policy: ConflictPolicy, autoSyncMinutes: number, encrypted?: boolean, };
 
 export type SyncState = "off" | "idle" | "syncing" | "conflict" | "error";
 
-/**
- * What to show for one vault.
- *
- * The whole struct is comparable. Windows redraw on each event, so sending an
- * unchanged status makes them redraw for nothing.
- */
-export type SyncStatus = { vault: string, state: SyncState, 
-/**
- * Sync progress: how many actions of the total are done.
- */
-done: number, total: number, 
-/**
- * End of the last successful sync, in ms since the epoch. The window
- * formats the time ("2 min ago") because the format depends on the
- * language.
- */
-at: number | null, 
-/**
- * What went wrong: a code with values, like all other errors.
- */
-message: ErrorView | null, 
-/**
- * Number of conflict copies in the folder.
- */
-conflicts: number, 
-/**
- * Sync target: a bucket or a folder.
- */
-location: string | null, 
-/**
- * Auto-sync interval in minutes; `0` means manual only.
- */
-autoSyncMinutes: number, };
+export type SyncStatus = { vault: string, state: SyncState, done: number, total: number, at: number | null, message: ErrorView | null, conflicts: number, location: string | null, autoSyncMinutes: number, };
 
-/**
- * The kind of target a command is attached to.
- */
 export type TargetKind = "note" | "folder" | "vault";
 
-/**
- * A task in the palette list.
- */
 export type TaskView = { note: string, title: string, folder: string | null, line: number, text: string, done: boolean, };
 
-/**
- * A parsed and checked theme.
- */
-export type Theme = { 
-/**
- * File name without extension; settings store the theme by it.
- */
-id: string, name: string, author: string | null, base: Base, source: ThemeSource, 
-/**
- * A vault theme that hides a shared theme with the same ID. For the UI
- * this means "Make shared" is already done, and the button now updates
- * the shared copy.
- */
-shadowsGlobal: boolean, 
-/**
- * Only the values that passed the check.
- */
-variables: { [key in string]: string }, 
-/**
- * What was dropped and why. The theme still works: one bad value must not
- * leave the user without a theme.
- */
-warnings: Array<ThemeWarning>, };
+export type Theme = { id: string, name: string, author: string | null, base: Base, source: ThemeSource, shadowsGlobal: boolean, variables: { [key in string]: string }, warnings: Array<ThemeWarning>, };
 
-/**
- * A file or a folder that gave no theme.
- *
- * Like [`Warning`], it is data that each frontend writes in its own language.
- */
 export type ThemeProblem = { "code": "file", path: string, detail: string, } | { "code": "noName", path: string, };
 
-/**
- * Themes of a directory and problems with files that are not themes.
- */
-export type ThemeSet = { themes: Array<Theme>, 
-/**
- * Files that did not parse. A theme must not disappear silently: its author
- * expects a result and will look for the cause.
- */
-problems: Array<ThemeProblem>, };
+export type ThemeSet = { themes: Array<Theme>, problems: Array<ThemeProblem>, };
 
-/**
- * Where the theme comes from.
- *
- * This is for the user, not the UI: a shared theme and a vault theme are edited
- * in different places, and "Make shared" makes sense only for a vault theme.
- * A built-in theme has no file at all.
- */
 export type ThemeSource = "vault" | "global" | "builtIn";
 
-/**
- * A variable that a theme lost, and why.
- *
- * It is data, not a ready text: the CLI prints `Display`, and the window
- * translates `problem.theme.<code>` with the fields, in its own language.
- */
 export type ThemeWarning = { "code": "unknownVariable", variable: string, } | { "code": "emptyValue", variable: string, } | { "code": "tooLong", variable: string, max: number, } | { "code": "badCharacter", variable: string, character: string, } | { "code": "function", variable: string, function: string, };
 
-export type Thread = { id: string, 
-/**
- * Note ID ([`NoteId::as_str`]).
- */
-note: string, 
-/**
- * The words of the comment, as it was when the thread started.
- */
-anchor: string, 
-/**
- * The task, as it was when the thread started.
- */
-task: string, status: ThreadStatus, messages: Array<ThreadMessage>, 
-/**
- * The proposal that answers the task, while it waits for review.
- */
-proposal?: string, created: number, updated: number, };
+export type Thread = { id: string, note: string, anchor: string, task: string, status: ThreadStatus, messages: Array<ThreadMessage>, proposal?: string, created: number, updated: number, };
 
-/**
- * What happened to the proposal of a thread.
- */
 export type ThreadEvent = { "code": "proposed", proposal: string, reason: string, } | { "code": "rejected", proposal: string, feedback: string, } | { "code": "accepted", proposal: string, partly: boolean, feedback: string, };
 
-export type ThreadMessage = { 
-/**
- * [`ME`] for the person, else the name of the agent.
- */
-from: string, text: string, at: number, 
-/**
- * A message that kknow wrote, not a person or an agent. `text` is for the
- * agent; the window shows the event in its own language.
- */
-event?: ThreadEvent, };
+export type ThreadMessage = { from: string, text: string, at: number, event?: ThreadEvent, };
 
 export type ThreadStatus = "open" | "inProgress" | "question" | "answered" | "review" | "done";
 
-/**
- * One deletion in the trash of a vault.
- */
-export type TrashEntryView = { 
-/**
- * Entry name: restore takes it.
- */
-id: string, path: string, 
-/**
- * Deletion time in Unix seconds.
- */
-deleted: number, 
-/**
- * Notes in the entry: paths from the vault root, `Folder/note.md`.
- */
-notes: Array<string>, };
+export type TrashEntryView = { id: string, path: string, deleted: number, notes: Array<string>, };
 
-/**
- * What opened the session. After the recovery code, the window asks for a
- * new password.
- */
 export type UnlockedBy = "password" | "recoveryCode";
 
-/**
- * What the windows show.
- */
 export type UpdateStatus = { "state": "unavailable" } | { "state": "managed", manager: string, } | { "state": "idle" } | { "state": "checking" } | { "state": "downloading", version: string, } | { "state": "ready", version: string, } | { "state": "failed", message: string, };
 
-export type VaultChanged = { 
-/**
- * The vault ID: the window must not redraw for edits in an inactive vault.
- */
-vault: string, updated: Array<string>, removed: Array<string>, };
+export type VaultChanged = { vault: string, updated: Array<string>, removed: Array<string>, };
 
-export type VaultInfo = { 
-/**
- * Vault ID: later commands and events refer to the vault by it.
- */
-id: string, name: string, root: string, color: string, noteCount: number, };
+export type VaultInfo = { id: string, name: string, root: string, color: string, noteCount: number, };
 
-/**
- * Vault totals for the settings window.
- */
 export type VaultStats = { notes: number, folders: number, bytes: number, };
 
-/**
- * A vault in the switcher list.
- *
- * There is no note count here: it needs the vault to be opened and parsed,
- * and the list must show at once on the first click.
- */
-export type VaultView = { id: string, name: string, path: string, color: string, 
-/**
- * Text labels: `kknow mcp --label` takes vaults by them.
- */
-labels: Array<string>, active: boolean, 
-/**
- * The folder exists. An external disk can be disconnected.
- */
-available: boolean, 
-/**
- * The vault syncs through git: its row gets a button for the changes
- * panel.
- */
-git: boolean, };
+export type VaultView = { id: string, name: string, path: string, color: string, labels: Array<string>, active: boolean, available: boolean, git: boolean, };
 
-/**
- * How a note is shown: where the markup is drawn and if it can be edited.
- *
- * The window remembers the mode per note. This value is for notes that do not
- * have a mode yet.
- */
 export type ViewMode = "edit" | "split" | "read";

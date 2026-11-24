@@ -1,9 +1,3 @@
-//! Background watching of the notes folder.
-//!
-//! Edits from an external editor must reach the window on their own. So a
-//! separate thread listens to the file system and sends an event to the
-//! frontend.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,17 +7,14 @@ use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::state::VaultSlot;
 
-/// Event name for the frontend.
 pub const EVENT: &str = "vault-changed";
 
-/// How often the watcher wakes up to check if the vault is closed.
 const WAKE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct VaultChanged {
-    /// The vault ID: the window must not redraw for edits in an inactive vault.
     pub vault: String,
     pub updated: Vec<String>,
     pub removed: Vec<String>,
@@ -46,10 +37,6 @@ impl VaultChanged {
     }
 }
 
-/// Starts watching one vault.
-///
-/// The thread lives while the vault is open. A closed vault (removed from the
-/// list) sets its flag, and the thread exits at the next wake-up.
 pub fn watch<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
     std::thread::spawn(move || {
         let watcher = match slot.read(|workspace| Ok(workspace.watch()?)) {
@@ -104,11 +91,6 @@ mod tests {
         let slot = app.state::<AppState>().slot(None).unwrap();
         watch(app.handle().clone(), slot.clone());
 
-        // FSEvents does not start listening at once, and nothing tells when it
-        // does. A write made before that is lost, and a fixed pause (800 ms
-        // before) was sometimes too short on a loaded machine. So the editor
-        // "outside" saves again until the watcher sees the note: a later save
-        // always comes after the start.
         let file = dir.path().join("Извне.md");
         let id = NoteId::parse("Извне").unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -130,8 +112,6 @@ mod tests {
         panic!("наблюдатель не подхватил новый файл за 10 секунд");
     }
 
-    /// There is one watcher per vault. An edit in one vault must not arrive as
-    /// an edit in another, so the event carries the vault ID.
     #[test]
     fn events_say_which_vault_changed() {
         let first = tempfile::tempdir().unwrap();

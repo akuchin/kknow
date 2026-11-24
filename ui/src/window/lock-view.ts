@@ -1,18 +1,3 @@
-// Locked notes in the window: the lock panel, the lock icon in the header,
-// and the actions Lock, Remove lock and Lock all.
-//
-// The panel covers the editor and the preview. It has one form with five
-// uses:
-// - "unlock": a locked note in a locked session. One password opens all
-//   locked notes of the vault until the app closes.
-// - "setup": the first password of the vault, typed two times.
-// - "confirm": the password before Lock or Remove lock in a locked session.
-// - "code": the recovery code, shown once.
-// - "reset": a new password after the recovery code opened the notes.
-//
-// The key stays in the core. This module only asks for the password and
-// redraws the icons. The module does not touch the DOM on import.
-
 import { api, type NoteView } from "../api";
 import { isErrorView } from "../error-view";
 import { describeError, t, type Key } from "../i18n";
@@ -26,22 +11,18 @@ import { fail, setStatus } from "./status";
 import { LOCK_ALL_EVENT, refreshTree, renderTree } from "./tree";
 import { copyText } from "./util";
 
-/** The shortest password; the core checks it too. */
 const MIN_PASSWORD = 8;
 
 type Mode = "unlock" | "setup" | "confirm" | "code" | "reset";
 
-/** What the panel does now, and for which note. */
 let panel: {
   mode: Mode;
   vault: string;
   note: string;
-  /** The step after a "confirm" or a "code". */
   then?: () => Promise<void>;
   code?: string;
 } | null = null;
 
-/** Follows the open note and the sessions, and wires the panel. */
 export function initLockView(): void {
   state.on("note", (note) => {
     showLock(note);
@@ -49,7 +30,6 @@ export function initLockView(): void {
       hidePanel();
       return;
     }
-    // Another note opened: a form for the previous one has no meaning now.
     if (panel && (panel.note !== note.id || panel.vault !== state.vault?.id)) hidePanel();
     if (note.closed) {
       if (panel?.mode !== "unlock") showPanel("unlock", note.id);
@@ -82,15 +62,12 @@ export function initLockView(): void {
     else void lockAll(vault);
   };
   el.lockView.addEventListener("keydown", (event) => {
-    // A form that the person started can be dropped; the password field of a
-    // closed note cannot: there is nothing under it.
     if (event.key === "Escape" && panel && panel.mode !== "unlock" && panel.mode !== "code") {
       hidePanel();
     }
   });
 }
 
-/** The lock button in the header: open or closed, hidden for a plain note. */
 function showLock(note: NoteView | null): void {
   const locked = note?.locked === true && !note.file;
   el.noteLock.hidden = !locked;
@@ -170,7 +147,6 @@ function hidePanel(): void {
   el.lockView.hidden = true;
   el.lockSecret.value = "";
   el.lockRepeat.value = "";
-  // The closed note has no text to edit; a plain note gets the focus back.
   if (state.note && !state.note.closed) editor.focus();
 }
 
@@ -179,7 +155,6 @@ function showError(text: string | null): void {
   el.lockError.textContent = text ?? "";
 }
 
-/** Checks a new password typed two times. */
 function newPassword(): string | null {
   const password = el.lockSecret.value;
   if ([...password].length < MIN_PASSWORD) {
@@ -206,7 +181,6 @@ async function submit(): Promise<void> {
         const by = await api.unlockNotes(secret, current.vault);
         await refreshLock(current.vault);
         if (by === "recoveryCode") {
-          // The person lost the password: a new one first, then the step.
           showPanel("reset", current.note, { then: current.then });
           await reopen(current.vault, current.note);
           return;
@@ -240,7 +214,6 @@ async function submit(): Promise<void> {
         return;
     }
   } catch (error) {
-    // The sync passphrase has the same error code; here it is the password.
     const wrong = isErrorView(error) && error.code === "wrongPassphrase";
     showError(wrong ? t("lock.error.wrong") : describeError(error));
     el.lockSecret.select();
@@ -249,26 +222,17 @@ async function submit(): Promise<void> {
   }
 }
 
-/** Loads the open note again if it is this one: its lock changed. */
 async function reopen(vault: string, id: string): Promise<void> {
   if (state.vault?.id !== vault || state.note?.id !== id) return;
   applyNote(await api.loadNote(id), { reload: true });
 }
 
-/**
- * Opens the note first if it is not open: the panel covers the open note,
- * and the person must see which note the password is for.
- */
 async function showTarget(id: string, vault: string): Promise<boolean> {
   if (state.note?.id === id && state.vault?.id === vault && !state.note.file) return true;
   await openFound(id, vault);
   return state.note?.id === id && state.vault?.id === vault;
 }
 
-/**
- * "Lock" from the note menu. A vault without a password asks for one and
- * shows the recovery code; a locked session asks for the password once.
- */
 export async function lockNote(id: string, vault: string): Promise<void> {
   if (!(await showTarget(id, vault))) return;
   await flushPendingSave();
@@ -290,7 +254,6 @@ export async function lockNote(id: string, vault: string): Promise<void> {
   }
 }
 
-/** "Remove lock" from the note menu: the note becomes plain text again. */
 export async function removeLock(id: string, vault: string): Promise<void> {
   if (!(await showTarget(id, vault))) return;
   await flushPendingSave();
@@ -310,10 +273,6 @@ export async function removeLock(id: string, vault: string): Promise<void> {
   }
 }
 
-/**
- * Drops the key of the vault from memory: all its locked notes close. The
- * open note saves first, so its last edits go to disk sealed.
- */
 export async function lockAll(vault: string | undefined = state.vault?.id): Promise<void> {
   if (!vault) return;
   await flushPendingSave();
@@ -328,7 +287,6 @@ export async function lockAll(vault: string | undefined = state.vault?.id): Prom
   }
 }
 
-/** True if "Lock all" has something to close in the active vault. */
 export function canLockAll(): boolean {
   return isUnlocked(state.vault?.id) && hasPassword(state.vault?.id);
 }

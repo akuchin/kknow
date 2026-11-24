@@ -1,17 +1,3 @@
-/**
- * Embeds in live preview: `![[note]]` and `![[note#Heading]]` alone on a line
- * show the note or the section in place, as the preview does.
- *
- * The editor does not know the vault, so the window gives the HTML
- * (`setEmbedSource`). It is the same answer as the hover preview gets: the
- * core renders the part without line marks, with its own embeds. A widget
- * keeps the placeholder height until the answer comes, then asks CodeMirror
- * to measure again.
- *
- * An embed inside a line of text stays a link: a block cannot stand in a
- * line. The cursor on the line shows the source, as for other blocks.
- */
-
 import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 
@@ -19,36 +5,25 @@ import type { LinkPreview } from "./api";
 import { t } from "./i18n";
 import { icon } from "./icons";
 
-/** Where the HTML of an embed comes from, and what a click on it does. */
 export interface EmbedSource {
-  /** The part that link `target` of the open note names; `null`: no note. */
   load(target: string): Promise<LinkPreview | null>;
-  /** Draws code, images and diagrams in the HTML. */
   paint(root: HTMLElement, done: () => void): void;
-  /** Opens the note of the embed at its part. */
   open(target: string): void;
 }
 
 let source: EmbedSource | null = null;
 const cache = new Map<string, Promise<LinkPreview | null>>();
 
-/** The window gives the vault data. Without it, embeds stay links. */
 export function setEmbedSource(next: EmbedSource): void {
   source = next;
 }
 
-/**
- * Forgets the loaded embeds: a note changed, or a different note opened.
- * Dispatch `embedsChanged` after it, so the widgets load again.
- */
 export function clearEmbeds(): void {
   cache.clear();
 }
 
-/** The embedded notes changed: the widgets draw again. */
 export const embedsChanged = StateEffect.define<void>();
 
-/** The number of `embedsChanged`: a widget with an old number draws again. */
 export const embedGeneration = StateField.define<number>({
   create: () => 0,
   update: (value, tr) =>
@@ -100,7 +75,6 @@ class EmbedWidget extends WidgetType {
     };
     box.append(head, body, edit);
 
-    // A click opens the note; a click that ends a selection selects text.
     box.onclick = (event) => {
       if (!document.getSelection()?.isCollapsed) return;
       if ((event.target as HTMLElement).closest("a, button")) event.preventDefault();
@@ -124,19 +98,13 @@ class EmbedWidget extends WidgetType {
     return box;
   }
 
-  /** The embed is read-only: the editor does not take its clicks and keys. */
   ignoreEvent(): boolean {
     return true;
   }
 }
 
-/** `![[target]]` with nothing else on the line, outside a list or a quote. */
 const ALONE = /^!\[\[([^\]\n]+)\]\]\s*$/;
 
-/**
- * Draws the embed at `from`…`to` if it stands alone on its line and the cursor
- * is not on that line. `false`: it stays a link.
- */
 export function addEmbed(
   state: EditorState,
   from: number,

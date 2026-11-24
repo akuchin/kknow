@@ -1,48 +1,16 @@
-//! Themes: a manifest with a set of colours.
-//!
-//! A theme is a JSON file in the vault `.kknow/themes/` or in the shared themes
-//! folder next to the app settings. A few themes are built into the binary. It is not a stylesheet: it sets values of
-//! known variables and does not contain CSS. So a theme author cannot break the
-//! layout or make the app go to the network. The UI puts the values into
-//! `:root` and does nothing else.
-//!
-//! ```json
-//! {
-//!   "name": "Sepia",
-//!   "author": "kknow",
-//!   "base": "light",
-//!   "variables": { "bg": "#f4ecd8", "text": "#3b3226" }
-//! }
-//! ```
-//!
-//! Value checks here are necessary: a theme comes from someone else's directory
-//! with the notes. A `url(…)` in a colour would fetch an image from a remote
-//! server and tell it that the vault is open.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Vault themes directory. It is hidden, so these files never become notes.
 pub const THEMES_DIR: &str = ".kknow/themes";
 
-/// Shared themes folder inside the app settings directory.
-///
-/// A vault theme is visible only in that vault, and many vaults have no themes.
-/// The shared folder keeps a favourite theme for all vaults.
 pub const GLOBAL_DIR: &str = "themes";
 
 pub fn global_dir(config_dir: impl AsRef<Path>) -> PathBuf {
     config_dir.as_ref().join(GLOBAL_DIR)
 }
 
-/// Themes inside the binary: `(id, manifest)`.
-///
-/// The app comes from a release, and its user has no theme files. Without
-/// these, the gear menu has only the light and the dark base. Built-in themes
-/// are ordinary manifests, so they go through the same checks, and a file with
-/// the same `id` in the shared folder or in the vault replaces them.
 const BUILT_IN: &[(&str, &str)] = &[
     ("gruvbox", include_str!("../themes/gruvbox.json")),
     (
@@ -51,11 +19,6 @@ const BUILT_IN: &[(&str, &str)] = &[
     ),
 ];
 
-/// Variables that the UI knows.
-///
-/// The list makes a typo in a manifest visible at once. An unknown variable
-/// breaks nothing but also colours nothing, and the author would have to look
-/// for the cause by eye.
 pub const VARIABLES: &[&str] = &[
     "bg",
     "bg-soft",
@@ -78,10 +41,6 @@ pub const VARIABLES: &[&str] = &[
     "font-mono",
 ];
 
-/// Functions allowed in a value.
-///
-/// Reject anything else with parentheses: `url(…)` and `image-set(…)` go to the
-/// network, and `attr(…)` reads the document.
 const FUNCTIONS: &[&str] = &[
     "rgb",
     "rgba",
@@ -93,13 +52,8 @@ const FUNCTIONS: &[&str] = &[
     "var",
 ];
 
-/// A longer value is not a colour and not a font name.
 const MAX_VALUE: usize = 200;
 
-/// Built-in theme that the manifest goes on top of.
-///
-/// A theme can set only a few variables, and the rest must come from somewhere:
-/// a dark theme with a default white background is not a theme.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -109,11 +63,6 @@ pub enum Base {
     Dark,
 }
 
-/// Where the theme comes from.
-///
-/// This is for the user, not the UI: a shared theme and a vault theme are edited
-/// in different places, and "Make shared" makes sense only for a vault theme.
-/// A built-in theme has no file at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeSource"))]
@@ -124,44 +73,30 @@ pub enum Source {
     BuiltIn,
 }
 
-/// A parsed and checked theme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Theme {
-    /// File name without extension; settings store the theme by it.
     pub id: String,
     pub name: String,
     pub author: Option<String>,
     pub base: Base,
     pub source: Source,
-    /// A vault theme that hides a shared theme with the same ID. For the UI
-    /// this means "Make shared" is already done, and the button now updates
-    /// the shared copy.
     pub shadows_global: bool,
-    /// Only the values that passed the check.
     pub variables: BTreeMap<String, String>,
-    /// What was dropped and why. The theme still works: one bad value must not
-    /// leave the user without a theme.
     pub warnings: Vec<Warning>,
 }
 
-/// A variable that a theme lost, and why.
-///
-/// It is data, not a ready text: the CLI prints `Display`, and the window
-/// translates `problem.theme.<code>` with the fields, in its own language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeWarning"))]
 pub enum Warning {
-    /// The UI has no such variable.
     UnknownVariable {
         variable: String,
     },
     EmptyValue {
         variable: String,
     },
-    /// Longer than [`MAX_VALUE`]: it is not a colour.
     TooLong {
         variable: String,
         max: u32,
@@ -170,7 +105,6 @@ pub enum Warning {
         variable: String,
         character: String,
     },
-    /// A function that is not in [`FUNCTIONS`].
     Function {
         variable: String,
         function: String,
@@ -198,16 +132,13 @@ impl std::fmt::Display for Warning {
     }
 }
 
-/// Why a manifest is not a theme.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invalid {
-    /// The file does not read, is not JSON, or is JSON of another shape.
     Json(String),
     NoName,
 }
 
 impl Invalid {
-    /// The problem of the file at `path`.
     fn at(self, path: String) -> Problem {
         match self {
             Invalid::Json(detail) => Problem::File { path, detail },
@@ -216,16 +147,11 @@ impl Invalid {
     }
 }
 
-/// A file or a folder that gave no theme.
-///
-/// Like [`Warning`], it is data that each frontend writes in its own language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeProblem"))]
 pub enum Problem {
-    /// The file or the folder does not read, or the file does not parse.
     File { path: String, detail: String },
-    /// The manifest has no name.
     NoName { path: String },
 }
 
@@ -238,18 +164,14 @@ impl std::fmt::Display for Problem {
     }
 }
 
-/// Themes of a directory and problems with files that are not themes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct ThemeSet {
     pub themes: Vec<Theme>,
-    /// Files that did not parse. A theme must not disappear silently: its author
-    /// expects a result and will look for the cause.
     pub problems: Vec<Problem>,
 }
 
-/// The manifest as stored in the file.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {
@@ -263,8 +185,6 @@ struct Manifest {
 }
 
 impl Theme {
-    /// Parses a manifest. It fails only if the file is not a manifest at all;
-    /// bad variables become warnings.
     pub fn parse(id: impl Into<String>, json: &str) -> Result<Self, Invalid> {
         let manifest: Manifest =
             serde_json::from_str(json).map_err(|error| Invalid::Json(error.to_string()))?;
@@ -278,7 +198,6 @@ impl Theme {
         let mut warnings = Vec::new();
 
         for (raw_name, value) in manifest.variables {
-            // The author can also write `--bg`, as in CSS; it is the same variable.
             let name = raw_name.trim().trim_start_matches("--").to_string();
 
             if !VARIABLES.contains(&name.as_str()) {
@@ -306,12 +225,6 @@ impl Theme {
     }
 }
 
-/// Checks a variable value.
-///
-/// The value goes to `style.setProperty`, so a brace or a semicolon cannot
-/// escape from it. The real reason to reject is different: the browser runs
-/// `url(…)` and `image-set(…)`, and a theme is a file from someone else's
-/// directory.
 fn check_value(variable: &str, value: &str) -> Result<(), Warning> {
     let variable = variable.to_string();
     let value = value.trim();
@@ -335,7 +248,6 @@ fn check_value(variable: &str, value: &str) -> Result<(), Warning> {
         });
     }
 
-    // Parentheses are allowed only for functions, and only for listed ones.
     let mut rest = value;
     while let Some(open) = rest.find('(') {
         let head = &rest[..open];
@@ -358,11 +270,6 @@ fn check_value(variable: &str, value: &str) -> Result<(), Warning> {
     Ok(())
 }
 
-/// Built-in themes, then shared ones, then vault themes.
-///
-/// A later theme with the same `id` replaces an earlier one: a vault "gruvbox"
-/// is there on purpose, for example tuned for this vault. Missing directories
-/// are normal: nobody added themes.
 pub fn load(vault_root: Option<&Path>, global: Option<&Path>) -> ThemeSet {
     let mut set = ThemeSet::default();
 
@@ -372,7 +279,6 @@ pub fn load(vault_root: Option<&Path>, global: Option<&Path>) -> ThemeSet {
                 theme.source = Source::BuiltIn;
                 set.themes.push(theme);
             }
-            // Tests catch this, but a broken manifest must not hide silently.
             Err(invalid) => set.problems.push(invalid.at(id.to_string())),
         }
     }
@@ -384,13 +290,10 @@ pub fn load(vault_root: Option<&Path>, global: Option<&Path>) -> ThemeSet {
         load_dir(&root.join(THEMES_DIR), Source::Vault, &mut set);
     }
 
-    // Directory order depends on the file system, and the user sees the list.
     set.themes.sort_by(|left, right| left.name.cmp(&right.name));
     set
 }
 
-/// Adds the themes of one directory; a theme with a known `id` replaces the
-/// old one.
 fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -419,8 +322,6 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
             Ok(json) => match Theme::parse(id, &json) {
                 Ok(mut theme) => {
                     theme.source = source;
-                    // Only a shared copy counts: a built-in theme has no file
-                    // that "Update shared" could overwrite.
                     theme.shadows_global = set
                         .themes
                         .iter()
@@ -435,15 +336,7 @@ fn load_dir(dir: &Path, source: Source, set: &mut ThemeSet) {
     }
 }
 
-/// Copies a vault theme to the shared folder and returns the new path.
-///
-/// A shared theme with the same `id` is overwritten: the user clicked "Make
-/// shared" on this theme and expects this one to become shared. The file is
-/// copied as is, not rebuilt from the parsed theme, so it keeps variables that
-/// this UI version does not know yet.
 pub fn share(vault_root: &Path, id: &str, global: &Path) -> std::io::Result<PathBuf> {
-    // `id` comes from the window. Build a path from it only if it is a file
-    // name, not a way into another directory.
     let plain = !id.is_empty()
         && !id.starts_with('.')
         && Path::new(id).file_name() == Some(std::ffi::OsStr::new(id));
@@ -472,7 +365,6 @@ mod tests {
         Theme::parse("проба", json).expect("манифест разобран")
     }
 
-    /// Themes from files: built-in themes are in every set.
     fn own(set: &ThemeSet) -> Vec<&Theme> {
         set.themes
             .iter()

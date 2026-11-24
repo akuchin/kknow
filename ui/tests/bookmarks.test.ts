@@ -1,6 +1,3 @@
-// Checks for the next and previous bookmark (`src/bookmarks.ts`).
-// Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

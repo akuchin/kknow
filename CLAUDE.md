@@ -12,8 +12,14 @@ Rules for work in this repository:
   `cargo test --workspace`.
 - The core (`crates/*`) must not depend on Tauri. The project has two
   frontends: the window and the CLI (command-line interface).
-- Docs, code comments, identifiers, test data and MCP tool descriptions are
-  in English.
+- Docs, identifiers, test data and MCP tool descriptions are in English.
+- The code has no comments: no `//`, `/* */`, `///`, `//!` or JSDoc in Rust,
+  TypeScript and CSS. Say the intent with names, small functions and types.
+  Put a reason that the code cannot show in `ARCHITECTURE.md`. CLI help goes
+  in `#[command(about = ...)]` and `#[arg(help = ...)]`, not in doc comments.
+  `cargo test --workspace` and `pnpm ui:test` fail on any comment, and
+  `pnpm comments:strip` removes them. Only compiler directives stay:
+  `// @ts-expect-error`, `/// <reference ...>` and `/* @vite-ignore */`.
 - The UI (user interface) must support Russian and English. Each UI string
   goes to both `locales/ru.json` and `locales/en.json`; `ui/src/i18n.ts`
   loads them. Do not write UI text directly in the code.

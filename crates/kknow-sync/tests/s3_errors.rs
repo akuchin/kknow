@@ -1,12 +1,8 @@
-//! What a person sees when S3 refuses: a fake S3 server gives the same
-//! answers as AWS and MinIO, so these tests need no network and no keys.
-
 #![cfg(feature = "s3")]
 
 use kknow_sync::provider::Cause;
 use kknow_sync::{S3Config, S3Provider, SyncProvider};
 
-/// A local server that answers each request with the same S3 error.
 fn fake_s3(status: u16, code: &str, message: &str) -> String {
     let server = tiny_http::Server::http("127.0.0.1:0").expect("a free port");
     let address = format!(
@@ -95,8 +91,6 @@ fn a_missing_bucket_is_named() {
 
 #[test]
 fn no_answer_names_the_address() {
-    // Port 1 on the local machine: nothing listens there, and the refusal is
-    // immediate, with no network.
     let error = s3("http://127.0.0.1:1".into()).list("").unwrap_err();
     assert_eq!(error.cause, Cause::Unreachable("http://127.0.0.1:1".into()));
     assert!(error.to_string().contains("does not answer"), "{error}");

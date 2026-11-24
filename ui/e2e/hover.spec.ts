@@ -9,7 +9,6 @@ test.beforeEach(async ({ page }) => {
 
 const popup = (page: Page) => page.locator(".hover-preview");
 
-/** Puts the pointer on the element and holds ⌘ (Ctrl elsewhere). */
 async function hoverWithKey(page: Page, target: import("@playwright/test").Locator) {
   const box = (await target.boundingBox())!;
   await page.mouse.move(box.x + 4, box.y + box.height / 2);
@@ -39,7 +38,6 @@ test("⌘ and hover on a link in the editor show the note too", async ({ page })
   await expect(popup(page)).toBeVisible();
   await expect(popup(page).locator(".hover-preview-body")).toContainText("A project in");
 
-  // The title opens the note.
   await popup(page).locator(".hover-preview-head .link").click();
   await page.keyboard.up("ControlOrMeta");
   await expect(page.locator("#note-title")).toHaveText("kknow");

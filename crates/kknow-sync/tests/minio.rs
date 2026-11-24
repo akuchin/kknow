@@ -1,16 +1,3 @@
-//! The same algorithm on real S3.
-//!
-//! The tests are `#[ignore]`: they cannot run without a local S3, and `cargo test`
-//! must stay a command with no requirements.
-//!
-//! ```sh
-//! docker compose up -d
-//! cargo test -p kknow-sync --test minio -- --ignored
-//! ```
-//!
-//! The address and keys come from the environment (`KKNOW_S3_*`). The defaults
-//! match `docker-compose.yml` in the repository root.
-
 #![cfg(feature = "s3")]
 
 use std::fs;
@@ -23,8 +10,6 @@ fn env_or(name: &str, fallback: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| fallback.to_string())
 }
 
-/// A separate prefix for each run: tests must not see notes of other tests,
-/// and the bucket must survive a repeated run.
 fn config(test: &str) -> S3Config {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -80,7 +65,6 @@ fn a_vault_travels_through_s3() {
     assert_eq!(received.downloaded.len(), 2);
     assert_eq!(read(&there, "Projects/kknow"), "# kknow\n");
 
-    // The bucket has the notes and the manifest, and nothing else.
     let mut keys = sender.remote_keys().unwrap();
     keys.sort();
     assert_eq!(keys, ["Index.md", "Projects/kknow.md"]);
@@ -92,7 +76,6 @@ fn a_vault_travels_through_s3() {
             .is_some()
     );
 
-    // A repeated sync must not touch anything.
     assert!(sender.run(&mut here).unwrap().is_empty());
     assert!(receiver.run(&mut there).unwrap().is_empty());
 }
@@ -149,7 +132,6 @@ fn a_conflict_keeps_both_versions() {
     assert_eq!(read(&there, "Заметка"), "правка на втором");
     assert_eq!(there.read(copy).unwrap(), "правка на первом");
 
-    // The first device gets both versions, and then everything is stable.
     first.run(&mut here).unwrap();
     here.rescan().unwrap();
     assert_eq!(read(&here, "Заметка"), "правка на втором");

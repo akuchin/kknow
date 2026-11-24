@@ -1,25 +1,14 @@
-//! UI texts on the Rust side: the menu and the window titles.
-//!
-//! They come from the same files as the window (`locales/*.json`), so a
-//! translation has one place. The window language is in the settings.
-
 use std::collections::HashMap;
 
-/// The translation files, the same ones the window uses (`locales/*.json`).
-/// A new language needs a line here too; a test checks that none is missing.
 const LOCALES: &[(&str, &str)] = &[
     ("ru", include_str!("../../locales/ru.json")),
     ("en", include_str!("../../locales/en.json")),
 ];
 
-/// The reference language: an unknown language or a missing key falls back
-/// to it, as in the window.
 const FALLBACK: &str = "ru";
 
-/// The key of the settings window title.
 pub const SETTINGS_TITLE: &str = "settings.windowTitle";
 
-/// The text for `key` in the UI language.
 pub fn label(locale: &str, key: &str) -> String {
     lookup(locale, key)
         .or_else(|| lookup(FALLBACK, key))
@@ -28,9 +17,6 @@ pub fn label(locale: &str, key: &str) -> String {
 
 fn lookup(locale: &str, key: &str) -> Option<String> {
     let (_, source) = LOCALES.iter().find(|(name, _)| *name == locale)?;
-    // The files are small, and the menu and the window titles ask for a few
-    // keys, only when they appear and on a language change: parsing on each
-    // call is cheaper than a cache.
     let dict: HashMap<String, String> = serde_json::from_str(source).ok()?;
     dict.get(key).cloned()
 }
@@ -53,8 +39,6 @@ mod tests {
         assert_eq!(label("en", SETTINGS_TITLE), "Settings — kknow");
     }
 
-    /// The window shows a shipped command in its own language while its name
-    /// is still the English one from `locales/en.json`: the two must match.
     #[test]
     fn shipped_commands_have_their_names_in_the_locales() {
         for spec in kknow_run::spec::defaults().commands {

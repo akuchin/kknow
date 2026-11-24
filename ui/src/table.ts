@@ -1,22 +1,7 @@
-/**
- * A markdown table as data: parsing, formatting and structure edits.
- *
- * This is separate from live preview because it is pure text work: no
- * CodeMirror and no DOM here. The core is not involved either: the edits change
- * the editor buffer, not the vault. The module has no imports on purpose: the
- * tests run it in plain Node (`ui/tests`).
- *
- * The rules follow the Advanced Tables plugin for Obsidian: each edit formats
- * the whole table, so the columns in the `.md` always line up.
- */
-
-/** Column alignment as written in the separator line. */
 export type Align = "left" | "center" | "right" | null;
 
 export interface Cell {
-  /** Raw content with markup, without surrounding spaces. */
   text: string;
-  /** Document range: it lets an edit change one cell, not the whole table. */
   from: number;
   to: number;
 }
@@ -24,40 +9,22 @@ export interface Cell {
 export interface Table {
   from: number;
   to: number;
-  /** The first row is the header; the separator line is not included. */
   rows: Cell[][];
   aligns: Align[];
-  /** Column count of the widest row. */
   columns: number;
-  /**
-   * Whether the separator line exists. A table that the user is still typing
-   * has only the header: the first Tab adds the separator.
-   */
   delimiter: boolean;
-  /** The line of each row inside the table, from 0. */
   lines: number[];
-  /** Spaces before the first pipe: a table in a list item keeps them. */
   indent: string;
 }
 
-/** A separator line: `| --- | :-: |`, with or without the outer pipes. */
 const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 
-/** A line that starts a table row as Advanced Tables sees it: a leading pipe. */
 export const ROW = /^ {0,3}\|/;
 
 export function isDelimiter(line: string): boolean {
   return DELIMITER.test(line) && line.includes("-");
 }
 
-/**
- * Parses a table from its markup. `offset` is where the markup starts in the
- * document, so that cells get real positions.
- *
- * Parsing uses the text, not the CodeMirror tree: cell ranges must be exact,
- * and a table that is still being typed (no separator yet) is not a table for
- * the parser at all.
- */
 export function parseTable(source: string, offset: number): Table | null {
   const lines = source.split("\n");
   const rows: Cell[][] = [];
@@ -74,7 +41,6 @@ export function parseTable(source: string, offset: number): Table | null {
       rows.push(splitRow(line, start));
       at.push(index);
     }
-    // The line break that split removed.
     start += line.length + 1;
   }
 
@@ -92,27 +58,18 @@ export function parseTable(source: string, offset: number): Table | null {
   };
 }
 
-/**
- * Splits a row at unescaped pipes.
- *
- * The outer pipes are the row frame, not empty edge cells: `| a | b |` is two
- * cells, not four.
- */
 function splitRow(line: string, offset: number): Cell[] {
   const spans = cellSpans(line);
 
   return spans.map(([begin, end]) => {
     const text = line.slice(begin, end);
     const trimmed = text.trim();
-    // For an empty cell, put the range inside the spaces: an edit turns `|  |`
-    // into `| a |`, not `|  a|`.
     const lead = trimmed === "" ? Math.min(1, text.length) : text.length - text.trimStart().length;
 
     return { text: trimmed, from: offset + begin + lead, to: offset + begin + lead + trimmed.length };
   });
 }
 
-/** Cell boundaries in a row line, without the outer pipes. */
 function cellSpans(line: string): [number, number][] {
   const spans: [number, number][] = [];
   let start = 0;
@@ -132,13 +89,6 @@ function cellSpans(line: string): [number, number][] {
   return spans;
 }
 
-/**
- * The cell that holds the column `column` of a row line.
- *
- * It counts pipes, not cell ranges: the cursor can stand on a pipe or in the
- * padding, and it still belongs to a cell. A cursor after the closing pipe is
- * past the last cell: there Tab adds a column, as in Advanced Tables.
- */
 export function columnAt(line: string, column: number): number {
   let pipes = 0;
   for (let at = 0; at < Math.min(column, line.length); at += 1) {
@@ -162,12 +112,6 @@ function alignOf(text: string): Align {
   return null;
 }
 
-/**
- * The width of text in a monospace font.
- *
- * East Asian wide characters and emoji take two cells, combining marks none.
- * Without this, a table with Chinese text or emoji does not line up.
- */
 export function textWidth(text: string): number {
   let width = 0;
   for (const char of text) {
@@ -177,22 +121,12 @@ export function textWidth(text: string): number {
   return width;
 }
 
-/** Hangul, CJK, full-width forms and emoji. */
 const WIDE =
   /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic}/u;
 
-/**
- * Builds the markup back: pads the columns with spaces and aligns the text in
- * them, as the separator line says.
- *
- * The padding is for a person who reads the `.md`: in the editor and in any
- * other program the columns line up. Because of it, any edit rewrites the
- * whole table.
- */
 export function serializeTable(rows: string[][], aligns: Align[], indent = ""): string {
   const count = Math.max(1, aligns.length, ...rows.map((row) => row.length));
   const grid = rows.map((row) => Array.from({ length: count }, (_, at) => row[at] ?? ""));
-  // At least three dashes: `|-|` is not a separator.
   const widths = Array.from({ length: count }, (_, at) =>
     Math.max(3, ...grid.map((row) => textWidth(row[at]))),
   );
@@ -222,7 +156,6 @@ function delimiter(align: Align, width: number): string {
   return "-".repeat(width);
 }
 
-/** Table content as a plain string grid; structure edits work on it. */
 export function cellsOf(table: Table): string[][] {
   return table.rows.map((row) =>
     Array.from({ length: table.columns }, (_, at) => row[at]?.text ?? ""),
@@ -232,18 +165,10 @@ export function cellsOf(table: Table): string[][] {
 export function insertRow(rows: string[][], after: number): string[][] {
   const empty = Array.from({ length: rows[0]?.length ?? 1 }, () => "");
   const next = rows.map((row) => [...row]);
-  // The header stays first: the earliest insert position is right below it.
   next.splice(Math.max(1, after + 1), 0, empty);
   return next;
 }
 
-/**
- * Removes rows `from` to `to` inclusive: users select rows as a group, and
- * they must go as a group.
- *
- * The header is never removed: without it the table is not a table. So a
- * selection that covers it is trimmed, and the edit still happens.
- */
 export function removeRows(rows: string[][], from: number, to: number): string[][] {
   const first = Math.max(1, from);
   const last = Math.min(to, rows.length - 1);
@@ -263,7 +188,6 @@ export function insertColumn(
   };
 }
 
-/** `from` and `to` are inclusive. */
 export function removeColumns(
   rows: string[][],
   aligns: Align[],
@@ -273,19 +197,12 @@ export function removeColumns(
   const columns = Math.max(aligns.length, ...rows.map((row) => row.length));
   const first = Math.max(0, from);
   const last = Math.min(to, columns - 1);
-  // A table cannot have zero columns, so removing all of them is refused.
   if (first > last || last - first + 1 >= columns) return { rows, aligns };
 
   const keep = <T>(values: T[]) => values.filter((_, index) => index < first || index > last);
   return { rows: rows.map(keep), aligns: keep(aligns) };
 }
 
-/**
- * Moves rows `from` to `to` one step up (`-1`) or down (`1`).
- *
- * The header stays in place: a body row that becomes the header would also
- * change the meaning of the columns. `null` means the move is not possible.
- */
 export function moveRows(
   rows: string[][],
   from: number,
@@ -299,7 +216,6 @@ export function moveRows(
   return next;
 }
 
-/** Moves columns `from` to `to` one step left (`-1`) or right (`1`), with their alignment. */
 export function moveColumns(
   rows: string[][],
   aligns: Align[],
@@ -320,12 +236,6 @@ export function moveColumns(
   return { rows: rows.map((row) => move(row)), aligns: move(full) };
 }
 
-/**
- * Sets the alignment of columns `from` to `to`.
- *
- * A second press on the same alignment removes it: one button both sets and
- * clears, and there is no separate "no alignment" button.
- */
 export function setAlign(aligns: Align[], columns: number, from: number, to: number, align: Align): Align[] {
   const next = Array.from({ length: columns }, (_, at) => aligns[at] ?? null);
   const same = next.slice(from, to + 1).every((value) => value === align);
@@ -333,13 +243,6 @@ export function setAlign(aligns: Align[], columns: number, from: number, to: num
   return next;
 }
 
-/**
- * Sorts the body rows by one column; the header stays first.
- *
- * Numbers compare as numbers and text by the Russian alphabet with digits in
- * order: "2" before "10". Empty cells go to the end in both directions,
- * because nobody sorts to see the empty rows first. The sort is stable.
- */
 export function sortRows(rows: string[][], column: number, descending: boolean): string[][] {
   const [header, ...body] = rows;
   if (!header) return rows;
@@ -358,16 +261,11 @@ export function sortRows(rows: string[][], column: number, descending: boolean):
   return [header, ...sorted];
 }
 
-/** Rows become columns. The alignment does not survive: it belonged to the old columns. */
 export function transpose(rows: string[][]): string[][] {
   const columns = Math.max(...rows.map((row) => row.length));
   return Array.from({ length: columns }, (_, column) => rows.map((row) => row[column] ?? ""));
 }
 
-/**
- * The target of a table action: a rectangle of cells. With the cursor in the
- * markup it is the cursor cell; in the drawn table it is the mouse selection.
- */
 export interface Rect {
   top: number;
   left: number;
@@ -375,7 +273,6 @@ export interface Rect {
   right: number;
 }
 
-/** A table action: the toolbar buttons and the keys run the same set. */
 export type Command =
   | "rowAdd"
   | "rowRemove"
@@ -395,14 +292,9 @@ export type Command =
 export interface Edited {
   rows: string[][];
   aligns: Align[];
-  /** Where the target is after the edit: the moved rows, the new cell. */
   rect: Rect;
 }
 
-/**
- * Runs an action on the table content. `null` means the action is not
- * possible here: for example, the header cannot move down.
- */
 export function runCommand(
   command: Command,
   rows: string[][],

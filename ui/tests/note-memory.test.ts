@@ -1,6 +1,3 @@
-// The per-file mode and font size (`src/note-mode.ts`, `src/note-scale.ts`).
-// Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -17,7 +14,6 @@ test("a folder rename moves the modes of the notes inside", () => {
   assert.equal(modeOf("v/Work/plan.md", "edit"), "read");
   assert.equal(modeOf("v/Work/archive/old.md", "edit"), "split");
   assert.equal(modeOf("v/Projects/plan.md", "edit"), "edit");
-  // A folder with the same start is a different folder.
   assert.equal(modeOf("v/Projects-2/other.md", "edit"), "read");
 });
 

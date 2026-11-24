@@ -7,7 +7,6 @@ import "./custom.css";
 
 export default {
   extends: DefaultTheme,
-  // The app screenshot goes between the hero and the feature cards.
   Layout: () => h(DefaultTheme.Layout, null, { "home-hero-after": () => h(Screenshot) }),
   enhanceApp({ app }) {
     app.component("Mermaid", Mermaid);

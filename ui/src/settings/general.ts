@@ -1,5 +1,3 @@
-/** The "General" section: language, the last note, `.md` files, updates. */
-
 import { api, type MarkdownAssociation, type UpdateStatus } from "../api";
 import { LOCALE_NAMES, describeError, locales, t } from "../i18n";
 import { heading, row, select, toggle } from "./controls";
@@ -45,22 +43,10 @@ export function renderGeneral(): void {
   view.body.append(page);
 }
 
-/** Auto-update state. It comes as events also while the window is closed to
- *  the "General" section, so it lives here, not in the row. */
 let update: UpdateStatus = { state: "idle" };
-/** "Check now" was pressed: then `idle` means "you have the latest version",
- *  not "no check yet". */
 let checkedByHand = false;
-/** Repaints the update row if it is on screen. */
 let paintUpdate: (() => void) | null = null;
 
-/**
- * "Updates": the button checks now, and the text under it tells the state.
- *
- * The button works with the setting off too: the setting is about the
- * background checks. The restart itself is in the status bar of the main
- * window, because that window saves the open note before it.
- */
 function updateRow(): HTMLElement {
   const check = document.createElement("button");
   check.type = "button";
@@ -120,14 +106,6 @@ function updateRow(): HTMLElement {
   return item;
 }
 
-/**
- * "Open .md files in kknow": the button makes the app the default one, and the
- * text under it tells which app opens markdown now.
- *
- * The window asks the system each time the section shows and stores nothing.
- * The user can change the default app outside kknow, and the window must not
- * show stale data.
- */
 function markdownRow(): HTMLElement {
   const claim = document.createElement("button");
   claim.type = "button";
@@ -172,14 +150,6 @@ function markdownRow(): HTMLElement {
   return item;
 }
 
-/**
- * "Git": the path to the program for vaults that sync through git.
- *
- * kknow does not guess the path: an app from the Dock does not have the
- * `PATH` of the terminal. "Find" fills the field with the program it finds,
- * and the text under it shows `git version`, so the person sees that the
- * path works before the first sync.
- */
 function gitRow(): HTMLElement {
   const input = document.createElement("input");
   input.type = "text";
@@ -234,12 +204,10 @@ function gitRow(): HTMLElement {
   return item;
 }
 
-/** Takes a new update state. The row repaints only on `repaintUpdate`. */
 export function setUpdate(status: UpdateStatus): void {
   update = status;
 }
 
-/** Repaints the update row if it is on screen. */
 export function repaintUpdate(): void {
   paintUpdate?.();
 }

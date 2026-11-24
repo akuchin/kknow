@@ -1,18 +1,11 @@
 use std::ops::Range;
 
-/// A tag like `#rust` or `#projects/study`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
-    /// Name without the leading `#`.
     pub name: String,
     pub span: Range<usize>,
 }
 
-/// Finds tags in the text and skips the `skip` ranges.
-///
-/// A tag is `#` followed directly by a non-space character. This rule also
-/// tells it from a markdown heading `# Heading`. A `#` inside a word
-/// (`foo#bar`, URL anchors) is not a tag.
 pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<Tag> {
     let mut tags = Vec::new();
     let mut cursor = 0;
@@ -32,7 +25,6 @@ pub fn scan(source: &str, skip: &[Range<usize>]) -> Vec<Tag> {
         if name.is_empty() || !name.chars().any(char::is_alphabetic) {
             continue;
         }
-        // A trailing slash belongs to the `#tag/` form, not to the name.
         let name = name.trim_end_matches('/').to_string();
 
         let end = cursor + name.len();

@@ -1,36 +1,3 @@
-//! The MCP server of the app: Streamable HTTP on `127.0.0.1`.
-//!
-//! An agent connects with one line, and nothing else needs to be installed:
-//!
-//! ```text
-//! claude mcp add --transport http kknow http://127.0.0.1:7377/mcp \
-//!   --header "Authorization: Bearer <token>"
-//! ```
-//!
-//! The protocol is `kknow_app::mcp`. This module only carries it over HTTP
-//! and gives it the vaults of the window: the same slots, the same indexes.
-//! Thus the server costs no second index in memory, and an edit of the agent
-//! reaches the open note at once (`vault-changed`).
-//!
-//! The server works while the app runs. The lamp in the status bar shows
-//! that: green is "listening".
-//!
-//! Of the transport, the server uses the simple part. A POST carries one
-//! message (or a batch) and gets one JSON reply. There is no SSE stream: the
-//! tools answer at once and send no notifications, so GET gets 405, as the
-//! specification allows. There are no sessions either.
-//!
-//! Protection. The port is open only on `127.0.0.1`. Every request needs
-//! `Authorization: Bearer <token>`: other programs and other users of the
-//! machine also reach `127.0.0.1`. The `Host` header must be ours, and an
-//! `Origin`, if there is one, too: otherwise a web page could reach the port
-//! through DNS rebinding. A browser also sends a CORS preflight for a JSON
-//! POST, and the server does not answer it.
-//!
-//! Which vaults: `/mcp` serves all vaults of the list, `/mcp?vault=<id>` one
-//! vault, `/mcp?label=work&label=ai` the vaults with one of the labels. The
-//! scope is read on each request, so a new label works at once.
-
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -48,28 +15,20 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use crate::live::{EVENT, VaultChanged};
 use crate::state::{AppState, Result, VaultSlot, lock};
 
-/// The largest request body. A JSON-RPC call of these tools is a few
-/// kilobytes; a bigger body is a mistake or an attack.
 const MAX_BODY: u64 = 4 * 1024 * 1024;
 
-/// What the window shows about the server.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct McpStatus {
     pub enabled: bool,
     pub port: u16,
-    /// The server listens now.
     pub running: bool,
-    /// Why the server does not listen, for example a port in use.
     pub error: Option<String>,
-    /// For the setup snippets: the agent sends it in `Authorization`.
     pub token: String,
 }
 
-/// The server and its settings. One per app.
 pub struct McpServer {
-    /// `None` in tests: nothing is written into the settings of the person.
     path: Option<PathBuf>,
     inner: Mutex<Inner>,
 }
@@ -82,7 +41,6 @@ struct Inner {
 
 struct Running {
     server: Arc<tiny_http::Server>,
-    /// The real port: with port 0 in tests, the system picks one.
     port: u16,
     thread: Option<JoinHandle<()>>,
 }
@@ -99,7 +57,6 @@ impl McpServer {
         }
     }
 
-    /// Reads `mcp.json` from the config directory, or makes it.
     pub fn load(config_dir: Option<PathBuf>) -> Self {
         let path = config_dir.map(McpConfig::path);
         let config = match &path {
@@ -126,8 +83,6 @@ impl McpServer {
         }
     }
 
-    /// Starts the server if the settings say so. A port in use is not an
-    /// error of the app: the status tells it, and the person picks another.
     pub fn start<R: Runtime>(&self, app: AppHandle<R>) {
         let mut inner = lock(&self.inner);
         stop(&mut inner);
@@ -159,8 +114,6 @@ impl McpServer {
         }
     }
 
-    /// New settings from the window: they go to disk, and the server starts
-    /// again with them. The token stays.
     pub fn configure<R: Runtime>(&self, app: AppHandle<R>, enabled: bool, port: u16) -> Result<()> {
         {
             let mut inner = lock(&self.inner);
@@ -178,7 +131,6 @@ impl McpServer {
 fn stop(inner: &mut Inner) {
     inner.error = None;
     if let Some(mut running) = inner.running.take() {
-        // `unblock` ends `incoming_requests`, so the thread exits.
         running.server.unblock();
         if let Some(thread) = running.thread.take() {
             let _ = thread.join();
@@ -189,13 +141,6 @@ fn stop(inner: &mut Inner) {
     }
 }
 
-/// Waits until the port is free, at most a second.
-///
-/// `tiny_http` closes the listening socket in its own accept thread after the
-/// `Server` is dropped, and does not wait for it. Without the wait, a restart
-/// on the same port could fail with "address in use", and the port would
-/// still answer for a moment after the switch is off. On Linux this moment is
-/// long enough to see.
 fn wait_until_free(port: u16) {
     for _ in 0..100 {
         if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
@@ -205,7 +150,6 @@ fn wait_until_free(port: u16) {
     }
 }
 
-/// One HTTP request, without the socket: the tests build it by hand.
 pub struct Request {
     pub method: String,
     pub url: String,
@@ -222,7 +166,6 @@ impl Request {
     }
 }
 
-/// An HTTP reply: the status and an optional JSON body.
 #[derive(Debug, PartialEq)]
 pub struct Reply {
     pub status: u16,
@@ -241,7 +184,6 @@ impl Reply {
         }
     }
 
-    /// A refusal with the reason in words: a person reads it in the agent log.
     fn refuse(status: u16, text: &str) -> Self {
         Reply::json(
             status,
@@ -290,8 +232,6 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
     tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("an ASCII header")
 }
 
-/// The reply to one request. The checks go from the cheapest to the most
-/// expensive: a wrong path or a foreign page never reaches the vaults.
 pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &Request) -> Reply {
     let (path, query) = request.url.split_once('?').unwrap_or((&request.url, ""));
     if path != "/mcp" {
@@ -328,8 +268,6 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
         Err(text) => return Reply::refuse(404, &text),
     };
 
-    // A batch came in the 2025-03-26 version of the protocol; one message is
-    // the usual case.
     let replies: Vec<Value> = match &message {
         Value::Array(messages) => messages
             .iter()
@@ -338,15 +276,12 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
         single => mcp::handle(&mut host, single).into_iter().collect(),
     };
     match (message.is_array(), replies.len()) {
-        // Only notifications and replies of the client: nothing to answer.
         (_, 0) => Reply::empty(202),
         (false, _) => Reply::json(200, replies.into_iter().next().expect("one reply")),
         (true, _) => Reply::json(200, Value::Array(replies)),
     }
 }
 
-/// `Host` or `Origin` names this server. A missing `Origin` is fine: programs
-/// do not send it, browsers do.
 fn ours(value: Option<&str>, port: u16, origin: bool) -> bool {
     let Some(value) = value else {
         return origin;
@@ -362,7 +297,6 @@ fn ours(value: Option<&str>, port: u16, origin: bool) -> bool {
     value == format!("127.0.0.1:{port}") || value == format!("localhost:{port}")
 }
 
-/// The vaults of the window for one request.
 struct WindowHost<'a, R: Runtime> {
     app: &'a AppHandle<R>,
     refs: Vec<VaultRef>,
@@ -370,8 +304,6 @@ struct WindowHost<'a, R: Runtime> {
 }
 
 impl<'a, R: Runtime> WindowHost<'a, R> {
-    /// The vaults of the query: `vault=<id or name>`, or `label=…` (repeated),
-    /// or all. An unavailable folder is skipped, as in the search.
     fn new(app: &'a AppHandle<R>, query: &str) -> std::result::Result<Self, String> {
         let state = app.state::<AppState>();
         let entries = scope(state.entries(), query)?;
@@ -382,7 +314,6 @@ impl<'a, R: Runtime> WindowHost<'a, R> {
             slots: Vec::new(),
         };
         for entry in entries.into_iter().filter(VaultEntry::available) {
-            // The first request to a closed vault opens it, as a search does.
             let slot = state
                 .slot(Some(&entry.id))
                 .map_err(|error| format!("{}: {error}", entry.name))?;
@@ -397,7 +328,6 @@ impl<'a, R: Runtime> WindowHost<'a, R> {
     }
 }
 
-/// The entries that the query asks for.
 fn scope(entries: Vec<VaultEntry>, query: &str) -> std::result::Result<Vec<VaultEntry>, String> {
     let mut vault = None;
     let mut labels = Vec::new();
@@ -456,9 +386,6 @@ impl<R: Runtime> Host for WindowHost<'_, R> {
             .map_err(|error| error.to_string())
     }
 
-    /// The write of the agent goes through the same workspace as the window,
-    /// so the watcher takes it for our own and stays quiet. The window must
-    /// hear about it anyway: the note can be open there.
     fn changed(&mut self, index: usize, note: &NoteId) {
         let _ = self.app.emit(
             EVENT,
@@ -471,14 +398,11 @@ impl<R: Runtime> Host for WindowHost<'_, R> {
     }
 }
 
-/// The server state for the window.
 #[tauri::command]
 pub fn mcp_status(server: State<'_, McpServer>) -> McpStatus {
     server.status()
 }
 
-/// Turns the server on or off and sets the port. A port in use comes back
-/// in the status, not as an error: the setting is saved anyway.
 #[tauri::command(async)]
 pub fn set_mcp(
     app: AppHandle,
@@ -503,7 +427,6 @@ mod tests {
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
-    /// An app with two vaults: «Работа» (label `work`) and «Дом».
     fn app() -> (Vec<tempfile::TempDir>, tauri::App<MockRuntime>) {
         let work = tempfile::tempdir().unwrap();
         fs::write(
@@ -722,7 +645,6 @@ mod tests {
             "{answer}"
         );
 
-        // A second server on the same port fails, and the status says why.
         let busy = McpServer::new(
             None,
             McpConfig {

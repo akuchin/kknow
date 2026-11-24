@@ -1,9 +1,3 @@
-/**
- * Names and links for pasted images. The module has no imports on purpose:
- * the tests run it in plain Node (`ui/tests`).
- */
-
-/** Clipboard types that the image loader can show, and their extensions. */
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -16,10 +10,6 @@ const EXTENSIONS: Record<string, string> = {
   "image/vnd.microsoft.icon": "ico",
 };
 
-/**
- * `Pasted image 20261024153012.png`, as in Obsidian. Local time: the user
- * reads it. `null` for a type that the loader cannot show.
- */
 export function pastedImageName(type: string, now: Date): string | null {
   const ext = EXTENSIONS[type.toLowerCase()];
   if (!ext) return null;
@@ -30,7 +20,6 @@ export function pastedImageName(type: string, now: Date): string | null {
   return `Pasted image ${stamp}.${ext}`;
 }
 
-/** The link for a path that the core returned. */
 export function imageLink(path: string): string {
   return `![[${path}]]`;
 }

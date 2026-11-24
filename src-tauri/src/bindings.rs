@@ -1,25 +1,9 @@
-//! TypeScript declarations of what the commands return: `ui/src/bindings.ts`.
-//!
-//! Before, `ui/src/api.ts` repeated each Rust struct by hand. A renamed field
-//! then gave the window a silent `undefined`. Now the file comes from the Rust
-//! types, and this test fails when the file on disk differs from them.
-//!
-//! To write the file again after a change of a type:
-//!
-//! ```bash
-//! KKNOW_BLESS=1 cargo test -p kknow-desktop bindings
-//! ```
-//!
-//! All declarations go into one file, not one file per type: the window
-//! imports them from one place, and the file needs no imports of its own.
-
 use std::any::TypeId;
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use ts_rs::{Config, TS, TypeVisitor};
 
-/// Collects a declaration for each type and for the types it uses.
 struct Collect<'a> {
     config: &'a Config,
     seen: HashSet<TypeId>,
@@ -28,7 +12,6 @@ struct Collect<'a> {
 
 impl TypeVisitor for Collect<'_> {
     fn visit<T: TS + 'static + ?Sized>(&mut self) {
-        // Only named types have a declaration; `string` and `Array` do not.
         if T::output_path().is_none() || !self.seen.insert(TypeId::of::<T>()) {
             return;
         }
@@ -41,7 +24,6 @@ impl TypeVisitor for Collect<'_> {
 }
 
 fn generate() -> String {
-    // JSON numbers: a `u64` here is a size or a time, far below 2^53.
     let config = Config::new().with_large_int("number");
     let mut collect = Collect {
         config: &config,
@@ -90,15 +72,13 @@ fn generate() -> String {
     collect.visit::<kknow_app::theme::ThemeSet>();
     collect.visit::<kknow_app::settings::AppSettings>();
     collect.visit::<kknow_run::Outcome>();
-    // The settings form sends it back: `save_sync_settings`.
     collect.visit::<kknow_sync::RemoteConfig>();
 
-    let mut out = String::from(
-        "// Generated from the Rust types by `src-tauri/src/bindings.rs`. Do not edit:\n\
-         // run `KKNOW_BLESS=1 cargo test -p kknow-desktop bindings` instead.\n",
-    );
+    let mut out = String::new();
     for decl in collect.decls.values() {
-        out.push('\n');
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str(decl);
         out.push('\n');
     }
@@ -121,11 +101,6 @@ fn bindings_match_the_rust_types() {
     );
 }
 
-/// The text without the line endings of the platform.
-///
-/// The generator writes `\n`, but what is on disk depends on git: the
-/// repository keeps this file with CRLF, and a checkout on Windows leaves it
-/// that way. The declarations are what must match; `\r` is not one of them.
 fn lines(text: &str) -> Vec<&str> {
     text.lines().collect()
 }

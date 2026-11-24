@@ -1,13 +1,9 @@
-//! End-to-end check for stage 3: a file edit on disk reaches search by
-//! itself, without a full vault reload.
-
 use std::fs;
 use std::time::{Duration, Instant};
 
 use kknow_app::{Changes, Workspace};
 use kknow_core::NoteId;
 
-/// Waits for the watcher to deliver changes and applies them.
 fn settle(workspace: &mut Workspace, watcher: &kknow_app::watch::VaultWatcher) -> Changes {
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut changes = Changes::default();
@@ -17,7 +13,6 @@ fn settle(workspace: &mut Workspace, watcher: &kknow_app::watch::VaultWatcher) -
             let batch = workspace.apply(&events).expect("изменения применены");
             changes.updated.extend(batch.updated);
             changes.removed.extend(batch.removed);
-            // One file edit causes several notifications; let them settle.
             std::thread::sleep(Duration::from_millis(300));
             if let Some(tail) = watcher.recv_timeout(Duration::from_millis(200)) {
                 let batch = workspace.apply(&tail).expect("изменения применены");
@@ -48,7 +43,6 @@ fn external_edit_reaches_search_and_backlinks() {
     let mut workspace = Workspace::open(dir.path()).unwrap();
     let watcher = workspace.watch().unwrap();
 
-    // A note that a different editor creates.
     fs::write(
         dir.path().join("Извне.md"),
         "# Извне\n\nПишу про полнотекстовый поиск и ссылаюсь на [[Index]].\n",
@@ -69,7 +63,6 @@ fn external_edit_reaches_search_and_backlinks() {
         "ссылка из новой заметки должна появиться в графе"
     );
 
-    // Now the file is deleted outside the app.
     fs::remove_file(dir.path().join("Извне.md")).unwrap();
     let changes = settle(&mut workspace, &watcher);
 

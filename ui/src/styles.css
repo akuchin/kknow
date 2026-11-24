@@ -1,4 +1,3 @@
-/* Variables define the theme; a theme manifest overrides them. */
 :root {
   --bg: #ffffff;
   --bg-soft: #f6f6f4;
@@ -6,17 +5,12 @@
   --border: #e3e2dd;
   --text: #23221f;
   --text-muted: #78766f;
-  /* Heading color. It follows the text color by default, so the built-in
-     themes stay the same; a manifest theme can set its own. */
   --heading: var(--text);
   --accent: #4a5cd6;
   --accent-soft: #eceefb;
   --danger: #b3402c;
-  /* Text that an agent proposal adds. */
   --diff-add: #2f7d45;
   --selection: #d9dcf7;
-  /* Code blocks. Own variables, not text shades: syntax needs six distinct
-     colors, and one accent cannot give them. */
   --code-keyword: #8250df;
   --code-string: #0a7a3f;
   --code-comment: #78766f;
@@ -25,16 +19,10 @@
   --code-function: #4a5cd6;
   --font-text: -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
-  /* Sidebar width. A variable, not a number in three places: the header also
-     aligns to it, so the note name sits above the work area, not above the
-     tree. Themes do not set it: it is layout, not color. */
   --sidebar: 260px;
-  /* Width of the note panel on the right: outline, backlinks, mentions. */
   --aside: 240px;
   --ok: #3f8f4f;
   --warning: #a2701c;
-  /* Vault labels. The set is fixed because the color sits next to text, and
-     an arbitrary shade from settings would break on the dark theme. */
   --label-blue: #4a5cd6;
   --label-violet: #8b5cf6;
   --label-amber: #d98a1a;
@@ -82,9 +70,6 @@ body,
   margin: 0;
 }
 
-/* The app window never scrolls as a whole; scrolling lives inside panels.
-   Otherwise everything in `body` next to `#app` (palette, menus) would drag
-   the header and status bar with it. */
 body {
   overflow: hidden;
 }
@@ -95,8 +80,6 @@ body {
   background: var(--bg);
 }
 
-/* Three vertical bands: the header for content navigation, the footer for app
-   state, and the work area between them. */
 #app {
   display: grid;
   grid-template-columns: var(--sidebar) minmax(260px, 1fr) minmax(260px, 1fr) var(--aside);
@@ -107,9 +90,6 @@ body {
     "status status status status";
 }
 
-/* Note mode. "Live preview": markup renders in the text itself, no preview
-   needed. "Read": the preview takes the editor's place. "Side by side": the grid above.
-   The note panel is the last column in each mode. */
 #app[data-mode="edit"] {
   grid-template-columns: var(--sidebar) 1fr var(--aside);
   grid-template-areas:
@@ -134,9 +114,6 @@ body {
   display: none;
 }
 
-/* In "Read" mode the text is one centered column: a full-width line is hard
-   to read. The base size is on the panel, not on the preview: the note zoom
-   applies to the preview in percent and multiplies the base. */
 #app[data-mode="read"] .preview-pane {
   font-size: 16.5px;
 }
@@ -151,8 +128,6 @@ body {
   padding-inline: max(14px, calc((100% - 720px) / 2));
 }
 
-/* Collapsed sidebar: the column stays in the grid with zero width. The header
-   uses the same variable, so the note name moves to the center. */
 #app[data-sidebar="hidden"] {
   --sidebar: 0px;
 }
@@ -161,7 +136,6 @@ body {
   display: none;
 }
 
-/* The note panel collapses the same way, and it has no place without a note. */
 #app[data-aside="hidden"] {
   --aside: 0px;
 }
@@ -184,10 +158,6 @@ body {
   flex: 1;
 }
 
-/* Above the sidebar: the sidebar toggle and history buttons, about what is
-   open and where you came from. The block is exactly as wide as the sidebar
-   (minus the header padding and gap), so the note name sits above the editor,
-   not above the tree. */
 .topbar-nav {
   display: flex;
   flex: none;
@@ -205,12 +175,6 @@ body {
   width: 4px;
 }
 
-/* The open note name in the center, its location muted next to it. There is
-   no absolute centering on purpose: with it a long name would slide under the
-   buttons on the right. This way it stops at them and ends with an ellipsis.
-
-   The name is a button: it opens the note menu (commands, rename, reveal), the
-   same menu as its tree row. */
 .topbar-note {
   display: flex;
   flex: 1;
@@ -239,7 +203,6 @@ body {
   color: var(--text-muted);
 }
 
-/* Without a note the name is just the "no note open" text. */
 .topbar-note-title:disabled {
   font-weight: 400;
   color: var(--text-muted);
@@ -270,8 +233,6 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Note mode: three buttons in one track. You see all modes and the current
-   one at once. */
 .mode-switch {
   display: inline-flex;
   flex: none;
@@ -318,15 +279,11 @@ body {
   gap: 4px;
 }
 
-/* Header search: the same field-like button that was in the sidebar, but
-   shorter. The header has less room, and the button shows the shortcut anyway. */
 .topbar-actions .search-button {
   flex: none;
   width: 124px;
 }
 
-/* In a narrow window search shrinks to an icon and status bar words give way:
-   the note name and state matter more. */
 @media (max-width: 900px) {
   .topbar-actions .search-button {
     width: auto;
@@ -342,7 +299,6 @@ body {
   }
 }
 
-/* Vault label: a small square of a color from a fixed set. */
 .vault-label {
   flex: none;
   width: 8px;
@@ -371,18 +327,12 @@ body {
   background: var(--label-teal);
 }
 
-/* Button icon: the color comes from the label, so the theme colors it. */
 .icon {
   flex: none;
   width: 16px;
   height: 16px;
 }
 
-/* Header button: icon and label in one line.
-
-   It has four visible states: hover gives a background and border, press an
-   accent background, keyboard focus a ring, and "on" the full accent. Without
-   them a borderless button looks like plain text. */
 .ghost {
   display: inline-flex;
   align-items: center;
@@ -419,25 +369,21 @@ button.ghost:disabled {
   opacity: 0.5;
 }
 
-/* Toggle button: its look shows whether it is on. */
 button.ghost[aria-pressed="true"] {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
-/* Icon only: `aria-label` replaces the visible label. */
 .ghost.bare {
   padding: 5px;
 }
 
-/* Removing a vault erases a setting. */
 .ghost.danger:hover {
   color: var(--danger);
   border-color: color-mix(in oklab, var(--danger) 35%, transparent);
 }
 
-/* One focus ring for the whole window: it shows where Enter goes. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -462,8 +408,6 @@ button.ghost[aria-pressed="true"] {
   }
 }
 
-/* Status bar: app state and quick switches.
-   Each segment is a button or a label; nothing here opens a modal window. */
 .statusbar {
   grid-area: status;
   display: flex;
@@ -495,7 +439,6 @@ button.ghost[aria-pressed="true"] {
   text-overflow: ellipsis;
 }
 
-/* A label, not an action: word count and reading time switch nothing. */
 .status-item.static {
   cursor: default;
 }
@@ -514,8 +457,6 @@ button.status-item:disabled {
   height: 12px;
 }
 
-/* Chip for a problem elsewhere: a conflict or sync failure in an inactive
-   vault. It never opens a modal window, so it does not block work. */
 .status-item.chip {
   gap: 6px;
   border-radius: 5px;
@@ -538,7 +479,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--warning);
 }
 
-/* Otherwise inline-flex overrides the hidden attribute. */
 .status-item.chip[hidden] {
   display: none;
 }
@@ -548,7 +488,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   height: 10px;
 }
 
-/* The gear has no label, only an icon slightly larger than its neighbours. */
 #status-more .icon {
   width: 13px;
   height: 13px;
@@ -558,13 +497,11 @@ button.status-item.chip[data-tone="warning"]:hover {
   display: inline-flex;
 }
 
-/* Otherwise inline-flex overrides the hidden attribute. */
 #status-scale[hidden],
 #status-run[hidden] {
   display: none;
 }
 
-/* Note font size: − / slider / + / value, as in the font panel of macOS apps. */
 .status-scale {
   display: inline-flex;
   align-items: center;
@@ -577,7 +514,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   font-size: 13px;
 }
 
-/* The value has a fixed width: from 90% to 100% the slider must not move. */
 #status-scale-value {
   justify-content: flex-end;
   min-width: 42px;
@@ -601,7 +537,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   width: 72px;
 }
 
-/* The font size slider: in the status bar and in the settings window. */
 .scale-slider {
   height: 14px;
   margin: 0;
@@ -643,7 +578,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   background: var(--bg-raised);
 }
 
-/* In a narrow window the slider goes: − and + still work. */
 @media (max-width: 900px) {
   #status-scale-slider {
     display: none;
@@ -655,8 +589,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--text);
 }
 
-/* Sync state dot: green is ready, gray is off, red is failed, a blinking
-   accent dot means sync is running. */
 .status-dot {
   flex: none;
   width: 6px;
@@ -673,7 +605,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   background: var(--danger);
 }
 
-/* A conflict is not a failure: sync finished, but the folder has copies. */
 #status-sync[data-tone="conflict"] .status-dot {
   background: var(--warning);
 }
@@ -701,7 +632,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--danger);
 }
 
-/* Popup menu: one style for all window menus, so the rules are few. */
 .menu {
   position: fixed;
   z-index: 20;
@@ -723,8 +653,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--text-muted);
 }
 
-/* Vault label on a hit from another vault. Hits from the active vault get
-   none: that vault is already open. */
 .palette-vault {
   display: inline-flex;
   flex: none;
@@ -738,7 +666,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   white-space: nowrap;
 }
 
-/* A group header on a group other than the first gets a separator line. */
 .menu-title:not(:first-child),
 .menu-item + .menu-title {
   margin-top: 5px;
@@ -752,7 +679,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   background: var(--border);
 }
 
-/* An empty anchor at the pointer: a right-click menu has no button to open at. */
 .point-anchor {
   position: fixed;
   width: 0;
@@ -760,7 +686,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   outline: none;
 }
 
-/* The bookmark name field opens where the marker menu was. */
 .bookmark-name {
   padding: 4px;
 }
@@ -824,7 +749,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   white-space: nowrap;
 }
 
-/* Second line of an item: path, provider, last sync time. */
 .menu-detail {
   font-size: 11px;
   color: var(--text-muted);
@@ -833,7 +757,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   white-space: nowrap;
 }
 
-/* The current choice: theme, language, active vault. */
 .menu-item[data-checked="true"] {
   color: var(--accent);
 }
@@ -857,8 +780,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: inherit;
 }
 
-/* Key on the right: plain muted text, not a key cap. A column of caps looks
-   heavy next to the labels; a letter is enough to read. */
 .menu-item .menu-key {
   min-width: 1.4em;
   margin-left: 12px;
@@ -875,10 +796,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   color: var(--warning);
 }
 
-/* A folder dropped on the window becomes a vault. While files are over the
-   window, it says so: without a hint it is not clear whether to release.
-   The hint ignores the mouse: the shell handles the drag, and there is nothing
-   to click. */
 .drop-hint {
   position: fixed;
   inset: 0;
@@ -894,7 +811,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   pointer-events: none;
 }
 
-/* Otherwise display: flex overrides the hidden attribute. */
 .drop-hint[hidden] {
   display: none;
 }
@@ -908,9 +824,6 @@ button.status-item.chip[data-tone="warning"]:hover {
   background: var(--bg-soft);
 }
 
-/* Search opens in a separate overlay, so only a header button is left. It
-   looks like a field, to show that it is input and not an action, but it
-   acts as a button and shows the shortcut. */
 .search-button {
   display: flex;
   flex: 1;
@@ -979,8 +892,6 @@ kbd {
   border-color: var(--accent);
 }
 
-/* Sidebar header: the sidebar shows a list of vaults, not one folder, and it
-   needs a title. Otherwise the tree roots would read as plain folders. */
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -988,7 +899,6 @@ kbd {
   padding: 10px 8px 4px 14px;
 }
 
-/* The label filter: one row of chips under the sidebar head. */
 .label-filter {
   display: flex;
   flex-wrap: wrap;
@@ -1012,14 +922,11 @@ kbd {
   color: var(--text-muted);
 }
 
-/* The new note name is typed here, next to the tree: the header button only
-   opens the field. */
 .new-note {
   display: flex;
   padding: 10px 10px 6px;
 }
 
-/* Otherwise display: flex overrides the hidden attribute. */
 .new-note[hidden] {
   display: none;
 }
@@ -1052,14 +959,10 @@ kbd {
   background: var(--bg-raised);
 }
 
-/* Otherwise display: flex overrides the hidden attribute. During a rename the
-   row must disappear, not stand next to the field. */
 .note-list button[hidden] {
   display: none;
 }
 
-/* Folder tree: nested list indentation shows the depth, so nothing computes
-   it; the markup defines it. */
 .note-list ul {
   list-style: none;
   margin: 0;
@@ -1076,15 +979,10 @@ kbd {
   flex: none;
 }
 
-/* A note needs no arrow, but its space stays empty. Otherwise the note name
-   would sit left of its parent folder name. */
 .note-list button.note {
   padding-left: 28px;
 }
 
-/* Standalone files go below the vault tree. They have their own scroll and a
-   max height: a long file list must not push out the tree, which is the main
-   purpose of the sidebar. */
 .files {
   flex: none;
   display: flex;
@@ -1097,7 +995,6 @@ kbd {
   padding-top: 2px;
 }
 
-/* File name with its folder below: only the folder tells two README.md apart. */
 .file-list button.note {
   flex-direction: column;
   align-items: stretch;
@@ -1113,9 +1010,6 @@ kbd {
   color: var(--text-muted);
 }
 
-/* A tree row has two parts: a full-width button on the left and "⋯" on the
-   right, so the button cannot be the only row content. All three row kinds
-   (vault, folder, note) work this way and share one rule. */
 .tree-row {
   display: flex;
   align-items: center;
@@ -1132,7 +1026,6 @@ kbd {
   min-width: 0;
 }
 
-/* Tree root: a vault. */
 .note-list button.vault {
   font-weight: 600;
 }
@@ -1143,7 +1036,6 @@ kbd {
   flex: none;
 }
 
-/* The button needs no background: the whole row draws it. */
 .note-list .tree-row button:hover {
   background: transparent;
 }
@@ -1152,23 +1044,15 @@ kbd {
   transform: rotate(90deg);
 }
 
-/* Active vault: ⌘N, sync and the status bar work with it. The tree must show
-   it without a look at the footer. */
 .vault-row[data-active="true"] button.vault {
   color: var(--accent);
 }
 
-/* The folder is missing (an external disk was unplugged): the row fades but
-   stays, because its "⋯" menu still has "Remove from the list". */
 .vault-row[data-missing="true"] button.vault {
   color: var(--text-muted);
   cursor: default;
 }
 
-/* Row buttons ("⋯", and "+" on vaults and folders) appear on hover and
-   keyboard focus: a permanent column of icons in the tree is noise. Hidden,
-   they take no width, so the name gets the whole row. Zero width, not
-   `display: none`: Tab still reaches the buttons, and the focus shows them. */
 .note-list .row-actions {
   flex: none;
   display: flex;
@@ -1182,7 +1066,6 @@ kbd {
   width: auto;
 }
 
-/* The rename field takes the whole row: the buttons would only crowd it. */
 .tree-row:has(.tree-rename) .row-actions {
   display: none;
 }
@@ -1220,8 +1103,6 @@ kbd {
   cursor: default;
 }
 
-/* In-place rename of a vault, folder or note: the field replaces the row and
-   keeps its size, so the tree does not jump. */
 .tree-rename {
   flex: 1;
   min-width: 0;
@@ -1235,8 +1116,6 @@ kbd {
   border-radius: 6px;
 }
 
-/* The trash: the last node of each vault tree. Muted, because it holds what
-   the user threw away; the count on the right tells it is not empty. */
 .note-list button.trash,
 .note-list button.trash-entry {
   color: var(--text-muted);
@@ -1264,8 +1143,6 @@ kbd {
   transform: rotate(90deg);
 }
 
-/* A trash note, read-only. It covers the editor and the preview in every
-   mode: the grid row of the work area, from the editor column to the end. */
 .trash-view {
   grid-row: 2;
   grid-column: 2 / -1;
@@ -1324,7 +1201,6 @@ kbd {
   flex: 1;
 }
 
-/* A rotated arrow marks an open folder, not a second icon. */
 .note-list .chevron {
   transition: transform 120ms ease;
 }
@@ -1333,13 +1209,6 @@ kbd {
   transform: rotate(90deg);
 }
 
-/* The open note: a background plus an edge bar, so peripheral vision finds it
-   in the list without reading.
-
-   In the tree the row draws the mark, not the button: the row also holds "⋯",
-   and a mark on the button alone leaves "⋯" on a patch of another color. The
-   bar is a separate strip, not an inset shadow: a shadow follows the rounded
-   corners and bends. */
 .note-list button.active {
   background: var(--accent-soft);
   color: var(--accent);
@@ -1367,9 +1236,6 @@ kbd {
   background: var(--accent);
 }
 
-/* Note and folder names are always one line with an ellipsis.
-   Wrapping would break row heights, and the tree is read by row order and
-   indentation. The hover tooltip shows the full long name. */
 .note-title {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1383,8 +1249,6 @@ kbd {
   border-right: 1px solid var(--border);
 }
 
-/* Live preview: the diagram replaces the ```mermaid``` block. The button shows
-   the source again; a cursor inside the block does the same. */
 .cm-diagram {
   position: relative;
   padding: 8px 0;
@@ -1423,11 +1287,6 @@ kbd {
   opacity: 1;
 }
 
-/* Note images in the preview and the editor. A huge screenshot must not split
-   the text by a full screen, so the width is at most the column and the
-   height at most a third to half of the window; a click shows the full image.
-   A size from the caption (`![diagram|300](…)`) comes as an inline style and
-   wins over these rules, but it also stays within the column. */
 img.note-image {
   display: block;
   max-width: 100%;
@@ -1445,8 +1304,6 @@ img.note-image {
   max-width: 100%;
 }
 
-/* Lower in the editor: people type there, and an image must not push the text
-   out of view. */
 .cm-image img.note-image {
   max-height: min(40vh, 360px);
 }
@@ -1482,23 +1339,18 @@ img.note-image {
   max-height: 100%;
   object-fit: contain;
   border-radius: 6px;
-  /* A transparent PNG would be invisible on a dark background. */
   background: var(--bg);
 }
 
-/* Editor links: brackets of `[[name]]` and `[text](url)` are hidden. */
 .cm-live-link {
   color: var(--accent);
 }
 
-/* ⌘ is down: a click on a link follows it (`editor-links.ts`). */
 .cm-follow .cm-live-link {
   cursor: pointer;
   text-decoration: underline;
 }
 
-/* Live preview of lists (`live-lists.ts`): the bullet takes the place of
-   the dash, so the text does not move when the markup shows. */
 .cm-list-bullet {
   display: inline-block;
   width: 1ch;
@@ -1513,17 +1365,12 @@ img.note-image {
   cursor: pointer;
 }
 
-/* A translucent tint, not `--bg-soft`: the CodeMirror selection layer is drawn
-   under the text, and an opaque background hid the selection inside the code. */
 .cm-inline-code {
   background: color-mix(in oklab, var(--text) 7%, transparent);
   border-radius: 4px;
   padding: 1px 4px;
 }
 
-/* Words with an agent note (`<!-- @agent … -->`), in both the editor and the
-   preview. The warning color, not the accent: links already use the accent,
-   and a note means "there is work to do here". */
 .cm-agent-note,
 .preview mark.agent-note {
   color: inherit;
@@ -1533,7 +1380,6 @@ img.note-image {
   cursor: help;
 }
 
-/* A note whose words no longer match the stored ones: an icon, not a highlight. */
 .cm-agent-note.is-detached,
 .preview .agent-note.is-detached {
   display: inline-flex;
@@ -1554,10 +1400,6 @@ img.note-image {
   font-size: 0.8em;
 }
 
-/* Popup above the words: the comment form in the editor, the "Comment" button
-   and the form over a preview selection.
-   The selector is more specific than the CodeMirror theme; otherwise its
-   border and background would override ours. */
 .cm-editor .cm-tooltip.cm-agent-popup,
 .preview-note-popup {
   display: flex;
@@ -1582,7 +1424,6 @@ img.note-image {
   padding: 8px;
 }
 
-/* The same popup over a preview selection: it lives in `body`, above everything. */
 .preview-note-popup {
   position: fixed;
   z-index: 50;
@@ -1617,7 +1458,6 @@ img.note-image {
   border-color: var(--accent);
 }
 
-/* Remove sits on the left, apart from Cancel and Save. */
 .cm-agent-popup button.is-remove {
   margin-right: auto;
 }
@@ -1652,8 +1492,6 @@ img.note-image {
   gap: 6px;
 }
 
-/* The Confluence page of a note (`<!-- confluence: … -->`): a chip instead of
-   the comment. The accent color: it is a link to a page, not a task. */
 .cm-confluence {
   display: inline-flex;
   align-items: center;
@@ -1704,12 +1542,6 @@ img.note-image {
   color: var(--accent);
 }
 
-/* The whole code block while the cursor is outside: the same as in the
-   preview. Lines do not wrap, so ASCII diagrams stay aligned, and the block
-   has a single scrollbar. */
-/* No vertical margins on block widgets: CodeMirror does not count them in its
-   height map, and clicks below the widget land on the wrong line. The space is
-   the padding of a wrapper. */
 .cm-code-widget {
   padding: 8px 0;
 }
@@ -1724,33 +1556,17 @@ img.note-image {
   font-size: 0.9em;
   overflow-x: auto;
   cursor: text;
-  /* Without explicit permission WebKit does not select text in a
-     non-editable island (a CodeMirror widget is `contenteditable=false`)
-     inside the editor; Chromium allows it. `.cm-table` has the same rule,
-     which is why tables already worked. */
   user-select: text;
   -webkit-user-select: text;
 }
 
-/* Editor table. A wide table scrolls on its own, like a code block.
-   Space for the toolbar is always reserved: the toolbar can appear, but it
-   must not move the table under the cursor. */
 .cm-table {
   position: relative;
-  /* Padding, not margin: see `.cm-code-widget`. 4px of space plus 24px for
-     the toolbar on top, 4px of space below. */
   padding: 28px 0 4px;
   overflow-x: auto;
-  /* People read and copy the table with the mouse. CodeMirror does not touch
-     text selection inside the widget: it ignores events from here. */
   user-select: text;
 }
 
-/* While a selection spans several lines, the widget's own selection is off.
-   Otherwise a second per-cell highlight lies over the CodeMirror band, and
-   you get boxes with gaps instead of one band. Within one line nothing
-   changes: there the browser selection is how people read and copy table
-   text. */
 .cm-content[data-selection="block"] .cm-table,
 .cm-content[data-selection="block"] .cm-code-block,
 .cm-content[data-selection="block"] .cm-diagram {
@@ -1761,10 +1577,6 @@ img.note-image {
   border-collapse: collapse;
 }
 
-/* Cells wrap only at word boundaries. For long code lines CodeMirror sets
-   `word-break: break-word` and `overflow-wrap: anywhere`. A cell inherits
-   that, its min width drops to one letter, and the browser shrinks columns
-   and breaks words by letters instead of scrolling. */
 .cm-table th,
 .cm-table td {
   border: 1px solid var(--border);
@@ -1777,17 +1589,11 @@ img.note-image {
   min-width: 8ch;
 }
 
-/* The whole cursor row is highlighted: in a wide table the eye otherwise
-   slips to the next row. There is one highlight, none for the cursor cell:
-   two at once read as noise, not as "you are here". */
 .cm-table tr:hover > th,
 .cm-table tr:hover > td {
   background: color-mix(in oklab, var(--accent) 5%, transparent);
 }
 
-/* Row and column handles: thin strips along the table edge. Their space is
-   always reserved: they can appear on hover, but must not move the table
-   under the cursor. No borders: they would draw an empty grid over the table. */
 .cm-table th.cm-table-handle,
 .cm-table th.cm-table-corner {
   padding: 0;
@@ -1819,13 +1625,6 @@ img.note-image {
   background: color-mix(in oklab, var(--accent) 40%, transparent);
 }
 
-/* The selected cell rectangle: a reading highlight and the target of the
-   toolbar buttons.
-
-   One fill covers all cells, and a line marks the rectangle edge: without it
-   you cannot see where the selection ends if neighbour cells have the same
-   color. The line is an inset shadow, not a border: table borders collapse
-   (`border-collapse`), and a neighbour cell would cover half the edge. */
 .cm-table th.is-selected,
 .cm-table td.is-selected {
   background: color-mix(in oklab, var(--accent) 13%, transparent);
@@ -1856,8 +1655,6 @@ img.note-image {
   --edge-left: 1;
 }
 
-/* A handle lights up when the selection touches its strip, and brighter when
-   it covers the whole strip. This shows "part of a row" versus "a row". */
 .cm-table th.cm-table-handle.is-touched {
   background: color-mix(in oklab, var(--accent) 30%, transparent);
 }
@@ -1866,8 +1663,6 @@ img.note-image {
   background: color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
-/* While a rectangle is dragged, the browser must not select text: there would
-   be two highlights, a clean rectangle and a ragged per-letter one. */
 .cm-table[data-dragging],
 .cm-table[data-dragging] th,
 .cm-table[data-dragging] td {
@@ -1883,9 +1678,6 @@ img.note-image {
   opacity: 0;
 }
 
-/* An open cell: a CodeMirror editor in it, as in Obsidian. The note editor
-   theme also reaches the nested editor (its selectors are "descendant of the
-   editor"), so the rules here undo its padding, height and scroll. */
 .cm-table td.is-editing,
 .cm-table th.is-editing {
   box-shadow: inset 0 0 0 2px var(--accent);
@@ -1917,14 +1709,10 @@ img.note-image {
   outline: none;
 }
 
-/* A gap between button groups: structure, alignment, moves, sort. */
 .cm-table-tools-gap {
   width: 6px;
 }
 
-/* The table markup with the cursor in it (Advanced Tables). The font is
-   monospace: the spaces that pad the columns line them up only when every
-   letter has the same width. */
 .cm-table-line {
   font-family: var(--font-mono);
   font-size: 0.9em;
@@ -1934,14 +1722,10 @@ img.note-image {
   color: var(--text-muted);
 }
 
-/* The header line holds the toolbar. The toolbar stands above it and does
-   not take space: the text must not move when the cursor enters the table. */
 .cm-table-head {
   position: relative;
 }
 
-/* It starts at the left edge, where the table is: the line is as wide as the
-   editor, and at the right edge the toolbar would be far from a narrow table. */
 .cm-table-tools.is-source {
   top: auto;
   bottom: 100%;
@@ -1989,7 +1773,6 @@ img.note-image {
   opacity: 0.4;
 }
 
-/* CodeMirror highlighting does not work inside a widget, so we set accents here. */
 .cm-strong {
   font-weight: 600;
 }
@@ -1998,15 +1781,6 @@ img.note-image {
   font-style: italic;
 }
 
-/* The same block with the cursor inside: now it is plain text being edited,
-   so long lines wrap.
-
-   Background and border live in `::before` with a negative `z-index`. The
-   CodeMirror selection layer is drawn under the lines (`.cm-selectionLayer`,
-   z-index -2), and an opaque background on the line would hide it: the
-   selection in a code block was invisible. The pseudo-element goes even
-   lower, the text stays on top, and the selection band lies between them, as
-   on normal lines. */
 .cm-code-line {
   position: relative;
   font-family: var(--font-mono);
@@ -2042,7 +1816,6 @@ img.note-image {
   border-radius: 0 0 8px 8px;
 }
 
-/* The fence and the language name are service lines, not code. */
 .cm-code-open,
 .cm-code-close {
   color: var(--text-muted);
@@ -2063,9 +1836,6 @@ img.note-image {
   line-height: 1.65;
 }
 
-/* Source line marks (core, `LINE_MARK_CLASS`). They are empty: inside a
-   paragraph a point at the text start, before code and tables a zero-height
-   block. The bookmark marker sits in the left preview margin, as in the editor. */
 .preview .line-mark {
   position: relative;
 }
@@ -2086,21 +1856,10 @@ img.note-image {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
 }
 
-/* Before a block the mark sits above its top margin, so the marker moves down
-   to the first line. */
 .preview .line-mark.is-block.is-bookmarked::before {
   top: 1.35em;
 }
 
-/* Line numbers in "Read" mode, when the line numbers setting is on. The
-   preview has no lines, only the source line marks of blocks, so the number
-   shows where a paragraph, heading, list item, code block or table starts.
-
-   All numbers stand in one column on the left, as in the editor, also for a
-   nested list item. So the column is placed against the preview, not against
-   the mark: the mark loses its own position, and the number keeps only its
-   vertical place in the text (no `top`). The bookmark goes to the same column
-   edge for the same reason. */
 @property --preview-font {
   syntax: "<length>";
   inherits: true;
@@ -2115,8 +1874,6 @@ img.note-image {
 
 #app[data-mode="read"][data-line-numbers="true"] .preview {
   position: relative;
-  /* `1em` here becomes pixels (`@property`), so a number in a heading is as
-     small as one in a paragraph. */
   --preview-font: 1em;
   --line-gutter: max(72px, calc((100% - 720px) / 2));
   padding-left: var(--line-gutter);
@@ -2124,8 +1881,6 @@ img.note-image {
 
 #app[data-mode="read"][data-line-numbers="true"] .preview .line-mark {
   position: static;
-  /* The height of a text line here, in pixels: the number gets the same line
-     box, so it stands in the middle of the text line, also in a heading. */
   --text-line: 1lh;
 }
 
@@ -2183,7 +1938,6 @@ img.note-image {
   border-bottom-color: var(--accent);
 }
 
-/* A link to a missing note is muted; a click creates the note. */
 .preview a[href^="kknow://missing/"] {
   color: var(--text-muted);
   border-bottom: 1px dashed var(--text-muted);
@@ -2218,9 +1972,6 @@ img.note-image {
   padding: 0;
 }
 
-/* A block with a copy button (`code-copy.ts`): the `<code>` scrolls, not the
-   `<pre>`, so the button stays in the corner on a long line. The padding
-   moves to the `<code>` with the scroll. */
 .preview pre.has-copy {
   position: relative;
   overflow: visible;
@@ -2234,8 +1985,6 @@ img.note-image {
   border-radius: inherit;
 }
 
-/* The copy button of a code block, in the preview and in the editor. It shows
-   on hover over the block, so it does not cover the code all the time. */
 .code-copy {
   position: absolute;
   top: 6px;
@@ -2281,8 +2030,6 @@ pre:hover > .code-copy,
   color: var(--warning);
 }
 
-/* In the editor the button is next to the block: the wrapper has 8px of
-   padding above the block. */
 .cm-code-widget {
   position: relative;
 }
@@ -2291,11 +2038,6 @@ pre:hover > .code-copy,
   top: 14px;
 }
 
-/* A mermaid diagram is a picture, not a listing: it needs no background or
-   border. Until it renders, the block holds the source, so it stays monospace.
-
-   No `.preview` in the selector: the same block also lives in the editor,
-   inside `.cm-diagram`. */
 pre.mermaid {
   background: none;
   border: none;
@@ -2310,7 +2052,6 @@ pre.mermaid svg {
   height: auto;
 }
 
-/* The diagram failed to parse: keep the source and the mermaid error next to it. */
 pre.mermaid[data-error] {
   text-align: left;
   padding: 12px 14px;
@@ -2336,7 +2077,6 @@ pre.mermaid[data-error]::after {
   color: var(--text-muted);
 }
 
-/* A task box of a vault note is enabled: a click marks the task in the file. */
 .preview li input[type="checkbox"] {
   margin: 0 6px 0 0;
   accent-color: var(--accent);
@@ -2347,8 +2087,6 @@ pre.mermaid[data-error]::after {
   cursor: pointer;
 }
 
-/* A wide table scrolls on its own, like a code block: `display: block` gives it
-   its own scrollbar, and `max-width` keeps it inside the preview. */
 .preview table {
   display: block;
   width: max-content;
@@ -2357,8 +2095,6 @@ pre.mermaid[data-error]::after {
   border-collapse: collapse;
 }
 
-/* Min width: without it the browser squeezes narrow columns to the longest
-   unbreakable piece and breaks short cells like "C-1" at the hyphen. */
 .preview th,
 .preview td {
   border: 1px solid var(--border);
@@ -2366,8 +2102,6 @@ pre.mermaid[data-error]::after {
   min-width: 8ch;
 }
 
-/* Code in a cell does not wrap: `studio-prod` broken at the hyphen reads as
-   two different branches. If the table does not fit because of this, it scrolls. */
 .preview th code,
 .preview td code,
 .cm-table .cm-inline-code {
@@ -2382,7 +2116,6 @@ pre.mermaid[data-error]::after {
   overflow-y: auto;
 }
 
-/* Otherwise the hidden attribute cannot hide the sync result panel. */
 .panel[hidden] {
   display: none;
 }
@@ -2414,9 +2147,6 @@ pre.mermaid[data-error]::after {
   flex-wrap: wrap;
 }
 
-/* The git changes view. Like the trash view, it covers the editor and the
-   preview in every mode: a narrow column of files on the left and the diff,
-   which needs the width, on the right. */
 .git-view {
   grid-row: 2;
   grid-column: 2 / -1;
@@ -2521,8 +2251,6 @@ pre.mermaid[data-error]::after {
   font-size: 12px;
 }
 
-/* Plain `git diff` text for now; each line is a block, so its background
-   spans the whole width when the text scrolls sideways. */
 .git-diff-body {
   flex: 1;
   margin: 0;
@@ -2591,8 +2319,6 @@ pre.mermaid[data-error]::after {
   color: var(--danger);
 }
 
-/* A plain row button: a click shows the diff. Names are long, so the start
-   stays visible and the end is cut. */
 .git-path {
   flex: 1;
   min-width: 0;
@@ -2614,8 +2340,6 @@ pre.mermaid[data-error]::after {
   height: 22px;
 }
 
-/* The discard button shows on the row under the pointer and on the picked
-   one: on every row it would be a column of risky buttons. */
 .git-discard {
   opacity: 0;
 }
@@ -2652,16 +2376,12 @@ pre.mermaid[data-error]::after {
   align-self: flex-end;
 }
 
-/* The sync plan aligns actions in a column, because that is how people read it. */
 .panel li.plan {
   font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre;
 }
 
-/* Command output: a small window above the status bar, near the segment that
-   opens it. It is no longer a panel on the right side: the open note is
-   there, and a command can run while the preview is closed. */
 .run-float {
   position: fixed;
   right: 12px;
@@ -2695,7 +2415,6 @@ pre.mermaid[data-error]::after {
   margin: 0 0 6px;
 }
 
-/* Agent notes: a small window under the header on the right, near its button. */
 .notes-float {
   position: fixed;
   top: 50px;
@@ -2740,8 +2459,6 @@ pre.mermaid[data-error]::after {
   color: var(--text-muted);
 }
 
-/* Item: the selected words on one line, the instruction in at most two lines.
-   A long one ends with an ellipsis; the tooltip shows it in full. */
 .notes-item {
   display: flex;
   flex-direction: column;
@@ -2790,12 +2507,10 @@ pre.mermaid[data-error]::after {
   color: var(--text-muted);
 }
 
-/* `.ghost` sets display and would override the `hidden` attribute. */
 #toggle-notes[hidden] {
   display: none;
 }
 
-/* Note toolbar: bookmarks, the run button and backlinks of the open note. */
 .note-tools {
   display: flex;
   align-items: center;
@@ -2807,14 +2522,12 @@ pre.mermaid[data-error]::after {
   display: none;
 }
 
-/* A counter next to the icon; empty, it takes no room. */
 .note-tools button > span:not(:empty) {
   margin-left: 3px;
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 
-/* The ribbon fills when the note has bookmarks. */
 #note-bookmarks[data-on="true"] {
   color: var(--accent);
 }
@@ -2823,9 +2536,6 @@ pre.mermaid[data-error]::after {
   fill: currentColor;
 }
 
-/* Run and its menu: two halves of one button. The group, not a half, gets the
-   hover frame: a frame around one half looked like a cut button. A thin line
-   between the halves shows that each half is a separate target. */
 .split-button {
   display: inline-flex;
   border: 1px solid transparent;
@@ -2870,7 +2580,6 @@ pre.mermaid[data-error]::after {
   height: 11px;
 }
 
-/* Sidebar toolbar: small buttons that do not compete with the tree. */
 .sidebar-tools {
   display: flex;
   gap: 1px;
@@ -2891,7 +2600,6 @@ pre.mermaid[data-error]::after {
   display: none;
 }
 
-/* A question of the agent waits for the person: a dot on the comments button. */
 #toggle-notes.has-question {
   position: relative;
 }
@@ -2907,7 +2615,6 @@ pre.mermaid[data-error]::after {
   background: var(--warning);
 }
 
-/* Thread of a comment: the state chip, the messages and the reply. */
 .thread-status {
   align-self: flex-start;
   padding: 0 6px;
@@ -2982,7 +2689,6 @@ pre.mermaid[data-error]::after {
   font-size: 12.5px;
 }
 
-/* Agent proposals: a wider float, each edit as a small diff. */
 .proposals-float {
   width: min(460px, calc(100vw - 24px));
   max-height: min(70vh, 640px);
@@ -3078,14 +2784,11 @@ pre.mermaid[data-error]::after {
   flex-wrap: wrap;
 }
 
-/* Command result: a failure shows in the summary color, not only in the text. */
 .run-float[data-tone="error"] #run-summary,
 #status-run[data-tone="error"] {
   color: var(--danger);
 }
 
-/* Stderr lines in a live output: in a stream of lines, the color is the only
-   way to see which ones are complaints. */
 .run-stderr {
   color: var(--danger);
 }
@@ -3099,30 +2802,23 @@ pre.mermaid[data-error]::after {
   gap: 2px;
 }
 
-/* A running command: the stop button and the segment icon in the accent. */
 #run-stop,
 #status-run[data-tone="work"] .status-run-icon {
   color: var(--accent);
 }
 
-/* Otherwise the display of the button overrides the hidden attribute. */
 #run-stop[hidden] {
   display: none;
 }
 
-/* A check mark shows success, not the label color, so the command name stays readable. */
 #status-run[data-tone="ok"] .status-run-icon {
   color: var(--ok);
 }
 
-/* The status bar toggle also shows that the window is open. */
 #status-run[data-open="true"] {
   background: var(--accent-soft);
 }
 
-/* External program output: monospace, with long lines wrapped and its own
-   scroll. Without wrapping, a `find` that prints a long path would stretch the
-   panel and the whole right side of the window. */
 .run-output {
   margin: 0;
   max-height: 220px;
@@ -3184,14 +2880,11 @@ pre.mermaid[data-error]::after {
   border-color: var(--accent);
 }
 
-/* The settings form shows the fields of the selected provider: a folder has no
-   bucket or keys, and empty fields would only confuse. */
 .dialog form[data-provider="s3"] .only-folder,
 .dialog form[data-provider="folder"] .only-s3 {
   display: none;
 }
 
-/* A field with a "choose…" button next to it. */
 .dialog .with-button {
   display: flex;
   gap: 6px;
@@ -3275,13 +2968,6 @@ button.link:hover {
   font-size: 12px;
 }
 
-/* Palette: vault search in a separate overlay.
-
-   It sits under the header, not in the screen center: the list grows down,
-   and a top-anchored overlay does not jump while typing. Otherwise rows would
-   move under the cursor. */
-/* The browser hides a closed `<dialog>`, but `display: flex` below overrides
-   that, and a closed palette would stay in the layout under the window. */
 .palette:not([open]) {
   display: none;
 }
@@ -3307,8 +2993,6 @@ button.link:hover {
   background: rgb(0 0 0 / 14%);
 }
 
-/* The window behind the palette is slightly blurred: the eye moves to the
-   palette, and the context below stays readable. */
 #app {
   transition: filter 180ms ease;
 }
@@ -3342,7 +3026,6 @@ body[data-palette="open"] #app {
   outline: none;
 }
 
-/* Chips narrow the query to one index field: titles or tags. */
 .palette-chips {
   display: flex;
   flex: none;
@@ -3378,7 +3061,6 @@ body[data-palette="open"] #app {
   padding: 6px 0 4px;
 }
 
-/* Section header, in the same style as "Backlinks" on the right. */
 .palette-section {
   margin: 9px 0 4px;
   padding: 0 16px;
@@ -3409,8 +3091,6 @@ body[data-palette="open"] #app {
   cursor: pointer;
 }
 
-/* One highlight for mouse and keyboard: ↵ opens exactly the row the user looks
-   at. That is why there is no :hover here; the script controls it. */
 .palette-row.selected {
   background: var(--accent-soft);
 }
@@ -3453,7 +3133,6 @@ body[data-palette="open"] #app {
   white-space: nowrap;
 }
 
-/* The snippet is a hint, not content: one line, then an ellipsis. */
 .palette-snippet {
   font-size: 11.5px;
   line-height: 1.45;
@@ -3468,8 +3147,6 @@ body[data-palette="open"] #app {
   color: var(--text);
 }
 
-/* The hit folder goes on the right: on the left it would take the title's
-   place, and the title matters more. */
 .palette-meta {
   flex: none;
   max-width: 30%;
@@ -3480,8 +3157,6 @@ body[data-palette="open"] #app {
   white-space: nowrap;
 }
 
-/* "Go to heading" lists the open note only: the vault chips and actions hide.
-   The indent shows the heading level. */
 .palette[data-mode="outline"] :is(.palette-chips, #palette-actions-label, #palette-actions) {
   display: none;
 }
@@ -3527,7 +3202,6 @@ body[data-palette="open"] #app {
   color: var(--accent);
 }
 
-/* For an action without a shortcut, an empty `kbd` would leave a stray border. */
 .palette-action kbd:empty {
   display: none;
 }
@@ -3543,8 +3217,6 @@ body[data-palette="open"] #app {
   border-top: 1px solid var(--border);
 }
 
-/* MCP lamp: the same dot as sync. Green means an agent can start the server,
-   gray means the window found no `kknow` binary. */
 #status-mcp {
   gap: 5px;
   font-size: 11px;
@@ -3560,7 +3232,6 @@ body[data-palette="open"] #app {
   background: var(--accent-soft);
 }
 
-/* MCP setup: the command output float with two snippets to copy. */
 .mcp-float h3 {
   margin: 10px 0 4px;
   font-size: 12px;
@@ -3588,7 +3259,6 @@ body[data-palette="open"] #app {
   flex: none;
 }
 
-/* What the agent gets: the vault or a label, as a row of chips. */
 .mcp-chips {
   display: flex;
   flex-wrap: wrap;
@@ -3622,7 +3292,6 @@ body[data-palette="open"] #app {
   background: var(--danger);
 }
 
-/* The switch, the port and the state line of the MCP server, in one row. */
 .mcp-controls {
   display: flex;
   flex-wrap: wrap;
@@ -3698,8 +3367,6 @@ body[data-palette="open"] #app {
   color: var(--text-muted);
 }
 
-/* The note panel: three sections that fold, each with a count. The outline
-   indents by heading level and marks the section at the top of the view. */
 .note-aside {
   grid-area: aside;
   min-height: 0;
@@ -3832,8 +3499,6 @@ body[data-palette="open"] #app {
   font-size: 12px;
 }
 
-/* Hover preview (⌘ and the pointer on a link): the linked note or its section
-   in a float next to the pointer. It is a small copy of the preview. */
 .hover-preview {
   position: fixed;
   z-index: 40;
@@ -3879,9 +3544,6 @@ body[data-palette="open"] #app {
   font-size: 1.35em;
 }
 
-/* An embedded note or section (`![[note#Heading]]`): read-only, in a frame
-   with the link on top. A click opens the note. Nested embeds get one more
-   frame each. */
 .embed {
   margin: 0.8em 0;
   border: 1px solid var(--border);
@@ -3909,24 +3571,18 @@ body[data-palette="open"] #app {
   margin-bottom: 0.2em;
 }
 
-/* A loop or an embed too deep: a link with a dashed frame and the reason in
-   its tooltip. */
 .embed.embed-stopped {
   padding: 4px 14px;
   border-style: dashed;
   cursor: help;
 }
 
-/* An embed in live preview: the same frame as in the preview. Its body uses
-   the preview styles, without the scroll and padding of the preview pane. */
 .cm-embed {
   position: relative;
   margin: 4px 0;
   white-space: normal;
 }
 
-/* In the editor a long section must not push the text away: the embed scrolls
-   after about half a screen. The preview shows it in full: there it is read. */
 .cm-embed .embed-body.preview {
   max-height: min(420px, 50vh);
   overflow-y: auto;
@@ -3943,8 +3599,6 @@ body[data-palette="open"] #app {
   opacity: 1;
 }
 
-/* Locked notes: the panel over the editor and the preview, and the locks in
-   the tree and the header. */
 .lock-view {
   grid-row: 2;
   grid-column: 2 / -1;
@@ -4021,9 +3675,6 @@ body[data-palette="open"] #app {
   gap: 8px;
 }
 
-/* In the tree the lock sits in the left indent of the note row, where a
-   folder has its arrow: the row buttons on the right open on hover and would
-   move it. */
 .note-row {
   position: relative;
 }
@@ -4040,7 +3691,6 @@ body[data-palette="open"] #app {
 .note-list .note-lock,
 .topbar-note .note-lock {
   flex: none;
-  /* Tree buttons take the whole row by default. */
   width: auto;
   display: inline-flex;
   align-items: center;

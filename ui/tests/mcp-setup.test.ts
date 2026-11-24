@@ -1,5 +1,3 @@
-// MCP setup snippets (`src/mcp-setup.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -21,7 +19,6 @@ test("the Claude Code command adds an HTTP server with the token", () => {
 
   assert.equal(
     claudeCode,
-    // `?` is a glob in zsh, so the address goes into quotes.
     "claude mcp add --transport http kknow-work 'http://127.0.0.1:7377/mcp?label=work' " +
       `--header 'Authorization: Bearer ${TOKEN}'`,
   );

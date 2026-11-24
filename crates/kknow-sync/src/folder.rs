@@ -1,22 +1,10 @@
-//! A folder as note storage.
-//!
-//! Cloud drive services also use this: they sync a plain directory, so they
-//! need no special code. In the UI such a "provider" is only a preset path
-//! and name. The actual work happens here.
-//!
-//! The folder holds the same keys as a bucket: the notes at their vault paths
-//! and `.kknow/manifest.json`. Thus sync stays the same for any disk below.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::provider::{Cause, Error, Operation, Result, SyncProvider};
 
-/// Suffix that macOS adds to a cloud file that is not downloaded yet.
 const ICLOUD_SUFFIX: &str = ".icloud";
 
-/// An input or output error in the folder, with the cause for the common
-/// ones: no permission, or a read-only disk.
 fn folder_error(root: &Path, operation: Operation, key: &str, source: std::io::Error) -> Error {
     use std::io::ErrorKind;
     let cause = match source.kind() {
@@ -33,11 +21,6 @@ pub struct FolderProvider {
 }
 
 impl FolderProvider {
-    /// Opens the folder and creates it if necessary.
-    ///
-    /// Only the folder itself is created, not its parents. A parent that is
-    /// missing is a disk that is not connected or a cloud drive that is not
-    /// installed: a new folder there would sync with nothing, without a word.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref();
         if !root.exists()
@@ -54,8 +37,6 @@ impl FolderProvider {
             folder_error(root, Operation::Put, &root.to_string_lossy(), source)
         })?;
 
-        // Canonicalize because later checks use this path to make sure a key
-        // does not write outside the folder.
         let root = root.canonicalize().map_err(|source| {
             folder_error(root, Operation::Get, &root.to_string_lossy(), source)
         })?;
@@ -71,11 +52,6 @@ impl FolderProvider {
         self.root.to_string_lossy().into_owned()
     }
 
-    /// Path for a key.
-    ///
-    /// Keys come from the manifest, and the manifest comes from remote storage.
-    /// So `..` and absolute paths are rejected: otherwise sync could write
-    /// files outside the folder. `NoteId` in the core has the same check.
     fn path_for(&self, key: &str, operation: Operation) -> Result<PathBuf> {
         let safe = !key.is_empty()
             && !key.starts_with('/')
@@ -89,7 +65,6 @@ impl FolderProvider {
         Ok(self.root.join(key))
     }
 
-    /// Key for a path inside the folder. `None` means the file is not ours.
     fn key_for(&self, path: &Path) -> Option<String> {
         let relative = path.strip_prefix(&self.root).ok()?;
         let mut key = String::new();
@@ -111,9 +86,6 @@ impl SyncProvider for FolderProvider {
         match fs::read(&path) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // A cloud file that is not downloaded is a placeholder with
-                // another name. A silent "no key" is worse than an error here:
-                // sync would treat the note as deleted and remove it locally.
                 if placeholder(&path).exists() {
                     return Err(Error::new(Operation::Get, key, "not downloaded")
                         .because(Cause::NotDownloaded));
@@ -131,8 +103,6 @@ impl SyncProvider for FolderProvider {
                 .map_err(|source| self.failure(Operation::Put, key, source))?;
         }
 
-        // Write through a temporary file and `rename`, as the core does for
-        // notes. Otherwise the cloud could pick up half a file.
         let temp = path.with_extension("kknow-tmp");
         fs::write(&temp, bytes).map_err(|source| self.failure(Operation::Put, key, source))?;
         fs::rename(&temp, &path).map_err(|source| self.failure(Operation::Put, key, source))
@@ -142,8 +112,6 @@ impl SyncProvider for FolderProvider {
         let path = self.path_for(key, Operation::Delete)?;
         match fs::remove_file(&path) {
             Ok(()) => Ok(()),
-            // A delete of a missing file is a success: sync can stop and
-            // start again, and the second run must not fail.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(source) => Err(self.failure(Operation::Delete, key, source)),
         }
@@ -172,14 +140,10 @@ impl SyncProvider for FolderProvider {
                     stack.push(path);
                     continue;
                 }
-                // An unfinished write of our own sync is not a storage object.
                 if path.extension().is_some_and(|ext| ext == "kknow-tmp") {
                     continue;
                 }
 
-                // List a cloud placeholder under the real file name: the file
-                // is in the storage, only not on this machine yet. A read
-                // fails, and `get` reports it, so the list does not hide it.
                 let path = restore(&path);
                 if let Some(key) = self.key_for(&path) {
                     if key.starts_with(prefix) {
@@ -194,8 +158,6 @@ impl SyncProvider for FolderProvider {
     }
 }
 
-/// Name of the placeholder that macOS uses for a file not downloaded yet:
-/// `.name.icloud`.
 fn placeholder(path: &Path) -> PathBuf {
     let name = path
         .file_name()
@@ -205,7 +167,6 @@ fn placeholder(path: &Path) -> PathBuf {
     path.with_file_name(format!(".{name}{ICLOUD_SUFFIX}"))
 }
 
-/// The reverse: `.name.icloud` is the file `name`.
 fn restore(path: &Path) -> PathBuf {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return path.to_path_buf();
@@ -285,10 +246,8 @@ mod tests {
     fn an_undownloaded_icloud_file_is_an_error_not_an_absence() {
         let (_dir, provider) = provider();
         fs::create_dir_all(provider.root.join("notes")).unwrap();
-        // This is how macOS marks a file that is not on this machine yet.
         fs::write(provider.root.join("notes/.Проект.md.icloud"), b"").unwrap();
 
-        // The list has the file: it is in the storage, only not here.
         assert_eq!(provider.list("notes/").unwrap(), ["notes/Проект.md"]);
 
         let error = provider.get("notes/Проект.md").unwrap_err();

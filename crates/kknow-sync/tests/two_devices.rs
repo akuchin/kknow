@@ -1,8 +1,3 @@
-//! Sync as the user sees it: two vaults and one shared storage.
-//!
-//! In-memory storage lets us test the whole algorithm without a network. The
-//! same scenario on real S3 is in `minio.rs`.
-
 use std::fs;
 use std::path::Path;
 
@@ -30,7 +25,6 @@ impl Device {
         }
     }
 
-    /// An edit outside the app, as in an external editor.
     fn edit(&mut self, id: &str, content: &str) {
         let path = self.dir.path().join(format!("{id}.md"));
         if let Some(parent) = path.parent() {
@@ -133,7 +127,6 @@ fn a_delete_travels_too() {
     assert_eq!(sent.removed_remote.len(), 1);
     assert_eq!(received.removed_local.len(), 1);
     assert!(!second.has("Черновик"));
-    // The delete can be a mistake, so the note waits in the trash.
     let trash = second.vault.trash().entries().unwrap();
     assert_eq!(trash.len(), 1);
     assert_eq!(trash[0].path, "Черновик.md");
@@ -152,7 +145,6 @@ fn a_deleted_note_does_not_come_back() {
     second.delete("Черновик");
     second.sync();
 
-    // The first device still knows the note and must not put it back in the cloud.
     let report = first.sync();
 
     assert_eq!(report.removed_local.len(), 1);
@@ -180,14 +172,12 @@ fn both_sides_edited_keeps_both_versions() {
     let conflict = &report.conflicts[0];
     assert_eq!(conflict.id.as_str(), "Заметка");
 
-    // The second device keeps its version, the other one goes next to it as a copy.
     assert_eq!(second.read("Заметка"), "правка на втором");
     assert_eq!(
         second.vault.read(&conflict.copy).unwrap(),
         "правка на первом"
     );
 
-    // The first device gets both versions, and then everything is stable.
     let back = first.sync();
     assert_eq!(back.downloaded.len(), 2);
     assert_eq!(first.read("Заметка"), "правка на втором");
@@ -214,7 +204,6 @@ fn a_conflict_settles_after_one_round() {
     first.sync();
     second.sync();
 
-    // After this, the devices must not make more copies for each other.
     for _ in 0..3 {
         first.sync();
         second.sync();
@@ -255,7 +244,6 @@ fn sync_state_lives_in_a_hidden_folder() {
     device.sync();
 
     assert!(device.path().join(".kknow/sync.json").is_file());
-    // The internal file must not become a note.
     assert_eq!(device.ids(), ["Index"]);
 }
 
@@ -267,7 +255,6 @@ fn a_lost_local_state_does_not_lose_notes() {
     device.edit("Index", "# Оглавление");
     device.sync();
 
-    // The sync cache can be rebuilt: delete it and sync again.
     fs::remove_file(device.path().join(".kknow/sync.json")).unwrap();
     let report = device.sync();
 
@@ -284,7 +271,6 @@ fn a_concurrent_sync_is_refused_instead_of_overwriting() {
     first.edit("Первая", "текст");
     second.edit("Вторая", "текст");
 
-    // Both devices prepared a sync from the same manifest.
     let stale = second.engine.stage(&second.vault).unwrap();
     first.sync();
 
@@ -294,16 +280,12 @@ fn a_concurrent_sync_is_refused_instead_of_overwriting() {
         .expect_err("устаревший манифест должен быть отвергнут");
 
     assert!(matches!(error, kknow_sync::Error::RemoteChanged), "{error}");
-    // After a retry, both devices have both notes.
     second.sync();
     first.sync();
     assert_eq!(first.ids(), ["Вторая", "Первая"]);
     assert_eq!(second.ids(), ["Вторая", "Первая"]);
 }
 
-/// Sync has three parts: stage (vault locked), transfer (network, no vault),
-/// and local commit. Check that progress counts actions and that the transfer
-/// does not need the directory.
 #[test]
 fn a_split_exchange_reports_progress_and_needs_no_vault_while_transferring() {
     let cloud = MemoryProvider::new();
@@ -317,7 +299,6 @@ fn a_split_exchange_reports_progress_and_needs_no_vault_while_transferring() {
     assert_eq!(staged.len(), 3);
 
     let mut seen = Vec::new();
-    // The transfer gets only the staged sync, not the directory.
     let fetched = device
         .engine
         .transfer(staged, &mut |progress| seen.push(progress.done))
@@ -334,8 +315,6 @@ fn a_split_exchange_reports_progress_and_needs_no_vault_while_transferring() {
     assert!(device.engine.stage(&device.vault).unwrap().is_empty());
 }
 
-/// Notes from the storage are written only in the third part: before it,
-/// they are not on disk.
 #[test]
 fn downloads_land_on_disk_only_when_the_exchange_is_committed() {
     let cloud = MemoryProvider::new();
@@ -357,8 +336,6 @@ fn downloads_land_on_disk_only_when_the_exchange_is_committed() {
     assert_eq!(second.read("Заметка"), "из первого\n");
 }
 
-/// Joins two texts line by line: enough to see that both sides reached the
-/// merge. The app has the real merge for each format.
 fn join_lines(_key: &str, mine: &[u8], theirs: &[u8]) -> Option<Vec<u8>> {
     let mut lines: Vec<&[u8]> = mine.split(|b| *b == b'\n').collect();
     for line in theirs.split(|b| *b == b'\n') {

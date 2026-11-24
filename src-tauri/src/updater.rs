@@ -1,20 +1,3 @@
-//! Auto-update: check for a new version, download it in the background and
-//! install it on restart.
-//!
-//! The model is Zed's, not Sublime's: no dialog. The check and the download
-//! are silent, and the status bar shows "Restart" when the new version is on
-//! disk. The user picks the moment, so an update never interrupts typing. If
-//! the user simply quits, the new version goes in on exit, and the next start
-//! is the new version. Windows is the exception: there the update is an
-//! installer with its own window, so it runs only on the button.
-//!
-//! The release workflow publishes `latest.json` and the signed archives. The
-//! plugin checks the signature with the public key from `tauri.conf.json`, so
-//! a changed archive does not install. All work is on the Rust side, as with
-//! sync: the windows get the state through commands and the `update-status`
-//! event. Thus the mock replaces three commands, and the windows need no
-//! plugin permissions.
-
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
@@ -26,36 +9,25 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use crate::settings::SettingsState;
 use crate::state::{Error, Result};
 
-/// Event name for the windows.
 pub const EVENT: &str = "update-status";
 
-/// The first check waits a little: at start the disk and the index come
-/// first, not the network.
 const FIRST_CHECK: Duration = Duration::from_secs(15);
-/// How often the scheduler looks at the clock. A check after a toggle in the
-/// settings or after a sleep of the laptop comes no later than this.
 const TICK: Duration = Duration::from_secs(10 * 60);
-/// Releases are rare: a check a few times a day is enough.
 const PERIOD: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// What the windows show.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub enum UpdateStatus {
-    /// A developer build: it never checks.
     Unavailable,
-    /// A package manager owns this copy, so it updates through that manager.
     Managed {
         manager: String,
     },
-    /// No check yet, or the last check found nothing new.
     Idle,
     Checking,
     Downloading {
         version: String,
     },
-    /// The new version is on disk and waits for a restart.
     Ready {
         version: String,
     },
@@ -64,34 +36,14 @@ pub enum UpdateStatus {
     },
 }
 
-/// A developer build does not check for updates.
-///
-/// Both `pnpm dev` and `pnpm install:app` give version 0.0.0: only the release
-/// workflow writes the tag version into `Cargo.toml`. A check by
-/// `debug_assertions` alone is not enough: `install:app` is a release build,
-/// and it would see each published version as an update.
 pub fn is_release(version: &str, debug: bool) -> bool {
     !debug && version != "0.0.0"
 }
 
-/// The package manager that owns the copy in `dir`, if one does.
-///
-/// Scoop unpacks the app into `scoop\apps\kknow\<version>` and leaves
-/// `scoop-manifest.json` beside the binary, while `current` is a junction to
-/// that folder. The MSI install in `Program Files` has no such file, so the
-/// file next to the binary tells the two apart. The path itself is no help:
-/// the `SCOOP` variable moves the whole root.
 fn manager_of(dir: &Path) -> Option<&'static str> {
     dir.join("scoop-manifest.json").is_file().then_some("Scoop")
 }
 
-/// The status the app starts with.
-///
-/// A copy that a package manager owns must not update itself. The updater
-/// would run the MSI, and it installs into `Program Files` beside the Scoop
-/// copy: the user then has two kknow entries in the Start menu, and the one
-/// the manager knows about stays on the old version. The manager has to be
-/// the only way in.
 pub fn initial_status(version: &str, debug: bool, exe: Option<&Path>) -> UpdateStatus {
     if !is_release(version, debug) {
         return UpdateStatus::Unavailable;
@@ -104,13 +56,10 @@ pub fn initial_status(version: &str, debug: bool, exe: Option<&Path>) -> UpdateS
     }
 }
 
-/// Whether the scheduler must check now. A clock that went back (`elapsed`
-/// fails) also means "check": a wrong clock must not stop updates.
 fn due(last: Option<SystemTime>) -> bool {
     last.is_none_or(|at| !matches!(at.elapsed(), Ok(passed) if passed < PERIOD))
 }
 
-/// Update state of the app.
 pub struct Updates {
     release: bool,
     inner: Mutex<Inner>,
@@ -118,13 +67,10 @@ pub struct Updates {
 
 struct Inner {
     status: UpdateStatus,
-    /// The downloaded archive. The plugin checked its signature already.
     ready: Option<(Update, Vec<u8>)>,
 }
 
 impl Updates {
-    /// `status` comes from [`initial_status`]. Anything but `Idle` there
-    /// means this copy never checks.
     pub fn new(status: UpdateStatus) -> Self {
         Updates {
             release: status == UpdateStatus::Idle,
@@ -139,10 +85,6 @@ impl Updates {
         self.lock().status.clone()
     }
 
-    /// Starts a check if one is needed. `false`: this is a developer build, a
-    /// check or a download runs already, or the new version is on disk. The
-    /// current status is then the answer, and the timer and the button do not
-    /// download the same archive twice.
     fn begin(&self) -> bool {
         let mut inner = self.lock();
         if !self.release
@@ -175,7 +117,6 @@ impl Updates {
         self.lock().ready.take()
     }
 
-    /// Puts back an archive that did not install, so the button still works.
     fn put_back(&self, ready: (Update, Vec<u8>)) {
         self.lock().ready = Some(ready);
     }
@@ -185,16 +126,12 @@ impl Updates {
     }
 }
 
-/// Saves the status and sends it to both windows.
 fn publish<R: Runtime>(app: &AppHandle<R>, status: UpdateStatus) -> UpdateStatus {
     app.state::<Updates>().set(status.clone());
     let _ = app.emit(EVENT, status.clone());
     status
 }
 
-/// One check: ask for `latest.json` and, if there is a new version, download
-/// it. A failure only goes into the status: the status bar does not show it,
-/// so a laptop without network does not get an error each few hours.
 pub async fn check<R: Runtime>(app: &AppHandle<R>) -> UpdateStatus {
     let updates = app.state::<Updates>();
     if !updates.begin() {
@@ -238,11 +175,6 @@ async fn fetch<R: Runtime>(
     Ok(Some((update, bytes)))
 }
 
-/// Background checks while the setting is on.
-///
-/// A thread with a clock, as the sync scheduler. It compares wall time, not a
-/// sleep of six hours: a sleeping laptop stops the monotonic clock, and a
-/// laptop that sleeps each night would then almost never check.
 pub fn schedule<R: Runtime>(app: AppHandle<R>) {
     if !app.state::<Updates>().release {
         return;
@@ -260,10 +192,6 @@ pub fn schedule<R: Runtime>(app: AppHandle<R>) {
     });
 }
 
-/// Installs the downloaded version when the app quits.
-///
-/// Not on Windows: there the installer opens its own window, and a window
-/// after "Quit" is a surprise.
 pub fn install_on_exit<R: Runtime>(app: &AppHandle<R>) {
     if cfg!(windows) {
         return;
@@ -280,17 +208,11 @@ pub fn update_status(updates: State<'_, Updates>) -> UpdateStatus {
     updates.status()
 }
 
-/// "Check now" in the settings. It works also with the setting off: the
-/// setting is about the background, not about the button.
 #[tauri::command]
 pub async fn check_update<R: Runtime>(app: AppHandle<R>) -> UpdateStatus {
     check(&app).await
 }
 
-/// "Restart" in the status bar. The window saves the open note before this.
-///
-/// The last sync runs first, as on close: on Windows `install` quits the app
-/// at once, and the sync must not be lost.
 #[tauri::command(async)]
 pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     let updates = app.state::<Updates>();
@@ -320,7 +242,6 @@ mod tests {
         assert!(is_release("0.1.7", false), "сборка из релиза");
     }
 
-    /// Scoop leaves its manifest beside the binary; the MSI install does not.
     #[test]
     fn a_copy_of_a_package_manager_does_not_update_itself() {
         let dir = tempfile::tempdir().unwrap();
@@ -433,8 +354,6 @@ mod tests {
         );
     }
 
-    /// The windows read `state` and `version`, so the field names are part
-    /// of the contract with `api.ts`.
     #[test]
     fn the_status_is_tagged_for_the_window() {
         let ready = serde_json::to_value(UpdateStatus::Ready {

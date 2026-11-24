@@ -1,19 +1,3 @@
-//! Comment threads: the talk between a person and an agent about one
-//! `@agent` comment.
-//!
-//! Before threads, an agent had two choices: guess or do nothing. Now it can
-//! ask ("the report says 14, the letter says 12: which one?"), the person
-//! answers, and the agent goes on.
-//!
-//! The task stays in the note (`<!-- @agent#k3f «words»: task -->`), so an
-//! agent without MCP still sees it. Everything else is in
-//! `.kknow/threads/k3f.json`: the messages and the state. One line in the
-//! note cannot hold a talk: an empty line would break the paragraph, and each
-//! reply would be noise in a git diff.
-//!
-//! A comment gets its ID with the first event of its thread. A comment that
-//! nobody touched has no thread and is open.
-
 use serde::{Deserialize, Serialize};
 
 use kknow_core::NoteId;
@@ -27,35 +11,23 @@ use crate::meta::{RecordDir, fresh_id, now};
 use crate::proposals::{Proposal, Status as ProposalStatus};
 use crate::{Error, Result, Workspace};
 
-/// The folder of threads, relative to the vault root.
 pub const THREADS_DIR: &str = ".kknow/threads";
 
-/// The author of the messages of the person. Any other author is an agent.
 pub const ME: &str = "me";
 
-/// The author of answers that an agent wrote in the text: the text does not
-/// say which agent it was. Old threads have "агент" here.
 pub const AGENT: &str = "agent";
 
-/// A claim older than this is free again: the agent that took the task
-/// probably stopped. Thirty minutes is longer than any task of one comment.
 const CLAIM_TIMEOUT: u64 = 30 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThreadStatus"))]
 pub enum Status {
-    /// Nobody works on the task.
     Open,
-    /// An agent took the task.
     InProgress,
-    /// The agent asked and waits for the person.
     Question,
-    /// The person answered; the agent can go on.
     Answered,
-    /// The agent made a proposal; it waits for review.
     Review,
-    /// The task is done, the comment is gone from the note.
     Done,
 }
 
@@ -71,8 +43,6 @@ impl Status {
         }
     }
 
-    /// An agent can take the task: nobody works on it and nobody waits for
-    /// the person.
     pub fn for_agent(self) -> bool {
         matches!(self, Status::Open | Status::Answered)
     }
@@ -82,28 +52,21 @@ impl Status {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThreadMessage"))]
 pub struct Message {
-    /// [`ME`] for the person, else the name of the agent.
     pub from: String,
     pub text: String,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub at: u64,
-    /// A message that kknow wrote, not a person or an agent. `text` is for the
-    /// agent; the window shows the event in its own language.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub event: Option<Event>,
 }
 
-/// What happened to the proposal of a thread.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThreadEvent"))]
 pub enum Event {
-    /// The agent proposed an edit for the task.
     Proposed { proposal: String, reason: String },
-    /// The person rejected the edit.
     Rejected { proposal: String, feedback: String },
-    /// The person accepted the edit, fully or partly.
     Accepted {
         proposal: String,
         partly: bool,
@@ -116,17 +79,13 @@ pub enum Event {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Thread {
     pub id: String,
-    /// Note ID ([`NoteId::as_str`]).
     pub note: String,
-    /// The words of the comment, as it was when the thread started.
     #[serde(default)]
     pub anchor: String,
-    /// The task, as it was when the thread started.
     pub task: String,
     pub status: Status,
     #[serde(default)]
     pub messages: Vec<Message>,
-    /// The proposal that answers the task, while it waits for review.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub proposal: Option<String>,
@@ -155,8 +114,6 @@ impl Thread {
     }
 }
 
-/// Which comment a tool means: by thread ID, or by place for a comment
-/// without one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommentRef {
     Id(String),
@@ -172,7 +129,6 @@ impl Workspace {
         RecordDir::new(self.root(), THREADS_DIR)
     }
 
-    /// All threads, the last changed first.
     pub fn threads(&self) -> Result<Vec<Thread>> {
         let mut all: Vec<Thread> = self.thread_dir().all()?;
         all.sort_by(|a, b| b.updated.cmp(&a.updated).then_with(|| a.id.cmp(&b.id)));
@@ -183,7 +139,6 @@ impl Workspace {
         self.thread_dir().get(id)
     }
 
-    /// Threads of the comments in one note, for the window.
     pub fn note_threads(&self, note: &NoteId) -> Result<Vec<Thread>> {
         let Some(parsed) = self.parsed(note) else {
             return Ok(Vec::new());
@@ -197,7 +152,6 @@ impl Workspace {
         Ok(threads)
     }
 
-    /// The state of a comment: of its thread, or open without one.
     pub fn comment_status(&self, comment: &AgentComment) -> Status {
         comment
             .id
@@ -206,9 +160,6 @@ impl Workspace {
             .map_or(Status::Open, |thread| thread.status)
     }
 
-    /// Finds the comment and its thread, and makes both if needed: a comment
-    /// without an ID gets one in the note, and a thread without a file gets
-    /// one with the task as the first message.
     fn open_thread(&mut self, target: &CommentRef) -> Result<Thread> {
         let (note, comment) = match target {
             CommentRef::Id(id) => {
@@ -257,14 +208,6 @@ impl Workspace {
         self.new_thread(&note, &comment)
     }
 
-    /// Moves the answers that an agent wrote in the text into the threads.
-    ///
-    /// An agent without MCP (the `agent` command in the `edit` mode) can only
-    /// edit the file, so it asks with `<!-- @agent-note: … -->` just after
-    /// the comment. In the text such a question is noise, and the person
-    /// cannot answer it there. Here it becomes a question in the thread of
-    /// the comment: the comments panel shows it with a reply field, and the
-    /// note text stays clean. Returns `false` when the note has no answers.
     pub fn adopt_agent_answers(&mut self, note: &NoteId) -> Result<bool> {
         let content = self.read(note)?;
         let answers = agent_answers(&content);
@@ -273,7 +216,6 @@ impl Workspace {
         }
         let mut text = content.clone();
         let mut threads = Vec::new();
-        // From the end: a cut does not move the offsets before it.
         for answer in answers.into_iter().rev() {
             text.replace_range(answer.span.clone(), "");
             let mut comment = answer.comment;
@@ -296,7 +238,6 @@ impl Workspace {
             thread.status = Status::Question;
             threads.push(thread);
         }
-        // The note first: a thread without its comment ID would be lost.
         self.save(note, &text)?;
         for thread in &threads {
             self.put_thread(thread)?;
@@ -335,8 +276,6 @@ impl Workspace {
         self.thread_dir().put(&thread.id, thread)
     }
 
-    /// An agent takes the task. A second agent gets an error while the first
-    /// one works, so two agents do not do the same task.
     pub fn claim_comment(&mut self, target: &CommentRef, agent: &str) -> Result<Thread> {
         let mut thread = self.open_thread(target)?;
         let busy = match thread.status {
@@ -348,18 +287,11 @@ impl Workspace {
             return Err(Error::CommentBusy(thread.id.clone(), thread.status));
         }
         thread.status = Status::InProgress;
-        // The claim is not a message: it only moves the time of the thread,
-        // which the claim timeout counts from.
         thread.say(agent, "");
         self.put_thread(&thread)?;
         Ok(thread)
     }
 
-    /// A message in the thread.
-    ///
-    /// From an agent: `question` makes the thread wait for the person, else
-    /// it is a note on the way and the agent goes on. From the person
-    /// ([`ME`]): an answer to a question, so the agent can go on.
     pub fn reply_comment(
         &mut self,
         target: &CommentRef,
@@ -389,8 +321,6 @@ impl Workspace {
         Ok(thread)
     }
 
-    /// The task is done: the comment goes away from the note, the thread
-    /// keeps the summary and stays as history.
     pub fn resolve_comment(
         &mut self,
         target: &CommentRef,
@@ -400,7 +330,6 @@ impl Workspace {
         self.resolve_with_event(target, from, summary, None)
     }
 
-    /// [`Self::resolve_comment`], with the event of the last message.
     fn resolve_with_event(
         &mut self,
         target: &CommentRef,
@@ -453,7 +382,6 @@ impl Workspace {
         Ok(changed)
     }
 
-    /// Links a proposal to the thread: the task waits for review now.
     pub fn thread_proposed(
         &mut self,
         target: &CommentRef,
@@ -475,8 +403,6 @@ impl Workspace {
         Ok(thread)
     }
 
-    /// After a review: an accepted proposal closes the task, a rejected one
-    /// gives it back to the agent with the reason.
     pub(crate) fn proposal_reviewed(&mut self, proposal: &Proposal) -> Result<()> {
         let Some(id) = proposal.comment.as_deref() else {
             return Ok(());
@@ -508,8 +434,6 @@ impl Workspace {
             self.put_thread(&thread)?;
             return Ok(());
         }
-        // Accepted, fully or partly: the task is done. The comment may be gone
-        // already (the accepted edit removed it), and that is fine.
         let target = CommentRef::Id(id.to_string());
         let partly = status == ProposalStatus::Partial;
         let word = if partly {
@@ -539,7 +463,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// Threads follow their notes on a rename.
     pub(crate) fn move_threads(&self, moves: &[(NoteId, NoteId)]) -> Result<()> {
         let dir = self.thread_dir();
         for mut thread in dir.all::<Thread>()? {
@@ -551,8 +474,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// Notes whose threads or proposals are in these shared files. After a
-    /// sync the window redraws them: their comments may have new answers.
     pub fn notes_of_shared(&self, keys: &[String]) -> Vec<NoteId> {
         let mut notes = Vec::new();
         for key in keys {
@@ -578,7 +499,6 @@ impl Workspace {
         notes
     }
 
-    /// Removes a thread whose comment is gone, or a done one.
     pub fn remove_thread(&mut self, id: &str) -> Result<()> {
         self.thread_dir().remove(id)
     }
@@ -655,7 +575,6 @@ mod tests {
             )
         );
 
-        // The person answers, and the next answer of the agent joins the thread.
         workspace
             .reply_comment(&CommentRef::Id(thread.id.clone()), ME, "variant 2", false)
             .unwrap();

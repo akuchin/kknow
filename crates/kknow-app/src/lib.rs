@@ -1,8 +1,3 @@
-//! An open vault with its parse results. Both the CLI and the desktop app use
-//! it.
-//!
-//! This crate holds the app state, but not the way to show it.
-
 pub mod bookmarks;
 pub mod commands;
 pub mod files;
@@ -43,12 +38,6 @@ use crate::watch::{VaultEvent, VaultWatcher};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// The token for a git repository, from where its settings say.
-///
-/// `stored` is the token from the keychain of the window; the terminal has no
-/// keychain and gives `None`. A variable is read from the process first and
-/// then from the login shell: an app from the Dock does not see the variables
-/// of `config.fish` otherwise.
 pub fn git_token(settings: &GitSettings, stored: Option<String>) -> Option<String> {
     match settings.auth {
         GitAuth::System => None,
@@ -160,7 +149,6 @@ impl Error {
     }
 }
 
-/// What changed after file system events were applied.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Changes {
     pub updated: Vec<NoteId>,
@@ -173,50 +161,32 @@ impl Changes {
     }
 }
 
-/// Result of a careful save.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Saved {
-    /// The file was as the editor saw it, so it is written.
     Written,
-    /// The file changed outside. It stays as is, and the editor text goes to
-    /// `copy` next to it, so no version is lost.
     Conflict { copy: NoteId, disk: String },
 }
 
-/// Links that a rename or a move rewrote in other notes.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Relinked {
     pub notes: usize,
     pub links: usize,
 }
 
-/// Where a link leads: the note and the line of its `#Heading` or `#^block`.
-///
-/// The anchors of the note come too: the editor completes `[[note#…` and
-/// `[[note#^…` from them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkTarget<'a> {
     pub id: NoteId,
-    /// 1-based line of the heading or block. `None` for a link without a
-    /// subpath, or with one that the note does not have: the note opens at
-    /// the top.
     pub line: Option<usize>,
     pub headings: &'a [Heading],
     pub blocks: &'a [Block],
 }
 
-/// A link to a note, with the line where it stands in the source note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BacklinkLine<'a> {
     pub edge: &'a Edge,
     pub context: LineContext,
 }
 
-/// Vault summary: number of notes, folders and bytes.
-///
-/// It is calculated on request, not stored: only the settings window and
-/// `kknow stats` need it, and not often. Updating it on each edit is one more
-/// way to get out of sync with the disk.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct VaultStats {
     pub notes: usize,
@@ -224,29 +194,19 @@ pub struct VaultStats {
     pub bytes: u64,
 }
 
-/// The vault, parsed notes, the link graph and the search index.
 pub struct Workspace {
     vault: Vault,
     parsed: BTreeMap<NoteId, ParsedNote>,
-    /// Hash of the last known content. It shows that a change from disk is
-    /// our own write.
     hashes: HashMap<NoteId, u64>,
     graph: LinkGraph,
     resolver: Resolver,
     search: SearchIndex,
-    /// Vault bookmarks. They go to `.kknow/bookmarks.json` on each change:
-    /// there are few of them, and a lost bookmark is annoying.
     bookmarks: Bookmarks,
-    /// Notes whose file is a locked note (`kknow_sync::locked`). The parse of
-    /// such a note is empty: no text, links or tags reach the index.
     locked: BTreeSet<NoteId>,
-    /// The key of locked notes while the session is unlocked. Only memory:
-    /// see [`lock`].
     notes_key: Option<kknow_sync::locked::NotesKey>,
 }
 
 impl Workspace {
-    /// Opens the vault, parses the notes and builds the search index.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let vault = Vault::open(root)?;
         let mut workspace = Workspace {
@@ -265,27 +225,21 @@ impl Workspace {
         Ok(workspace)
     }
 
-    /// Starts to watch the directory. [`Workspace::apply`] applies the events.
     pub fn watch(&self) -> Result<VaultWatcher> {
         Ok(VaultWatcher::start(self.vault.root())?)
     }
 
-    /// Reloads the whole vault from disk.
     pub fn reload(&mut self) -> Result<()> {
         self.vault.rescan()?;
         self.load_bookmarks()?;
         self.reparse_all()
     }
 
-    /// `Bookmarks::load` moves a broken bookmarks file aside and starts an empty
-    /// list, so a broken file does not stop the vault from opening.
     fn load_bookmarks(&mut self) -> Result<()> {
         self.bookmarks = Bookmarks::load(&Bookmarks::path(self.vault.root()))?.bookmarks;
         Ok(())
     }
 
-    /// Edits bookmarks and writes them only if something changed: a save of a
-    /// note without bookmarks must not touch the file.
     fn edit_bookmarks(&mut self, edit: impl FnOnce(&mut Bookmarks)) -> Result<()> {
         let before = self.bookmarks.clone();
         edit(&mut self.bookmarks);
@@ -295,9 +249,6 @@ impl Workspace {
         self.bookmarks.save(&Bookmarks::path(self.vault.root()))
     }
 
-    /// Bookmarks of notes that exist in the vault, in the order they were set.
-    /// Bookmarks of missing notes are kept but not shown: git, for example, can
-    /// remove a file and bring it back.
     pub fn bookmarks(&self) -> Vec<&Bookmark> {
         self.bookmarks
             .all()
@@ -306,11 +257,6 @@ impl Workspace {
             .collect()
     }
 
-    /// Bookmarks of the note in `content`: lines with names, sorted and
-    /// without duplicates. Of two bookmarks on one line, a named one wins.
-    ///
-    /// If a bookmark's line text is not found, it keeps its old number, clamped
-    /// to the text. So the user can see it and remove it.
     pub fn note_bookmarks(&self, id: &NoteId, content: &str) -> Vec<Mark> {
         let last = content.lines().count();
         if last == 0 {
@@ -333,8 +279,6 @@ impl Workspace {
         marks
     }
 
-    /// Sets or removes a bookmark on line `line` of the note as it is on disk.
-    /// `true` means the bookmark is now set.
     pub fn toggle_bookmark(&mut self, id: &NoteId, line: usize) -> Result<bool> {
         let content = self.read(id)?;
         let mut set = false;
@@ -342,8 +286,6 @@ impl Workspace {
         Ok(set)
     }
 
-    /// Names the bookmark on line `line` of the note, or removes the name
-    /// (`None`). `false` means there is no bookmark on that line.
     pub fn name_bookmark(&mut self, id: &NoteId, line: usize, name: Option<&str>) -> Result<bool> {
         if self.locked.contains(id) {
             return Err(Error::NoteLocked(id.clone()));
@@ -353,11 +295,6 @@ impl Workspace {
         Ok(found)
     }
 
-    /// Puts the note bookmarks on exactly these lines of `content`, with these
-    /// names ([`Bookmarks::place`]). The window uses this to report where edits
-    /// moved them.
-    ///
-    /// A locked note keeps no bookmarks: a bookmark stores its line text.
     pub fn set_bookmarks(&mut self, id: &NoteId, marks: &[Mark], content: &str) -> Result<()> {
         if self.locked.contains(id) {
             return self.anchor_bookmarks(id, "");
@@ -371,8 +308,6 @@ impl Workspace {
         self.parsed.clear();
         self.hashes.clear();
         self.locked.clear();
-        // An in-memory index is cheaper to rebuild than to clean of documents
-        // for notes that are gone.
         self.search = SearchIndex::new()?;
 
         for id in ids {
@@ -385,12 +320,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// Parses the note content and updates everything that depends on it,
-    /// except the graph: the graph is built from all notes at once.
-    ///
-    /// A locked note gets the parse of an empty text: search finds it by
-    /// name only, and it has no links, tags, tasks or comments. This holds
-    /// also while the session is unlocked.
     fn ingest(&mut self, id: &NoteId, content: &str) -> Result<()> {
         let locked = kknow_sync::locked::is_locked(content.as_bytes());
         let parsed = kknow_index::parse(if locked { "" } else { content });
@@ -409,16 +338,11 @@ impl Workspace {
         Ok(())
     }
 
-    /// Rebuilds the graph from the parsed notes.
-    ///
-    /// It walks only the links and does not read the disk. A link to a missing
-    /// note can become valid, so everything must be recalculated.
     fn rebuild_graph(&mut self) {
         self.graph = LinkGraph::build(self.parsed.iter().map(|(id, note)| (id.clone(), note)));
         self.resolver = Resolver::new(self.parsed.keys());
     }
 
-    /// Applies the changes that the watcher found.
     pub fn apply(&mut self, events: &[VaultEvent]) -> Result<Changes> {
         let mut changes = Changes::default();
 
@@ -430,8 +354,6 @@ impl Workspace {
                     }
                     let content = self.vault.read(id)?;
 
-                    // A write from the app itself needs no second parse: the
-                    // content is already known.
                     if self.hashes.get(id) == Some(&hash(&content)) {
                         continue;
                     }
@@ -460,26 +382,16 @@ impl Workspace {
         Ok(changes)
     }
 
-    /// Syncs the vault with the remote storage.
-    ///
-    /// Notes from the cloud go the same way as edits from an external editor:
-    /// for the app, sync is one more source of changes on disk.
     pub fn sync<P: SyncProvider>(&mut self, engine: &SyncEngine<P>) -> Result<SyncReport> {
         let report = engine.run(&mut self.vault)?;
         self.absorb(&report)?;
         Ok(report)
     }
 
-    /// Prepares a sync: the plan and the content to upload.
-    ///
-    /// This is the first of three parts. The network part runs without the
-    /// vault: the window releases the lock for that time, so an edit does not
-    /// wait for sync. The CLI shares nothing, so it uses [`Workspace::sync`].
     pub fn sync_stage<P: SyncProvider>(&self, engine: &SyncEngine<P>) -> Result<Staged> {
         Ok(engine.stage(&self.vault)?)
     }
 
-    /// Writes what sync downloaded and updates the parse, graph and search.
     pub fn sync_finish<P: SyncProvider>(
         &mut self,
         engine: &SyncEngine<P>,
@@ -490,7 +402,6 @@ impl Workspace {
         Ok(report)
     }
 
-    /// Notes that sync wrote go the same way as edits from an external editor.
     fn absorb(&mut self, report: &SyncReport) -> Result<()> {
         let events: Vec<VaultEvent> = report
             .local_updated()
@@ -502,8 +413,6 @@ impl Workspace {
             )
             .collect();
         self.apply(&events)?;
-        // Threads and proposals are read from disk on each call; only the
-        // bookmarks live in memory and must be read again.
         if report
             .files_local
             .iter()
@@ -514,11 +423,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// Merges the commits that [`Git::fetch`] got and reads the vault again.
-    ///
-    /// This is the only git step that changes files, so the window holds the
-    /// vault lock only for it. A merge can change any file, also bookmarks and
-    /// themes, so the whole vault is read again, not the changed notes only.
     pub fn git_merge(&mut self, git: &Git) -> Result<Merged> {
         let merged = git.merge()?;
         if !merged.changed.is_empty() {
@@ -527,12 +431,6 @@ impl Workspace {
         Ok(merged)
     }
 
-    /// Throws away the changes of one file (see [`Git::discard`]) and reads
-    /// the vault again.
-    ///
-    /// The work tree version goes to the trash first, so a wrong click costs
-    /// nothing: git cannot give back what it overwrites. A file that is not in
-    /// the work tree (a deletion) has nothing to keep.
     pub fn git_discard(
         &mut self,
         git: &Git,
@@ -554,7 +452,6 @@ impl Workspace {
         self.reload()
     }
 
-    /// The whole git sync for the terminal: fetch, merge, push.
     pub fn git_sync(&mut self, git: &Git) -> Result<GitReport> {
         git.fetch()?;
         let merged = self.git_merge(git)?;
@@ -562,10 +459,6 @@ impl Workspace {
         Ok(GitReport { merged, pushed })
     }
 
-    /// Copies that conflicts left; the user must resolve them.
-    ///
-    /// They come from files in the directory, not from the sync log: a copy is
-    /// a file, so the list survives a restart and always matches the disk.
     pub fn conflicts(&self) -> Vec<&NoteId> {
         self.parsed
             .keys()
@@ -573,34 +466,20 @@ impl Workspace {
             .collect()
     }
 
-    /// What sync would do now, without changes.
     pub fn sync_plan<P: SyncProvider>(&self, engine: &SyncEngine<P>) -> Result<SyncPlan> {
         Ok(engine.plan(&self.vault)?)
     }
 
-    /// Themes of this vault together with shared ones from `global`.
-    ///
-    /// They are read from disk each time: people edit a theme in an editor next
-    /// to the app and do not want to restart for a new shade. The shared path
-    /// comes from outside for the same reason as the commands path: tests must
-    /// not read the real folder of the person who runs them.
     pub fn themes(&self, global: Option<&Path>) -> ThemeSet {
         theme::load(Some(self.vault.root()), global)
     }
 
-    /// Vault summary.
-    ///
-    /// The size comes from disk, not from the parsed text: the user compares it
-    /// with the file manager. A file that cannot be read is not counted: a
-    /// summary must not fail because of one note on an unplugged disk.
     pub fn stats(&self) -> VaultStats {
         let mut folders: BTreeSet<&str> = BTreeSet::new();
         let mut bytes = 0;
 
         for id in self.parsed.keys() {
             if let Some(folder) = id.folder() {
-                // `a/b/c` is in both `a` and `a/b`: the tree shows both levels,
-                // so count them the same way.
                 for (at, _) in folder.match_indices('/') {
                     folders.insert(&folder[..at]);
                 }
@@ -659,11 +538,6 @@ impl Workspace {
         self.vault.path_for(id)
     }
 
-    /// The text of the note on disk.
-    ///
-    /// A locked note is an error, also while the session is unlocked: this
-    /// is the read of agents, MCP tools, proposals and threads. The window
-    /// reads a locked note with [`Workspace::open_text`].
     pub fn read(&self, id: &NoteId) -> Result<String> {
         let content = self.vault.read(id)?;
         if kknow_sync::locked::is_locked(content.as_bytes()) {
@@ -672,8 +546,6 @@ impl Workspace {
         Ok(content)
     }
 
-    /// Finds a note by ID, or by file name if the ID does not match.
-    /// So `kknow show kknow` finds `Projects/Rust/kknow`.
     pub fn find(&self, raw: &str) -> Option<&NoteId> {
         let id = NoteId::parse(raw)?;
         if let Some((found, _)) = self.parsed.get_key_value(&id) {
@@ -686,7 +558,6 @@ impl Workspace {
             .find(|candidate| candidate.name().to_lowercase() == name)
     }
 
-    /// Saves the note and updates the parse, graph and search.
     pub fn save(&mut self, id: &NoteId, content: &str) -> Result<()> {
         self.store(id, content)?;
         self.search.commit()?;
@@ -694,19 +565,11 @@ impl Workspace {
         Ok(())
     }
 
-    /// Writes the note and parses it. The caller commits the search and
-    /// rebuilds the graph.
-    ///
-    /// A locked note is sealed before the write: plain text of a locked note
-    /// never goes to disk.
     fn store(&mut self, id: &NoteId, content: &str) -> Result<()> {
         let locked = self.locked.contains(id);
         self.store_as(id, content, locked)
     }
 
-    /// [`Workspace::store`] that says itself if the file is a locked note:
-    /// a conflict copy of a locked note is a new note, and it must be
-    /// locked too.
     fn store_as(&mut self, id: &NoteId, content: &str, locked: bool) -> Result<()> {
         if locked {
             let sealed = self.notes_key()?.seal(content)?;
@@ -719,8 +582,6 @@ impl Workspace {
         self.anchor_bookmarks(id, content)
     }
 
-    /// Moves the bookmarks of the note to the new text. A bookmark keeps the
-    /// text of its line in `bookmarks.json`, so a locked note has none.
     fn anchor_bookmarks(&mut self, id: &NoteId, content: &str) -> Result<()> {
         if self.locked.contains(id) {
             return self.edit_bookmarks(|bookmarks| {
@@ -730,19 +591,6 @@ impl Workspace {
         self.edit_bookmarks(|bookmarks| bookmarks.reanchor(id, content))
     }
 
-    /// Saves only if the file on disk is still `base`, the text the editor
-    /// started from.
-    ///
-    /// Otherwise something else changed the note (an external editor, an agent,
-    /// git), and a blind write would erase those edits. Then the disk stays as
-    /// is, and `content` goes to a conflict copy, the same way sync does it.
-    ///
-    /// A tiny gap stays between the read and the write: the file system cannot
-    /// compare and write in one step. But this protects against the main case,
-    /// an edit made while the note was open.
-    ///
-    /// For a locked note, `base` and `content` are plain text, and the disk
-    /// is opened with the key of the session before the compare.
     pub fn save_if_unchanged(&mut self, id: &NoteId, content: &str, base: &str) -> Result<Saved> {
         let path = self.path_for(id);
         let locked = self.locked.contains(id);
@@ -751,7 +599,6 @@ impl Workspace {
                 Some(self.notes_key()?.open(&disk)?)
             }
             Ok(disk) => Some(disk),
-            // Deleted outside: the write brings the note back and keeps the edits.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(source) => return Err(Error::io(&path, source)),
         };
@@ -771,7 +618,6 @@ impl Workspace {
         }
     }
 
-    /// Tasks of all notes, sorted by note and then by line.
     pub fn tasks(&self) -> Vec<(&NoteId, &Task)> {
         self.parsed
             .iter()
@@ -779,22 +625,11 @@ impl Workspace {
             .collect()
     }
 
-    /// Marks the task on line `line` of the note as done or open and returns
-    /// the new text.
-    ///
-    /// The line number comes from an older parse, and the file can change
-    /// since then. So the text comes from disk, and a line without a task is
-    /// an error, not a guess. The same state again writes nothing.
-    ///
-    /// A locked note is refused: MCP tools call this too. The window uses
-    /// [`Workspace::set_task_unlocked`].
     pub fn set_task(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
         let content = self.read(id)?;
         self.write_task(id, content, line, done)
     }
 
-    /// [`Workspace::set_task`] for the person in the window: a locked note
-    /// opens with the key of the session.
     pub fn set_task_unlocked(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
         let content = self.open_text(id)?;
         self.write_task(id, content, line, done)
@@ -809,7 +644,6 @@ impl Workspace {
         Ok(changed)
     }
 
-    /// Agent comments of all notes, sorted by note and then by line.
     pub fn agent_comments(&self) -> Vec<(&NoteId, &AgentComment)> {
         self.parsed
             .iter()
@@ -817,11 +651,6 @@ impl Workspace {
             .collect()
     }
 
-    /// Removes the agent comment with the task `text` from line `line`: the
-    /// agent did the task. Returns the new text.
-    ///
-    /// As with [`Workspace::set_task`], the text comes from disk, and a place
-    /// without the comment is an error, not a guess.
     pub fn resolve_agent_comment(
         &mut self,
         id: &NoteId,
@@ -835,7 +664,6 @@ impl Workspace {
         Ok(changed)
     }
 
-    /// Creates an empty note with a heading from its name.
     pub fn create(&mut self, raw_name: &str) -> Result<NoteId> {
         let id = NoteId::parse(raw_name).ok_or_else(|| Error::InvalidName(raw_name.to_string()))?;
         if self.contains(&id) {
@@ -847,8 +675,6 @@ impl Workspace {
         Ok(id)
     }
 
-    /// Moves the note to the vault trash and removes it from search and
-    /// graph.
     pub fn delete(&mut self, id: &NoteId) -> Result<()> {
         self.vault.remove(id)?;
         self.parsed.remove(id);
@@ -862,9 +688,6 @@ impl Workspace {
         })
     }
 
-    /// Moves the note to a new ID: a new name, a new folder or both.
-    ///
-    /// Links to the note follow it: see [`Workspace::relink`].
     pub fn rename(&mut self, from: &NoteId, to: &NoteId) -> Result<Relinked> {
         if from == to {
             return Ok(Relinked::default());
@@ -884,8 +707,6 @@ impl Workspace {
         Ok(relinked)
     }
 
-    /// Copies the note next to it with the first free name: `Name copy`, then
-    /// `Name copy 2`, `copy 3`… Returns the ID of the copy.
     pub fn duplicate(&mut self, id: &NoteId) -> Result<NoteId> {
         let copy = self.free_copy_name(id)?;
         self.vault.copy(id, &copy)?;
@@ -896,8 +717,6 @@ impl Workspace {
         Ok(copy)
     }
 
-    /// Moves a folder with all its notes; search and graph get the new IDs.
-    /// Links to the notes follow them: see [`Workspace::relink`].
     pub fn rename_folder(&mut self, from: &str, to: &str) -> Result<Relinked> {
         let moved = self.vault.rename_folder(from, to)?;
         for (old, new) in &moved {
@@ -915,15 +734,6 @@ impl Workspace {
         Ok(relinked)
     }
 
-    /// Rewrites links that the moves broke or turned to a different note.
-    ///
-    /// Call it after [`Workspace::moved`] and before the graph rebuild: the old
-    /// graph and resolver tell where each link pointed. Only possible sources
-    /// are read: the moved notes, their backlinks and the backlinks of notes
-    /// with a new name. Other links cannot change their target.
-    ///
-    /// The notes go through [`Workspace::store`], so the watcher sees our own
-    /// write, and search and graph get the new text.
     fn relink(&mut self, moves: &[(NoteId, NoteId)]) -> Result<Relinked> {
         let map: HashMap<NoteId, NoteId> = moves.iter().cloned().collect();
         let back: HashMap<&NoteId, &NoteId> = moves.iter().map(|(old, new)| (new, old)).collect();
@@ -969,9 +779,6 @@ impl Workspace {
         Ok(relinked)
     }
 
-    /// Records the move of one note. The index and the graph use the ID, so
-    /// remove the old entry and parse the new one. The caller rebuilds the
-    /// graph once for the whole operation.
     fn moved(&mut self, from: &NoteId, to: &NoteId) -> Result<()> {
         self.parsed.remove(from);
         self.hashes.remove(from);
@@ -1000,7 +807,6 @@ impl Workspace {
         unreachable!("the endless name search ended")
     }
 
-    /// Vault folders, including empty ones: notes alone cannot give them.
     pub fn folders(&self) -> Result<Vec<String>> {
         Ok(self.vault.folders()?)
     }
@@ -1009,8 +815,6 @@ impl Workspace {
         Ok(self.vault.create_folder(raw)?)
     }
 
-    /// Moves a folder with all its notes to the vault trash and removes them
-    /// from search and graph.
     pub fn delete_folder(&mut self, raw: &str) -> Result<()> {
         let removed = self.vault.remove_folder(raw)?;
         for id in &removed {
@@ -1034,8 +838,6 @@ impl Workspace {
         self.vault.trash()
     }
 
-    /// Restores a trash entry and parses its notes again. Bookmarks of the
-    /// notes do not come back: the delete forgot them.
     pub fn restore(&mut self, entry: &str) -> Result<Vec<NoteId>> {
         let restored = self.vault.restore(entry)?;
         for id in &restored {
@@ -1053,13 +855,6 @@ impl Workspace {
         self.graph.backlinks(id)
     }
 
-    /// The links to note `id` with their lines: by source note, then in text
-    /// order.
-    ///
-    /// It reads each source note one time, so the window asks for it only
-    /// when it shows the lines, not on each save. A note that the parse no
-    /// longer matches (it changed on disk a moment ago) gives no lines; the
-    /// watcher brings the new parse soon.
     pub fn backlink_lines(&self, id: &NoteId) -> Vec<BacklinkLine<'_>> {
         let mut edges: Vec<&Edge> = self.backlinks(id).iter().collect();
         edges.sort_by(|a, b| a.from.cmp(&b.from).then(a.span.start.cmp(&b.span.start)));
@@ -1068,7 +863,6 @@ impl Workspace {
         let mut source: Option<(&NoteId, String)> = None;
         for edge in edges {
             if source.as_ref().is_none_or(|(from, _)| *from != &edge.from) {
-                // A note that cannot be read now has no lines to show.
                 source = Some((&edge.from, self.read(&edge.from).unwrap_or_default()));
             }
             let Some((_, text)) = &source else { continue };
@@ -1083,33 +877,20 @@ impl Workspace {
         self.graph.outgoing(id)
     }
 
-    /// Renders the text as note `id`, with links resolved against the vault.
-    ///
-    /// The text is a separate argument, so the preview can show unsaved edits.
-    /// `![[note]]` and `![[note#Heading]]` show that note or section in place
-    /// (`sections.rs` reads them).
     pub fn render(&self, id: &NoteId, content: &str) -> String {
         kknow_index::to_html_with_embeds(content, id, &self.resolver, self)
     }
 
-    /// Image that note `from` refers to: a path from the note, a path from the
-    /// root, or a file name anywhere in the vault. It never leaves the vault.
     pub fn image(&self, from: &NoteId, target: &str) -> Option<PathBuf> {
         let note = self.path_for(from);
         let dir = note.parent().unwrap_or(self.root());
         kknow_core::image::resolve(self.root(), dir, target)
     }
 
-    /// Resolves a link target relative to the note.
     pub fn resolve(&self, target: &str, from: &NoteId) -> Option<NoteId> {
         self.resolver.resolve(target, from)
     }
 
-    /// Follows a link written in note `from`: `note`, `note#Heading`,
-    /// `note#^block`, `#Heading` (the same note), with or without `|alias`.
-    ///
-    /// The same resolution rules as for the graph apply. `None` means the
-    /// note does not exist: the caller can create it.
     pub fn link_target(&self, from: &NoteId, link: &str) -> Option<LinkTarget<'_>> {
         let link = link.split('|').next().unwrap_or_default();
         let (target, subpath) = match link.split_once('#') {
@@ -1134,7 +915,6 @@ impl Workspace {
     }
 }
 
-/// The line of `#Heading` or `#^block` in a note.
 pub(crate) fn subpath_line(parsed: &ParsedNote, sub: &str) -> Option<usize> {
     match sub.strip_prefix('^') {
         Some(block) => parsed
@@ -1142,15 +922,10 @@ pub(crate) fn subpath_line(parsed: &ParsedNote, sub: &str) -> Option<usize> {
             .iter()
             .find(|each| each.id.eq_ignore_ascii_case(block.trim()))
             .map(|each| each.line),
-        // `[[note#Part#Section]]` names the path to a heading; the last part
-        // is the heading itself.
         None => heading_line(&parsed.headings, sub.rsplit('#').next().unwrap_or(sub)),
     }
 }
 
-/// The line of the heading with this text. The exact text wins, without case
-/// and extra spaces. Else a slug matches too: a Markdown link writes
-/// `note.md#my-heading` for `# My heading`.
 fn heading_line(headings: &[Heading], wanted: &str) -> Option<usize> {
     fn plain(text: &str) -> String {
         text.split_whitespace()
@@ -1177,11 +952,6 @@ fn heading_line(headings: &[Heading], wanted: &str) -> Option<usize> {
         .map(|heading| heading.line)
 }
 
-/// Name of the copy for text that did not go into the file: the note ID,
-/// [`CONFLICT_MARK`] and a short hash.
-///
-/// A hash, not a time: a second save of the same text goes to the same copy
-/// and does not create new ones.
 fn conflict_copy(id: &NoteId, content: &str) -> NoteId {
     let short = format!("{:016x}", hash(content));
     NoteId::parse(&format!("{id}{CONFLICT_MARK}{})", &short[..8]))
@@ -1324,7 +1094,6 @@ mod tests {
             "разбор обновился вместе с файлом"
         );
 
-        // Someone added a line above: line 3 is now plain text.
         fs::write(
             dir.path().join("План.md"),
             "# План\n\nвступление\n- [x] начать\n",
@@ -1444,9 +1213,6 @@ mod tests {
         let stats = workspace.stats();
 
         assert_eq!(stats.notes, 3);
-        // The new nested path gives three folders, because intermediate levels
-        // count; plus `Projects` from the fixture. A note in the root adds no
-        // folder.
         assert_eq!(stats.folders, 4);
 
         let expected: u64 = ["Index.md", "Projects/kknow.md", "Архив/2026/июль/Итоги.md"]
@@ -1614,7 +1380,6 @@ mod tests {
         assert!(!workspace.contains(&from));
         assert!(workspace.contains(&to));
         assert_eq!(found(&workspace, "синхронизацию"), ["Архив/kknow"]);
-        // `[[Projects/kknow]]` in the index note follows the note.
         assert!(workspace.graph().broken().is_empty());
         assert_eq!(
             workspace.read(&NoteId::parse("Index").unwrap()).unwrap(),
@@ -1635,7 +1400,6 @@ mod tests {
             )
             .unwrap();
 
-        // The short link still finds the note, so the file stays as it was.
         assert_eq!(relinked, Relinked::default());
         assert_eq!(workspace.read(&index).unwrap(), "# Оглавление\n\n[[kknow]]");
         assert!(workspace.graph().broken().is_empty());
@@ -1682,7 +1446,6 @@ mod tests {
         let backlinks = workspace.backlinks(&NoteId::parse("Архив/Старый проект").unwrap());
         assert_eq!(backlinks.len(), 5, "{backlinks:?}");
         assert!(workspace.graph().broken().is_empty());
-        // The rewrite is our own write: the watcher must not report it.
         let changes = workspace
             .apply(&[VaultEvent::Changed(index), VaultEvent::Changed(note)])
             .unwrap();
@@ -1756,8 +1519,6 @@ mod tests {
         assert!(!workspace.contains(&NoteId::parse("Projects/kknow").unwrap()));
         assert!(dir.path().join("Work/Projects/kknow.md").is_file());
         assert_eq!(found(&workspace, "синхронизацию"), ["Work/Projects/kknow"]);
-        // `[[Projects/kknow]]` is the tail of the new path, so the link stays
-        // valid.
         assert!(workspace.graph().broken().is_empty());
         assert_eq!(workspace.backlinks(&moved).len(), 1);
     }
@@ -1834,7 +1595,6 @@ mod tests {
         assert_eq!(report.removed_local.len(), 1);
         assert_eq!(target.len(), 1);
         assert!(found(&target, "синхронизацию").is_empty());
-        // The note is not lost: it waits in the trash of this device.
         assert_eq!(
             target.trash().entries().unwrap()[0].path,
             "Projects/kknow.md"
@@ -1890,8 +1650,6 @@ mod tests {
         workspace
             .save(&id, "# kknow\n\nсохранено приложением")
             .unwrap();
-        // The watcher still reports the write. It must not look like a change,
-        // or the UI reloads the note while the user types.
         let changes = workspace.apply(&[VaultEvent::Changed(id)]).unwrap();
 
         assert!(changes.is_empty());

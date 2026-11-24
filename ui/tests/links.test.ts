@@ -1,6 +1,3 @@
-// Tests for link completion (`src/link-complete.ts`) and for the link under
-// the cursor (`src/editor-links.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -18,7 +15,6 @@ import {
   type LinkNote,
 } from "../src/link-complete.ts";
 
-/** The same parser as in the editor: GFM. */
 function stateOf(doc: string): EditorState {
   return EditorState.create({ doc, extensions: markdown({ base: markdownLanguage }) });
 }

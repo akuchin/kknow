@@ -1,15 +1,3 @@
-/**
- * Settings window.
- *
- * A separate window, not a panel in the main one: you see settings next to
- * what you change, and closing them moves nothing in your work. Sections on
- * the left, content on the right; vaults also get a list between them,
- * because there can be many.
- *
- * The window keeps almost no state: settings live in the core, the vault list
- * in the registry. Only what is open on the screen stays here.
- */
-
 import { getVersion } from "@tauri-apps/api/app";
 
 import { api, onKeymapChanged, onSettingsChanged, onSyncStatus, onUpdateStatus } from "../api";
@@ -26,7 +14,6 @@ import { initEncryption } from "./encryption";
 import { initSyncForm } from "./sync-form";
 import { renderVaults, repaintVaults } from "./vaults";
 
-/** Window sections: URL anchor and label. */
 const SECTIONS: { id: string; label: Key }[] = [
   { id: "general", label: "settings.section.general" },
   { id: "appearance", label: "settings.section.appearance" },
@@ -77,8 +64,6 @@ function renderSections(): void {
   const version = document.createElement("span");
   version.className = "settings-version";
   version.textContent = "kknow";
-  // The version comes from the app, not from a constant here: a release takes
-  // it from the git tag, and a constant would stay at the first release.
   void getVersion()
     .then((value) => {
       version.textContent = `kknow ${value}`;
@@ -115,7 +100,6 @@ function render(): void {
 
 initKeys();
 window.addEventListener("hashchange", render);
-// Esc and ⌘W close the window, like any settings window in the system.
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") window.close();
 });
@@ -127,21 +111,16 @@ async function boot(): Promise<void> {
     console.error(error);
   }
 
-  // The window language comes from settings, which the main window shares.
-  // `i18n` reads its copy in `localStorage` synchronously on load.
   if (state.settings && state.settings.locale !== locale) {
     setLocale(state.settings.locale);
     location.reload();
     return;
   }
 
-  // The app sets the same title on the window; this one is for the mock.
   document.title = t("settings.windowTitle");
 
-  // Keys: the copy in `localStorage` may be old after a hand edit.
   await loadKeymap();
   void onKeymapChanged(takeKeymap);
-  // A hand edit of the file shows when the user comes back to the window.
   window.addEventListener("focus", () => void api.getKeymap().then(takeKeymap, console.error));
 
   void onSettingsChanged((incoming) => {
@@ -155,14 +134,11 @@ async function boot(): Promise<void> {
     render();
   });
 
-  // Sync runs without this window too; its state comes as an event.
   void onSyncStatus((incoming) => {
     state.statuses.set(incoming.vault, incoming);
     if (section() === "vaults") repaintVaults();
   });
 
-  // The same for updates: the menu item opens this window and starts a check,
-  // so the first events can come before the window asks.
   void onUpdateStatus((incoming) => {
     setUpdate(incoming);
     if (section() === "general") repaintUpdate();

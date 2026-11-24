@@ -1,13 +1,3 @@
-//! The secret access key for remote storage.
-//!
-//! All other sync settings are in `.kknow/remote.json` as plain text: endpoint,
-//! bucket, key ID. The secret key must not go there. It goes to the OS keyring
-//! (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux).
-//! There the system protects it, not file permissions.
-//!
-//! The key belongs to the remote storage, not to the notes folder: two vaults
-//! in one bucket use the same access keys.
-
 use crate::state::Result;
 
 pub fn load(location: &str) -> Result<Option<String>> {
@@ -18,7 +8,6 @@ pub fn store(location: &str, secret: &str) -> Result<()> {
     imp::store(location, secret)
 }
 
-/// Forgets the secret. A missing entry is not an error.
 pub fn forget(location: &str) -> Result<()> {
     imp::forget(location)
 }
@@ -27,7 +16,6 @@ pub fn forget(location: &str) -> Result<()> {
 mod imp {
     use crate::state::{Error, Result};
 
-    /// The name under which kknow appears in the keyring.
     const SERVICE: &str = "dev.kknow.desktop";
 
     fn entry(location: &str) -> Result<keyring::Entry> {
@@ -58,11 +46,6 @@ mod imp {
     }
 }
 
-/// In tests, secrets live in memory.
-///
-/// The real keyring asks the person who runs `cargo test` for permission and
-/// leaves entries on their machine. A settings serialization test is not
-/// worth that.
 #[cfg(test)]
 mod imp {
     use std::collections::HashMap;

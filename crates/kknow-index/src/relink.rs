@@ -1,8 +1,3 @@
-//! Link rewrite after notes move.
-//!
-//! The rewrite changes only the target part of a link. The alias, the heading
-//! and the block stay as written.
-
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -12,10 +7,6 @@ use crate::graph::Resolver;
 use crate::parse::{ParsedNote, decode_target};
 use crate::wikilink::{WikiKind, WikiLink};
 
-/// Rewrites links so that they point to the same notes after a move.
-///
-/// `before` knows the old note ids, `after` the new ones. `moves` maps each
-/// old id to its new id.
 pub struct Relink<'a> {
     pub before: &'a Resolver,
     pub after: &'a Resolver,
@@ -23,10 +14,6 @@ pub struct Relink<'a> {
 }
 
 impl Relink<'_> {
-    /// Returns the new text and the number of changed links. `None` means
-    /// that no link changed.
-    ///
-    /// `from` is the old id of the note, `parsed` the parse of `source`.
     pub fn apply(
         &self,
         from: &NoteId,
@@ -49,7 +36,6 @@ impl Relink<'_> {
             };
             let target = decode_target(&source[range.clone()]);
             if let Some(text) = self.retarget(&target, from, from_after) {
-                // A bare destination cannot hold a space.
                 let text = if angle {
                     text
                 } else {
@@ -75,10 +61,6 @@ impl Relink<'_> {
         Some((out, edits.len()))
     }
 
-    /// New target text, if the link would break or point to another note.
-    ///
-    /// A link by name stays a link by name while the name finds the note.
-    /// Else the link gets the full path. A written extension stays.
     fn retarget(&self, target: &str, from: &NoteId, from_after: &NoteId) -> Option<String> {
         let old = self.before.resolve(target, from)?;
         let expected = self.moves.get(&old).unwrap_or(&old);
@@ -105,7 +87,6 @@ impl Relink<'_> {
     }
 }
 
-/// Range of the target in a wikilink: the text before `|` or `#`, trimmed.
 fn wiki_target(source: &str, link: &WikiLink) -> Range<usize> {
     let open = link.span.start
         + match link.kind {
@@ -118,9 +99,6 @@ fn wiki_target(source: &str, link: &WikiLink) -> Range<usize> {
     start..start + raw.trim().len()
 }
 
-/// Range of the path in `[text](path#anchor "title")`, and whether the
-/// destination is in angle brackets. `None` for a reference link
-/// `[text][ref]`: its destination is in a different place.
 fn markdown_path(source: &str, span: Range<usize>) -> Option<(Range<usize>, bool)> {
     let body = source[span.clone()].strip_suffix(')')?;
     let open = body.rfind("](")? + 2;
@@ -149,8 +127,6 @@ mod tests {
         NoteId::parse(raw).unwrap()
     }
 
-    /// Moves notes in a vault of `ids` and rewrites `source`, written in the
-    /// note `from`.
     fn relink(ids: &[&str], moves: &[(&str, &str)], from: &str, source: &str) -> String {
         let before_ids: Vec<NoteId> = ids.iter().map(|raw| id(raw)).collect();
         let moves: HashMap<NoteId, NoteId> =
@@ -230,7 +206,6 @@ mod tests {
         let ids = ["Work/Daily/Monday", "Work/Daily/Notes", "Work/Notes"];
         let moves = [("Work/Daily/Notes", "Archive/Notes")];
 
-        // `Work/Notes` is now nearer than the moved note and wins.
         assert_eq!(
             relink(&ids, &moves, "Work/Daily/Monday", "[[Notes]]"),
             "[[Archive/Notes]]"

@@ -1,20 +1,3 @@
-//! Proposals: edits that an agent suggests and a person accepts or rejects.
-//!
-//! An agent without file access (Claude Desktop, ChatGPT) cannot change a
-//! note, and an agent with file access changes it without a question. A
-//! proposal is the middle way: the note stays as it is until the person says
-//! yes to each edit.
-//!
-//! A proposal lives in `.kknow/proposals/<id>.json`, not in the note. Inline
-//! marks (CriticMarkup `{~~old~>new~~}`) would make the note dirty in other
-//! editors, and a large rewrite in that form is not readable.
-//!
-//! An edit finds its place by text, not by line: `old` must occur exactly once
-//! in the note. This is the rule of the Edit tool of coding agents, so they
-//! already know it. Lines move when the person types above; the text stays.
-//! At review time the text is searched again. An edit whose `old` is gone or
-//! occurs twice is stale, and kknow does not guess where it goes.
-
 use serde::{Deserialize, Serialize};
 
 use kknow_core::NoteId;
@@ -22,10 +5,8 @@ use kknow_core::NoteId;
 use crate::meta::{RecordDir, fresh_id, now};
 use crate::{Error, Result, Workspace};
 
-/// The folder of proposals, relative to the vault root.
 pub const PROPOSALS_DIR: &str = ".kknow/proposals";
 
-/// The decision on one edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -35,7 +16,6 @@ pub enum EditState {
     Rejected,
 }
 
-/// One replacement: `old` becomes `new`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ProposalEdit"))]
@@ -45,22 +25,17 @@ pub struct Edit {
     pub state: EditState,
 }
 
-/// The state of the whole proposal. It is computed from the edits, not
-/// stored: a stored copy could disagree with them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ProposalStatus"))]
 pub enum Status {
-    /// At least one edit waits for a decision.
     Pending,
     Accepted,
     Rejected,
-    /// Some edits accepted, some rejected.
     Partial,
 }
 
 impl Status {
-    /// The word for the CLI and the agent.
     pub fn word(self) -> &'static str {
         match self {
             Status::Pending => "pending",
@@ -76,21 +51,14 @@ impl Status {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Proposal {
     pub id: String,
-    /// Note ID ([`NoteId::as_str`]).
     pub note: String,
-    /// Why the agent suggests this, in its words.
     pub reason: String,
-    /// The program that made the proposal, if it said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub author: Option<String>,
-    /// The comment thread that this proposal answers. Its review closes or
-    /// opens the thread again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub comment: Option<String>,
-    /// The note does not exist yet: the only edit has an empty `old` and the
-    /// whole text in `new`.
     #[serde(default)]
     pub create: bool,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -98,8 +66,6 @@ pub struct Proposal {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub updated: u64,
     pub edits: Vec<Edit>,
-    /// What the person said on review. The agent reads it with
-    /// `proposal_status` and tries again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub feedback: Option<String>,
@@ -123,8 +89,6 @@ impl Proposal {
         NoteId::parse(&self.note)
     }
 
-    /// The proposal in rows for the CLI and the agent: the head, then each
-    /// edit with its state, then the feedback of the person.
     pub fn describe(&self) -> String {
         let mut text = format!(
             "{} {} ({}): {}",
@@ -150,7 +114,6 @@ impl Proposal {
     }
 }
 
-/// One line of at most 80 characters: an edit can be a whole paragraph.
 fn short(text: &str) -> String {
     let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if line.chars().count() > 80 {
@@ -160,8 +123,6 @@ fn short(text: &str) -> String {
     }
 }
 
-/// A proposal for the window: the record and, for each edit, whether its
-/// place is still in the note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -170,20 +131,15 @@ pub struct ProposalView {
     #[cfg_attr(feature = "ts", ts(flatten))]
     pub proposal: Proposal,
     pub status: Status,
-    /// `stale[i]` is true when edit `i` waits and its `old` is not exactly
-    /// once in the note now.
     pub stale: Vec<bool>,
 }
 
-/// What a person decided in one review.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Review {
-    /// Indexes of the edits to apply.
     #[serde(default)]
     pub accept: Vec<usize>,
-    /// Indexes of the edits to drop.
     #[serde(default)]
     pub reject: Vec<usize>,
     #[serde(default)]
@@ -191,11 +147,6 @@ pub struct Review {
     pub feedback: Option<String>,
 }
 
-/// Where `old` is in `text`: the only match, or why there is none.
-///
-/// A match inside an `@agent` comment does not count. The comment repeats
-/// the words it is about (`14 weeks<!-- @agent «14 weeks»: … -->`), so
-/// without this rule each commented phrase would occur twice.
 fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
     let comments: Vec<std::ops::Range<usize>> = kknow_index::parse::parse(text)
         .agent_comments
@@ -214,8 +165,6 @@ fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
     }
 }
 
-/// Checks new edits against the note before they are saved. The agent gets
-/// the error at once, not the person at review.
 fn check(text: &str, edits: &[(String, String)]) -> std::result::Result<(), String> {
     if edits.is_empty() {
         return Err("at least one edit is required".to_string());
@@ -244,9 +193,6 @@ fn check(text: &str, edits: &[(String, String)]) -> std::result::Result<(), Stri
     Ok(())
 }
 
-/// Applies the edits one after another. Each one is found again in the text
-/// that the previous ones made. `Err` gives the index of the first edit
-/// without a place.
 fn apply<'a>(
     text: &str,
     edits: impl Iterator<Item = (usize, &'a Edit)>,
@@ -264,11 +210,6 @@ impl Workspace {
         RecordDir::new(self.root(), PROPOSALS_DIR)
     }
 
-    /// Saves a proposal of edits to an existing note.
-    ///
-    /// Each `old` must occur exactly once in the note now, and two edits must
-    /// not touch the same text. Otherwise nothing is saved and the error
-    /// tells the agent what to fix.
     pub fn propose(
         &mut self,
         id: &NoteId,
@@ -290,7 +231,6 @@ impl Workspace {
         self.store_proposal(id, edits, reason, author, comment, false)
     }
 
-    /// Saves a proposal of a new note with this text.
     pub fn propose_note(
         &mut self,
         id: &NoteId,
@@ -343,7 +283,6 @@ impl Workspace {
         Ok(proposal)
     }
 
-    /// All proposals of the vault, newest first.
     pub fn proposals(&self) -> Result<Vec<Proposal>> {
         let mut all: Vec<Proposal> = self.proposal_dir().all()?;
         all.sort_by(|a, b| b.created.cmp(&a.created).then_with(|| a.id.cmp(&b.id)));
@@ -356,7 +295,6 @@ impl Workspace {
             .ok_or_else(|| Error::UnknownProposal(key.to_string()))
     }
 
-    /// The proposal with the stale marks for the window.
     pub fn proposal_view(&self, proposal: Proposal) -> ProposalView {
         let content = proposal.note_id().and_then(|id| self.read(&id).ok());
         let stale = proposal
@@ -365,7 +303,6 @@ impl Workspace {
             .map(|edit| {
                 edit.state == EditState::Pending
                     && match (&content, proposal.create) {
-                        // A new note is stale when someone made the note.
                         (Some(_), true) => true,
                         (None, true) => false,
                         (Some(text), false) => locate(text, &edit.old).is_err(),
@@ -380,7 +317,6 @@ impl Workspace {
         }
     }
 
-    /// Waiting proposals of one note, for the window.
     pub fn note_proposals(&self, id: &NoteId) -> Result<Vec<ProposalView>> {
         Ok(self
             .proposals()?
@@ -390,14 +326,6 @@ impl Workspace {
             .collect())
     }
 
-    /// Applies the accepted edits to the note and marks the decisions.
-    ///
-    /// The edits go to the text on disk now. If one accepted edit has no
-    /// place, nothing changes: a half-applied review would be harder to
-    /// understand than a refusal. Only waiting edits can get a decision.
-    ///
-    /// Returns the proposal after the review and the new note text if it
-    /// changed.
     pub fn review_proposal(
         &mut self,
         key: &str,
@@ -464,14 +392,11 @@ impl Workspace {
         Ok((proposal, written))
     }
 
-    /// Removes a proposal: the agent withdraws it, or the person clears the
-    /// list.
     pub fn remove_proposal(&mut self, key: &str) -> Result<()> {
         self.proposal(key)?;
         self.proposal_dir().remove(key)
     }
 
-    /// Proposals follow their notes on a rename, like bookmarks.
     pub(crate) fn move_proposals(&self, moves: &[(NoteId, NoteId)]) -> Result<()> {
         let dir = self.proposal_dir();
         for mut proposal in dir.all::<Proposal>()? {

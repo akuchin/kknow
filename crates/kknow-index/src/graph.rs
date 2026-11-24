@@ -8,30 +8,21 @@ use crate::wikilink::{Subpath, WikiKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeKind {
-    /// `[[note]]`
     Wiki,
-    /// `![[note]]`
     Embed,
-    /// `[text](note.md)`
     Markdown,
 }
 
-/// A link from one note to another.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edge {
     pub from: NoteId,
     pub to: NoteId,
     pub kind: EdgeKind,
-    /// Alias or link text, if it differs from the target.
     pub label: Option<String>,
     pub subpath: Option<Subpath>,
-    /// Range of the link in the source text of `from`. The window shows the
-    /// line of a backlink from it.
     pub span: Range<usize>,
 }
 
-/// A link with no matching note. The UI usually shows it grey, and a click
-/// creates the note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokenLink {
     pub from: NoteId,
@@ -39,7 +30,6 @@ pub struct BrokenLink {
     pub kind: EdgeKind,
 }
 
-/// A link as the parse found it, before the graph resolves its target.
 struct Found<'a> {
     from: &'a NoteId,
     kind: EdgeKind,
@@ -48,7 +38,6 @@ struct Found<'a> {
     span: Range<usize>,
 }
 
-/// Link graph of the whole vault.
 #[derive(Debug, Default)]
 pub struct LinkGraph {
     notes: BTreeSet<NoteId>,
@@ -58,8 +47,6 @@ pub struct LinkGraph {
 }
 
 impl LinkGraph {
-    /// Link resolution needs the full note list, so the graph is built at
-    /// once, not one note at a time.
     pub fn build<'a>(notes: impl IntoIterator<Item = (NoteId, &'a ParsedNote)>) -> Self {
         let notes: Vec<(NoteId, &ParsedNote)> = notes.into_iter().collect();
         let resolver = Resolver::new(notes.iter().map(|(id, _)| id));
@@ -142,7 +129,6 @@ impl LinkGraph {
         }
     }
 
-    /// Outgoing links in the order they appear in the text.
     pub fn outgoing(&self, id: &NoteId) -> &[Edge] {
         self.outgoing.get(id).map_or(&[], Vec::as_slice)
     }
@@ -155,7 +141,6 @@ impl LinkGraph {
         &self.broken
     }
 
-    /// Notes that no note links to.
     pub fn orphans(&self) -> impl Iterator<Item = &NoteId> {
         self.notes
             .iter()
@@ -171,7 +156,6 @@ impl LinkGraph {
     }
 }
 
-/// Matches link text to a vault note.
 pub struct Resolver {
     by_path: HashMap<String, NoteId>,
     by_name: HashMap<String, Vec<NoteId>>,
@@ -193,8 +177,6 @@ impl Resolver {
         Resolver { by_path, by_name }
     }
 
-    /// Standard wikilink rules: full path first, then file name, then path
-    /// suffix. Of several candidates, the one nearest to the linking note wins.
     pub fn resolve(&self, target: &str, from: &NoteId) -> Option<NoteId> {
         let target = normalize(target);
         if target.is_empty() {
@@ -209,9 +191,6 @@ impl Resolver {
             return closest(candidates, from);
         }
 
-        // Partial path `Rust/kknow` for the note `Projects/Rust/kknow`.
-        // Find candidates by file name, not by a scan of the whole vault:
-        // a link with no match must not cost a walk over all notes.
         let name = target.rsplit('/').next()?;
         let suffix = format!("/{target}");
         let matches: Vec<NoteId> = self
@@ -225,7 +204,6 @@ impl Resolver {
     }
 }
 
-/// Converts a link target to note id form.
 fn normalize(target: &str) -> String {
     let target = target.trim().replace('\\', "/");
     let target = target.trim_start_matches("./").trim_matches('/');
@@ -238,8 +216,6 @@ fn normalize(target: &str) -> String {
     without_extension.to_lowercase()
 }
 
-/// Of several notes with the same name, picks the one nearest to `from`:
-/// longest common path first, then the least deep, then alphabetical order.
 fn closest(candidates: &[NoteId], from: &NoteId) -> Option<NoteId> {
     candidates
         .iter()

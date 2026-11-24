@@ -1,21 +1,3 @@
-//! Encryption of the storage: keys, objects and object names.
-//!
-//! The plan is in `docs/encryption-2026.md`. In short:
-//!
-//! - A random [`DataKey`] encrypts the vault. The [`KeyFile`]
-//!   (`.kknow/key.json` in the storage) holds it wrapped two times: by the
-//!   passphrase (Argon2id) and by the recovery code. A new passphrase changes
-//!   only this file, not the notes.
-//! - [`Cipher::seal`] gives `"KKE1" | nonce | XChaCha20-Poly1305(...)`. The
-//!   logical key is the associated data, so an object moved to another name
-//!   does not open. The plaintext is padded to a multiple of 256 bytes, so a
-//!   small edit does not show in the size.
-//! - [`Cipher::encrypt_name`] is deterministic (AES-SIV): the same logical
-//!   key always gives the same stored key, so `get` and `put` need no table.
-//!   The whole path is encrypted, not each folder, so the tree is hidden.
-//!
-//! This module only transforms bytes. It does no input or output.
-
 use aes_siv::siv::Aes256Siv;
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
@@ -25,27 +7,18 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{Error, Result};
 
-/// The key of the key file in the storage. Its name and contents are
-/// plaintext: a device must read it before it has the key.
 pub const KEY_FILE: &str = ".kknow/key.json";
 
-/// The first bytes of each encrypted object.
 pub const MAGIC: &[u8; 4] = b"KKE1";
 
-/// The prefix of each encrypted object name.
 pub const NAME_PREFIX: &str = "e/";
 
-/// The shortest passphrase that the core accepts.
 pub const MIN_PASSPHRASE: usize = 8;
 
-/// S3 refuses a longer key.
 const MAX_STORED_KEY: usize = 1024;
 
-/// A file name has a limit of 255 bytes, so a long encrypted name becomes
-/// several folders.
 const NAME_SEGMENT: usize = 200;
 
-/// The plaintext of an object is padded to a multiple of this size.
 const PAD: usize = 256;
 
 const NONCE: usize = 24;
@@ -53,8 +26,6 @@ const SALT: usize = 16;
 const RECOVERY_BYTES: usize = 16;
 const KEY_FILE_FORMAT: u32 = 1;
 
-// Contexts for `blake3::derive_key`. They must never change: a new context
-// gives other keys, and old storages do not open.
 const CONTEXT_CONTENT: &str = "kknow 2026-11-07 sync object contents";
 const CONTEXT_NAMES: &str = "kknow 2026-11-07 sync object names";
 const CONTEXT_RECOVERY: &str = "kknow 2026-11-07 sync recovery code";
@@ -64,24 +35,20 @@ const NAME_HEADER: &[u8] = b"kknow name v1";
 const AAD_PASSPHRASE: &[u8] = b"kknow key slot passphrase";
 const AAD_RECOVERY: &[u8] = b"kknow key slot recovery";
 
-/// The key that encrypts a vault. It never goes to the storage unwrapped.
 #[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct DataKey([u8; 32]);
 
 impl DataKey {
-    /// A new random key.
     pub fn generate() -> Result<Self> {
         let mut key = DataKey([0; 32]);
         random(&mut key.0)?;
         Ok(key)
     }
 
-    /// The key as text, for the keychain of the OS.
     pub fn export(&self) -> Zeroizing<String> {
         Zeroizing::new(base32::encode(&self.0))
     }
 
-    /// The key from [`DataKey::export`].
     pub fn import(text: &str) -> Result<Self> {
         let bytes = Zeroizing::new(
             base32::decode(text.trim())
@@ -101,11 +68,6 @@ impl std::fmt::Debug for DataKey {
     }
 }
 
-/// The code that opens the vault when the passphrase is lost.
-///
-/// 128 random bits in base32, in groups of four: `K7QF-2M9X-…`. A person
-/// writes it on paper, so the text has no letters that look like digits:
-/// base32 has no `0`, `1`, `8` or `9`.
 #[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct RecoveryCode([u8; RECOVERY_BYTES]);
 
@@ -116,7 +78,6 @@ impl RecoveryCode {
         Ok(code)
     }
 
-    /// The code as a person sees it.
     pub fn display(&self) -> Zeroizing<String> {
         let plain = Zeroizing::new(base32::encode(&self.0).to_uppercase());
         let groups: Vec<&str> = plain
@@ -127,8 +88,6 @@ impl RecoveryCode {
         Zeroizing::new(groups.join("-"))
     }
 
-    /// Reads a code as a person types it: any case, with or without dashes
-    /// and spaces. `None` if the text is not a code.
     pub fn parse(text: &str) -> Option<Self> {
         let plain: Zeroizing<String> = Zeroizing::new(
             text.chars()
@@ -140,8 +99,6 @@ impl RecoveryCode {
         Some(RecoveryCode(array))
     }
 
-    /// The recovery code has 128 random bits, so a slow key derivation adds
-    /// no protection. A fast hash with a salt is enough.
     fn wrapping_key(&self, salt: &[u8]) -> Zeroizing<[u8; 32]> {
         let mut hasher = blake3::Hasher::new_derive_key(CONTEXT_RECOVERY);
         hasher.update(salt);
@@ -156,8 +113,6 @@ impl std::fmt::Debug for RecoveryCode {
     }
 }
 
-/// Argon2id parameters. They are in the key file, so a later build can make
-/// them stronger and still open old files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KdfParams {
@@ -167,9 +122,6 @@ pub struct KdfParams {
 }
 
 impl Default for KdfParams {
-    /// 128 MiB and 4 passes: about 0.2 s on an Apple M1 (measured on
-    /// 2026-11-07; 64 MiB and 3 passes took 65 ms). A device does this only
-    /// when it connects, then it keeps the data key in the keychain.
     fn default() -> Self {
         KdfParams {
             memory_kib: 128 * 1024,
@@ -192,7 +144,6 @@ impl KdfParams {
     }
 }
 
-/// The data key wrapped by one secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Slot {
     #[serde(with = "base32::serde")]
@@ -217,7 +168,6 @@ impl Slot {
         })
     }
 
-    /// `None` if the secret is wrong.
     fn unwrap(&self, wrapping: &[u8; 32], aad: &[u8]) -> Option<DataKey> {
         let nonce = XNonce::try_from(self.nonce.as_slice()).ok()?;
         let bytes = Zeroizing::new(
@@ -236,14 +186,9 @@ impl Slot {
     }
 }
 
-/// `.kknow/key.json`: the data key, wrapped by the passphrase and by the
-/// recovery code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyFile {
     format: u32,
-    /// A hash of the data key. A device with a key from the keychain checks
-    /// it before each sync: after a person turned encryption off and on
-    /// again, the old key must not write next to the new one.
     #[serde(with = "base32::serde")]
     check: Vec<u8>,
     kdf: KdfParams,
@@ -252,12 +197,10 @@ pub struct KeyFile {
 }
 
 impl KeyFile {
-    /// A new vault key with the default Argon2 parameters.
     pub fn create(passphrase: &str) -> Result<(KeyFile, DataKey, RecoveryCode)> {
         Self::create_with(passphrase, KdfParams::default())
     }
 
-    /// A new vault key. Tests give weak parameters to stay fast.
     pub fn create_with(
         passphrase: &str,
         kdf: KdfParams,
@@ -280,16 +223,10 @@ impl KeyFile {
         Ok((file, key, code))
     }
 
-    /// The data key from the passphrase or from the recovery code.
-    ///
-    /// A person types one of the two in the same field. A text that reads as
-    /// a code is tried as a code first: that check is fast.
     pub fn unlock(&self, secret: &str) -> Result<DataKey> {
         self.open(secret).map(|(key, _)| key)
     }
 
-    /// [`KeyFile::unlock`] that also tells which secret opened the key. After
-    /// the recovery code, the window asks for a new passphrase.
     pub fn open(&self, secret: &str) -> Result<(DataKey, Secret)> {
         if let Some(code) = RecoveryCode::parse(secret) {
             let wrapping = code.wrapping_key(&self.recovery.salt);
@@ -304,15 +241,12 @@ impl KeyFile {
             .ok_or(Error::WrongPassphrase)
     }
 
-    /// A new passphrase for the same data key. The notes stay as they are,
-    /// and the recovery code still works.
     pub fn change_passphrase(&mut self, key: &DataKey, passphrase: &str) -> Result<()> {
         check_passphrase(passphrase)?;
         self.passphrase = passphrase_slot(key, passphrase, self.kdf)?;
         Ok(())
     }
 
-    /// True if this file wraps the key with the given [`key_check`].
     pub fn matches(&self, check: &[u8]) -> bool {
         self.check == check
     }
@@ -334,14 +268,12 @@ impl KeyFile {
     }
 }
 
-/// The secret that opened a [`KeyFile`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Secret {
     Passphrase,
     RecoveryCode,
 }
 
-/// A hash of the data key that tells nothing about the key itself.
 pub fn key_check(key: &DataKey) -> Vec<u8> {
     blake3::derive_key(CONTEXT_CHECK, &key.0)[..16].to_vec()
 }
@@ -359,7 +291,6 @@ fn check_passphrase(passphrase: &str) -> Result<()> {
     Ok(())
 }
 
-/// Encrypts objects and their names with one data key.
 pub struct Cipher {
     content: XChaCha20Poly1305,
     names: Zeroizing<[u8; 64]>,
@@ -370,9 +301,6 @@ impl Cipher {
         Self::with_context(key, CONTEXT_CONTENT)
     }
 
-    /// The cipher of locked notes (`kknow_sync::locked`). The notes key is
-    /// not a sync key, but a separate context keeps the two uses apart even
-    /// if a person gives both the same key one day.
     pub fn for_locked_notes(key: &DataKey) -> Self {
         Self::with_context(key, CONTEXT_LOCKED)
     }
@@ -389,7 +317,6 @@ impl Cipher {
         }
     }
 
-    /// Encrypts the bytes of the object with the given logical key.
     pub fn seal(&self, key: &str, data: &[u8]) -> Result<Vec<u8>> {
         let length = u32::try_from(data.len())
             .map_err(|_| Error::Crypto(format!("{key}: the object is larger than 4 GiB")))?;
@@ -418,8 +345,6 @@ impl Cipher {
         Ok(out)
     }
 
-    /// Decrypts an object from [`Cipher::seal`]. The logical key must be the
-    /// same as at the write.
     pub fn open(&self, key: &str, bytes: &[u8]) -> Result<Vec<u8>> {
         let damaged = || Error::Damaged(key.to_string());
         let body = bytes.strip_prefix(MAGIC.as_slice()).ok_or_else(damaged)?;
@@ -444,8 +369,6 @@ impl Cipher {
         rest.get(..length).map(<[u8]>::to_vec).ok_or_else(damaged)
     }
 
-    /// The stored key for a logical key: `e/` and the base32 text of
-    /// AES-SIV, cut into segments of 200 characters.
     pub fn encrypt_name(&self, key: &str) -> Result<String> {
         let sealed = self
             .siv()
@@ -464,8 +387,6 @@ impl Cipher {
         Ok(stored)
     }
 
-    /// The logical key for a stored key. `None` for a key that this cipher
-    /// did not make: a foreign file, a plaintext note, a different key.
     pub fn decrypt_name(&self, stored: &str) -> Option<String> {
         let text: String = stored
             .strip_prefix(NAME_PREFIX)?
@@ -488,14 +409,10 @@ impl std::fmt::Debug for Cipher {
     }
 }
 
-/// True for bytes from [`Cipher::seal`]. A plaintext note can never start so:
-/// the check is for import, not for security.
 pub fn is_sealed(bytes: &[u8]) -> bool {
     bytes.starts_with(MAGIC)
 }
 
-/// The size of the padded plaintext: the length field and the data, rounded
-/// up to a multiple of [`PAD`].
 fn padded(len: usize) -> usize {
     (4 + len).div_ceil(PAD) * PAD
 }
@@ -510,10 +427,6 @@ fn random(buf: &mut [u8]) -> Result<()> {
     getrandom::fill(buf).map_err(|why| Error::Crypto(format!("no random numbers: {why}")))
 }
 
-/// RFC 4648 base32 in lowercase, without padding.
-///
-/// Not base64: `FolderProvider` can be on a file system that does not see
-/// the case of letters, and there two base64 names would be one file.
 pub(crate) mod base32 {
     const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 
@@ -537,8 +450,6 @@ pub(crate) mod base32 {
         out
     }
 
-    /// Any case. `None` for a character outside the alphabet or for bits
-    /// left over at the end that are not zero.
     pub fn decode(text: &str) -> Option<Vec<u8>> {
         let mut out = Vec::with_capacity(text.len() * 5 / 8);
         let mut buffer: u16 = 0;
@@ -552,7 +463,6 @@ pub(crate) mod base32 {
                 out.push((buffer >> bits) as u8);
             }
         }
-        // A canonical text has fewer than five spare bits, and they are zero.
         if bits >= 5 || buffer & ((1 << bits) - 1) != 0 {
             return None;
         }
@@ -579,8 +489,6 @@ pub(crate) mod base32 {
 mod tests {
     use super::*;
 
-    /// The default Argon2 parameters take 128 MiB for each call. The format is
-    /// the same.
     const WEAK: KdfParams = KdfParams {
         memory_kib: 64,
         passes: 1,
@@ -601,7 +509,6 @@ mod tests {
         }
         assert_eq!(base32::encode(b"foobar"), "mzxw6ytboi");
         assert!(base32::decode("0").is_none());
-        // The same text as "foobar", but the spare bits at the end are not zero.
         assert!(base32::decode("mzxw6ytbop").is_none());
     }
 
@@ -674,7 +581,6 @@ mod tests {
         assert_eq!(cipher.encrypt_name(key).unwrap(), stored);
         assert!(stored.starts_with(NAME_PREFIX));
         assert!(!stored.to_lowercase().contains("health"));
-        // One path segment: the folders of the vault are hidden.
         assert_eq!(stored.matches('/').count(), 1);
         assert_eq!(cipher.decrypt_name(&stored).unwrap(), key);
         assert_ne!(cipher.encrypt_name("Health/Other.md").unwrap(), stored);
@@ -734,7 +640,6 @@ mod tests {
         assert_eq!(file.unlock(&code.display()).unwrap(), key);
         assert!(file.matches(&key_check(&key)));
         assert!(!file.matches(&key_check(&DataKey::generate().unwrap())));
-        // A person types the code in another case and without dashes.
         let typed = code.display().replace('-', " ").to_lowercase();
         assert_eq!(file.unlock(&typed).unwrap(), key);
     }

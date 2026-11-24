@@ -1,26 +1,3 @@
-//! MCP (Model Context Protocol): vaults for an AI agent.
-//!
-//! This module is the protocol without a transport. It takes one JSON-RPC 2.0
-//! message and gives the reply. Two frontends carry the messages:
-//!
-//! - the app: an HTTP server on `127.0.0.1` while the window is open
-//!   (`src-tauri/src/mcp_http.rs`). It uses the vaults that the window has
-//!   open, so an edit of the agent shows in the window at once;
-//! - the CLI: `kknow mcp` on stdin and stdout, for a machine without the
-//!   window.
-//!
-//! The protocol needs only a few methods, so it is written by hand on
-//! `serde_json`: an SDK would bring an async runtime for a loop over messages.
-//!
-//! The tools give what the window gives: search, notes, links, tasks and the
-//! `@agent` comments. The comments are the reason for the server: a person
-//! leaves a task in the text, and the agent finds all of them in one call and
-//! removes each one when it is done.
-//!
-//! With several vaults each tool takes an optional `vault`, and each row starts
-//! with `[vault]`. With one vault the rows have no prefix: the agent does not
-//! need a word that is the same in each row.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -34,17 +11,13 @@ use crate::text::{backlink_row, describe, plain_snippet, task_row};
 use crate::threads::{CommentRef, ME, Status as ThreadStatus, Thread};
 use crate::{Error, Result as AppResult, Workspace};
 
-/// Protocol versions the server knows, the newest last. The server answers
-/// with the version of the client if it knows it, and else with the newest.
 pub const VERSIONS: [&str; 3] = ["2024-11-05", "2025-03-26", "2025-06-18"];
 
-// JSON-RPC error codes.
 pub const PARSE_ERROR: i64 = -32700;
 pub const INVALID_REQUEST: i64 = -32600;
 pub const METHOD_NOT_FOUND: i64 = -32601;
 pub const INVALID_PARAMS: i64 = -32602;
 
-/// A vault that a request serves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VaultRef {
     pub id: String,
@@ -52,29 +25,20 @@ pub struct VaultRef {
     pub labels: Vec<String>,
 }
 
-/// Where the vaults are. The CLI owns its workspaces; the app has them in
-/// shared slots behind a lock. The tools see only this trait.
 pub trait Host {
-    /// The vaults of this request, in list order.
     fn vaults(&self) -> &[VaultRef];
 
-    /// Reads the workspace of vault `index`. An error is a vault that cannot
-    /// open, in words for the agent.
     fn read<R>(&self, index: usize, action: impl FnOnce(&Workspace) -> R) -> Result<R, String>;
 
-    /// Changes the workspace of vault `index`.
     fn write<R>(
         &mut self,
         index: usize,
         action: impl FnOnce(&mut Workspace) -> R,
     ) -> Result<R, String>;
 
-    /// A tool changed a note. The app tells the window: its own write does not
-    /// come back from the file watcher.
     fn changed(&mut self, _index: usize, _note: &NoteId) {}
 }
 
-/// The reply to one message. A notification (no `id`) gets no reply.
 pub fn handle(host: &mut impl Host, message: &Value) -> Option<Value> {
     let Some(method) = message.get("method").and_then(Value::as_str) else {
         return Some(failure(
@@ -99,7 +63,6 @@ pub fn handle(host: &mut impl Host, message: &Value) -> Option<Value> {
     })
 }
 
-/// A JSON-RPC error reply.
 pub fn failure(id: Value, code: i64, text: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": text } })
 }
@@ -117,9 +80,6 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
-/// What the agent reads first. The last paragraph is the rule for doubt:
-/// a person would rather answer a question or pick from two versions than
-/// find a guess in the note later.
 pub const INSTRUCTIONS: &str = "kknow vaults: plain Markdown notes with [[wiki links]], #tags \
 and `- [ ]` tasks. list_vaults shows which vaults you have.\n\n\
 A person leaves tasks for you in the text as `words<!-- @agent «words»: task -->` \
@@ -134,9 +94,6 @@ disagree, ask with reply_comment and question=true, and stop work on that task. 
 If there are several good versions, propose them as separate proposals or list \
 them in the reply, and let the person choose.";
 
-/// Tool descriptions for `tools/list`. They are for the agent, so they are in
-/// English, like the rest of the protocol. The results are CLI output and stay
-/// in Russian.
 fn tools() -> Value {
     let note =
         json!({ "type": "string", "description": "Note path without .md, or only its name" });
@@ -338,14 +295,12 @@ fn tools() -> Value {
             },
         },
     ]);
-    // Each tool but `list_vaults` gets the optional `vault`: one place for all.
     for tool in tools.as_array_mut().expect("a list").iter_mut().skip(1) {
         tool["inputSchema"]["properties"]["vault"] = vault.clone();
     }
     tools
 }
 
-/// Two JSON objects in one: the properties that tools share and their own.
 fn merged(base: &Value, extra: Value) -> Value {
     let mut out = base.clone();
     if let (Some(out), Value::Object(extra)) = (out.as_object_mut(), extra) {
@@ -354,9 +309,6 @@ fn merged(base: &Value, extra: Value) -> Value {
     out
 }
 
-/// `tools/call`. A tool that fails (no such note, a stale line) is a normal
-/// result with `isError`: the agent reads the reason and tries again. Only a
-/// call that does not fit the protocol is a JSON-RPC error.
 fn call(host: &mut impl Host, params: &Value) -> Result<Value, (i64, String)> {
     let name = params
         .get("name")
@@ -392,7 +344,6 @@ fn call(host: &mut impl Host, params: &Value) -> Result<Value, (i64, String)> {
     Ok(json!({ "content": [{ "type": "text", "text": text }], "isError": is_error }))
 }
 
-/// Tool arguments with errors in words for the agent.
 struct Args<'a>(&'a Value);
 
 impl Args<'_> {
@@ -419,7 +370,6 @@ impl Args<'_> {
         self.0.get(key).and_then(Value::as_bool)
     }
 
-    /// Indexes of the vaults to look in: the one from `vault`, or all.
     fn vaults(&self, host: &impl Host) -> Result<Vec<usize>, String> {
         let vaults = host.vaults();
         let Some(wanted) = self.opt_str("vault") else {
@@ -436,10 +386,6 @@ impl Args<'_> {
             })
     }
 
-    /// The vault and the note from `note` (and `vault`, if given).
-    ///
-    /// A note name can be in two vaults. Then the agent must say which one:
-    /// a guess would change a note in the wrong vault.
     fn note(&self, host: &impl Host) -> Result<(usize, NoteId), String> {
         let raw = self.str("note")?;
         let mut found = Vec::new();
@@ -464,7 +410,6 @@ impl Args<'_> {
         }
     }
 
-    /// The `note` argument if the agent gave it: a filter for a list.
     fn opt_note(&self, host: &impl Host) -> Result<Option<(usize, NoteId)>, String> {
         match self.0.get("note") {
             None | Some(Value::Null) => Ok(None),
@@ -472,7 +417,6 @@ impl Args<'_> {
         }
     }
 
-    /// The vaults of a list: the vault of `note`, if given, or `vault`, or all.
     fn listed(&self, host: &impl Host) -> Result<(Vec<usize>, Option<NoteId>), String> {
         Ok(match self.opt_note(host)? {
             Some((index, id)) => (vec![index], Some(id)),
@@ -483,7 +427,6 @@ impl Args<'_> {
 
 type Outcome = Result<String, String>;
 
-/// A row with the vault in front, if there is more than one vault.
 fn row(host: &impl Host, index: usize, text: impl AsRef<str>) -> String {
     let vaults = host.vaults();
     if vaults.len() > 1 {
@@ -493,7 +436,6 @@ fn row(host: &impl Host, index: usize, text: impl AsRef<str>) -> String {
     }
 }
 
-/// Rows joined, or the text for an empty list.
 fn rows_or(rows: Vec<String>, empty: &str) -> String {
     if rows.is_empty() {
         empty.to_string()
@@ -502,7 +444,6 @@ fn rows_or(rows: Vec<String>, empty: &str) -> String {
     }
 }
 
-/// An app error in words for the agent.
 fn text(error: Error) -> String {
     error.to_string()
 }
@@ -527,8 +468,6 @@ fn list_vaults(host: &impl Host) -> Outcome {
     Ok(rows_or(rows, "no vaults"))
 }
 
-/// Each vault has its own index, and their scores cannot be compared. So the
-/// results go vault by vault, in list order, as in the palette.
 fn search(host: &impl Host, args: &Args) -> Outcome {
     let query = args.str("query")?;
     let limit = args.uint("limit").unwrap_or(10);
@@ -685,8 +624,6 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                         .as_deref()
                         .map(|key| format!(" [{key}]"))
                         .unwrap_or_default();
-                    // "Open" is the usual case and says nothing: only the
-                    // other states are shown.
                     let state = if status == ThreadStatus::Open {
                         String::new()
                     } else {
@@ -698,7 +635,6 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                     } else {
                         format!("{place}  \"{}\": {}", comment.anchor, comment.text)
                     };
-                    // The first message is the task itself, already in the row.
                     for message in thread.iter().flat_map(|t| t.messages.iter().skip(1)) {
                         let who = if message.from == ME {
                             "human"
@@ -716,7 +652,6 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
     Ok(rows_or(rows, "no comments"))
 }
 
-/// The name an agent gave, or a neutral word.
 fn agent_name<'a>(args: &'a Args) -> &'a str {
     args.opt_str("agent")
         .map(str::trim)
@@ -724,8 +659,6 @@ fn agent_name<'a>(args: &'a Args) -> &'a str {
         .unwrap_or(crate::threads::AGENT)
 }
 
-/// The vault and the comment of a tool call: by `id` in any vault, or by
-/// `note`, `line` and `text`.
 fn comment_ref(host: &impl Host, args: &Args) -> Result<(usize, CommentRef), String> {
     if let Some(key) = args.opt_str("id") {
         for index in args.vaults(host)? {
@@ -748,8 +681,6 @@ fn comment_ref(host: &impl Host, args: &Args) -> Result<(usize, CommentRef), Str
     Ok((index, CommentRef::Place { note, line, text }))
 }
 
-/// The note of a thread, for `Host::changed`: a reply can give the comment
-/// an ID in the note.
 fn thread_note(thread: &Thread) -> Option<NoteId> {
     NoteId::parse(&thread.note)
 }
@@ -845,8 +776,6 @@ fn propose_edit(host: &mut impl Host, args: &Args) -> Outcome {
         .write(index, |workspace| -> AppResult<_> {
             let proposal = workspace.propose(&note, edits, reason, Some(agent), comment)?;
             if let Some(key) = comment {
-                // A proposal for a comment that is not there would never close
-                // a task: take it back and tell the agent.
                 let target = CommentRef::Id(key.to_string());
                 if let Err(error) = workspace.thread_proposed(&target, agent, &proposal) {
                     workspace.remove_proposal(&proposal.id)?;
@@ -893,7 +822,6 @@ fn propose_note(host: &mut impl Host, args: &Args) -> Outcome {
     ))
 }
 
-/// The vault that has the proposal `key`.
 fn proposal_vault(host: &impl Host, args: &Args, key: &str) -> Result<usize, String> {
     for index in args.vaults(host)? {
         if host.read(index, |workspace| workspace.proposal(key).is_ok())? {
@@ -947,26 +875,15 @@ fn withdraw_proposal(host: &mut impl Host, args: &Args) -> Outcome {
     Ok(row(host, index, format!("proposal {key} withdrawn")))
 }
 
-/// File of the HTTP server settings in the app config directory.
 pub const CONFIG_FILE: &str = "mcp.json";
 
-/// The port when nobody chose one. Above the usual development ports, and
-/// not one that a known program takes by default.
 pub const DEFAULT_PORT: u16 = 7377;
 
-/// Settings of the HTTP server in the app.
-///
-/// A separate file, not a field of `AppSettings`: the settings window sends
-/// the whole `AppSettings` back on each change, and a copy it read earlier
-/// would undo a port that the MCP float changed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct McpConfig {
     pub enabled: bool,
     pub port: u16,
-    /// The agent sends it as `Authorization: Bearer <token>`. Any program of
-    /// any user on the machine can reach `127.0.0.1`, and the notes are
-    /// private.
     pub token: String,
 }
 
@@ -985,12 +902,6 @@ impl McpConfig {
         config_dir.as_ref().join(CONFIG_FILE)
     }
 
-    /// Reads the settings, and writes them back if they had no token yet.
-    ///
-    /// No file and a broken file both give the defaults: the file has
-    /// nothing a person cannot set again in two clicks. A new token means
-    /// that agents set up before need the new one, so the token stays once
-    /// it exists.
     pub fn load_or_create(path: &Path) -> AppResult<McpConfig> {
         let mut config = fs::read(path)
             .ok()
@@ -1006,7 +917,6 @@ impl McpConfig {
         Ok(config)
     }
 
-    /// Writes through a temporary file, like the other settings.
     pub fn save(&self, path: &Path) -> AppResult<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
@@ -1019,11 +929,6 @@ impl McpConfig {
     }
 }
 
-/// 128 random bits in hex.
-///
-/// `RandomState` takes its keys from the system random source, so a hash of
-/// the time with it is unpredictable. A crate for randomness would be one
-/// more dependency for one string.
 fn fresh_token() -> String {
     use std::hash::{BuildHasher, Hasher};
 
@@ -1041,8 +946,6 @@ fn fresh_token() -> String {
         .collect()
 }
 
-/// Constant-time comparison: the time of a refusal must not tell how many
-/// first characters of a guessed token were right.
 pub fn same_token(given: &str, expected: &str) -> bool {
     given.len() == expected.len()
         && given
@@ -1056,7 +959,6 @@ pub fn same_token(given: &str, expected: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// A host over workspaces in temporary folders.
     struct TestHost {
         refs: Vec<VaultRef>,
         workspaces: Vec<Workspace>,
@@ -1086,7 +988,6 @@ mod tests {
         }
     }
 
-    /// A vault for a test: name, labels, files with their text.
     type TestVault<'a> = (&'a str, &'a [&'a str], &'a [(&'a str, &'a str)]);
 
     fn host(vaults: &[TestVault]) -> TestHost {
@@ -1122,7 +1023,6 @@ mod tests {
         json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params })
     }
 
-    /// The text of a tool result and whether it is an error.
     fn tool(host: &mut TestHost, name: &str, arguments: Value) -> (String, bool) {
         let reply = handle(
             host,
@@ -1477,7 +1377,6 @@ mod tests {
         assert!(!is_error, "{text}");
         assert!(text.ends_with("- [ ] купить\n"), "{text}");
 
-        // A unique note needs no vault.
         let (_, is_error) = tool(&mut host, "read_note", json!({ "note": "Идеи" }));
         assert!(!is_error);
 

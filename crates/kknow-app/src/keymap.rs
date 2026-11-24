@@ -1,29 +1,3 @@
-//! User keys: the actions whose keys the user changed.
-//!
-//! The default keys live in the UI (`ui/src/actions.ts`): the core does not
-//! handle key presses. This file keeps only the difference from them, so an
-//! action that a new version adds or moves gets its key without a migration:
-//!
-//! ```json
-//! {
-//!   "note.new": ["Mod-Shift-n"],
-//!   "format.strike": []
-//! }
-//! ```
-//!
-//! The key is an action ID, the value is the full new list of its keys, in
-//! the CodeMirror format (`Mod-Shift-b`). An empty list removes all keys of
-//! the action.
-//!
-//! The file is global, next to the app settings: keys are a habit of the
-//! person, not a property of a vault. A vault from someone else also must not
-//! be able to move ⌘S.
-//!
-//! People edit the file by hand, so one bad entry does not reject the file:
-//! the entry is skipped and reported. The core does not know the action list,
-//! so it keeps unknown IDs: a newer version may know them, and the UI skips
-//! them.
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,41 +8,29 @@ use crate::{Error, Result};
 
 pub const KEYMAP_FILE: &str = "keybindings.json";
 
-/// Modifiers of the CodeMirror format. `Mod` is ⌘ on macOS and Ctrl elsewhere.
 const MODIFIERS: [&str; 6] = ["Mod", "Cmd", "Meta", "Ctrl", "Alt", "Shift"];
 
-/// Characters that are written as themselves, the same set as `CODES` in
-/// `ui/src/actions.ts`.
 const SYMBOLS: &str = "\\,./=-;'`[]";
 
-/// Action ID → its keys.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Keymap(pub BTreeMap<String, Vec<String>>);
 
-/// Result of reading the file.
 #[derive(Debug, Default)]
 pub struct Loaded {
     pub keymap: Keymap,
-    /// Entries that were skipped, or the whole file if it does not parse.
     pub problems: Vec<Problem>,
 }
 
-/// Why an entry of the file, or the whole file, was skipped.
-///
-/// It is data, not a ready text: the window translates `problem.key.<code>`
-/// with the fields, in its own language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "KeyProblem"))]
 pub enum Problem {
-    /// The file does not parse or does not read.
     File {
         path: String,
         detail: String,
     },
-    /// The value of the action is not a list of keys.
     NotAList {
         action: String,
     },
@@ -133,11 +95,6 @@ impl Keymap {
         config_dir.as_ref().join(KEYMAP_FILE)
     }
 
-    /// Reads the file. No file means no changes.
-    ///
-    /// A file that does not parse is not moved aside, unlike the settings: the
-    /// window reads it again on each focus, and the user may be in the middle
-    /// of an edit. It gives no changes and a problem.
     pub fn load(path: &Path) -> Result<Loaded> {
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,
@@ -172,8 +129,6 @@ impl Keymap {
         Ok(loaded)
     }
 
-    /// Writes through a temporary file. A file that does not parse is kept as
-    /// `.json.broken` first: it is a hand edit, and the save must not lose it.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
@@ -193,8 +148,6 @@ impl Keymap {
     }
 }
 
-/// The keys of one entry: a list of valid keys. One bad key skips the entry,
-/// not only the key: half of a list is not what the person wrote.
 fn keys_of(action: &str, value: &serde_json::Value) -> std::result::Result<Vec<String>, Problem> {
     let action = || action.to_string();
     let list = value
@@ -211,10 +164,6 @@ fn keys_of(action: &str, value: &serde_json::Value) -> std::result::Result<Vec<S
         .collect()
 }
 
-/// Checks a key in the CodeMirror format: modifiers, then one key name.
-///
-/// The UI checks the same rules when it parses the key; the check here gives
-/// the person a message instead of a key that silently does nothing.
 pub fn check_key(action: &str, key: &str) -> std::result::Result<(), Problem> {
     let (modifiers, name) = split(key);
     let action = action.to_string();
@@ -249,7 +198,6 @@ pub fn check_key(action: &str, key: &str) -> std::result::Result<(), Problem> {
     let single = chars.next().filter(|_| chars.as_str().is_empty());
     let valid = match single {
         Some(char) => char.is_ascii_alphanumeric() || SYMBOLS.contains(char),
-        // A key code: `ArrowLeft`, `F5`, `NumpadAdd`, `Enter`.
         None => {
             name.starts_with(|char: char| char.is_ascii_uppercase())
                 && name.chars().all(|char| char.is_ascii_alphanumeric())
@@ -266,7 +214,6 @@ pub fn check_key(action: &str, key: &str) -> std::result::Result<(), Problem> {
     }
 }
 
-/// `Mod-Shift-b` → (`[Mod, Shift]`, `b`). A dash at the end is the key: `Mod--`.
 fn split(key: &str) -> (Vec<&str>, &str) {
     let (head, name) = match key.strip_suffix('-') {
         Some(head) if head.is_empty() || head.ends_with('-') => {

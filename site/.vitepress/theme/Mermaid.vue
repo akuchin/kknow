@@ -7,7 +7,6 @@ const { isDark } = useData();
 const svg = ref("");
 let count = 0;
 
-// Mermaid needs the browser, and it is large: load it only here.
 async function draw() {
   const { default: mermaid } = await import("mermaid");
   mermaid.initialize({
@@ -36,8 +35,6 @@ watch(isDark, draw);
   min-height: 48px;
 }
 
-/* Mermaid measures the labels outside the page. The paragraph styles of
-   the page would make them taller than the measure and cut the last line. */
 .mermaid-diagram :deep(foreignObject p) {
   margin: 0;
   line-height: 1.5;

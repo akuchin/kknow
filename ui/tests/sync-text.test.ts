@@ -1,5 +1,3 @@
-// Sync texts of the window (`src/sync-text.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -12,7 +10,6 @@ import {
   type SyncWords,
 } from "../src/sync-text.ts";
 
-/** Texts as keys with their values: the tests check what the code asks for. */
 const words: SyncWords = {
   t: (key, params = {}) => {
     const values = Object.entries(params).map(([name, value]) => `${name}=${value}`);

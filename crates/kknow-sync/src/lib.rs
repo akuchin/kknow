@@ -1,30 +1,3 @@
-//! Sync of a vault with remote storage.
-//!
-//! The rule is the same as in all of kknow: the files on disk are the source
-//! of truth. The cloud keeps a copy of the notes and a manifest, that is, a
-//! list of what this copy must contain. Everything else (what is new here,
-//! what was deleted there, what diverged) comes from three manifests: the
-//! local one, the remote one, and the one both sides agreed on last time.
-//!
-//! ```
-//! use kknow_core::Vault;
-//! use kknow_sync::{MemoryProvider, SyncEngine};
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let dir = tempfile::tempdir()?;
-//! # std::fs::write(dir.path().join("Index.md"), "# Contents")?;
-//! let mut vault = Vault::open(dir.path())?;
-//! let engine = SyncEngine::new(MemoryProvider::new());
-//!
-//! let report = engine.run(&mut vault)?;
-//!
-//! assert_eq!(report.uploaded.len(), 1);
-//! // The second run does nothing.
-//! assert!(engine.run(&mut vault)?.is_empty());
-//! # Ok(())
-//! # }
-//! ```
-
 pub mod config;
 pub mod crypto;
 pub mod encrypted;
@@ -59,11 +32,6 @@ pub use provider::{MemoryProvider, SyncProvider};
 #[cfg(feature = "s3")]
 pub use s3::{S3Config, S3Provider};
 
-/// A sync engine for the saved settings: the provider and the conflict policy.
-///
-/// Both frontends build the engine here. Before, each one called `connect`
-/// and then `with_policy`, and a frontend that forgot the second call would
-/// silently sync with the default policy.
 pub fn engine(
     config: &RemoteConfig,
     secret: Option<String>,
@@ -72,13 +40,6 @@ pub fn engine(
     Ok(SyncEngine::new(connect(config, secret, key)?).with_policy(config.policy))
 }
 
-/// Connects to storage from the saved settings.
-///
-/// This is one entry point for both frontends: the window and the terminal
-/// must read the settings the same way. The secret comes as a separate
-/// argument because the settings file never contains it. So does the data
-/// key of an encrypted storage: without it, an encrypted storage is
-/// [`Error::Locked`].
 pub fn connect(
     config: &RemoteConfig,
     secret: Option<String>,
@@ -92,8 +53,6 @@ pub fn connect(
     Ok(Box::new(Encrypted::new(storage, key)))
 }
 
-/// The storage under the encryption, if there is encryption. The encryption
-/// operations ([`encrypted::init`], [`encrypted::unlock`]) work on it.
 pub fn storage(config: &RemoteConfig, secret: Option<String>) -> Result<Box<dyn SyncProvider>> {
     if config.encrypted && config.is_git() {
         return Err(Error::GitEncrypted);

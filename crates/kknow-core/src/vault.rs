@@ -10,10 +10,6 @@ use crate::error::{Error, Result};
 use crate::note::{Note, NoteId, is_markdown_extension};
 use crate::trash::Trash;
 
-/// A folder of notes on disk.
-///
-/// The vault keeps only metadata in memory and reads content on demand. So
-/// opening a large vault costs one directory walk.
 #[derive(Debug)]
 pub struct Vault {
     root: PathBuf,
@@ -38,8 +34,6 @@ impl Vault {
         Ok(vault)
     }
 
-    /// Reads the file tree again from scratch. For one changed file, use
-    /// [`Vault::refresh`].
     pub fn rescan(&mut self) -> Result<()> {
         let root = self.root.clone();
         let mut notes = BTreeMap::new();
@@ -95,7 +89,6 @@ impl Vault {
         self.notes.is_empty()
     }
 
-    /// Notes in lexicographic order of their ids.
     pub fn notes(&self) -> impl ExactSizeIterator<Item = &Note> {
         self.notes.values()
     }
@@ -112,7 +105,6 @@ impl Vault {
         self.notes.contains_key(id)
     }
 
-    /// Absolute path to the note file. The note can exist or not exist yet.
     pub fn path_for(&self, id: &NoteId) -> PathBuf {
         self.root.join(id.to_relative_path())
     }
@@ -124,10 +116,6 @@ impl Vault {
         fs::read_to_string(&note.path).map_err(|source| Error::io(&note.path, source))
     }
 
-    /// Writes the note and creates it if necessary.
-    ///
-    /// The write goes through a temporary file next to the target. A rename on
-    /// one file system is atomic, so a reader never sees half a note.
     pub fn write(&mut self, id: &NoteId, content: &str) -> Result<&Note> {
         let path = self.path_for(id);
         if let Some(parent) = path.parent() {
@@ -154,10 +142,6 @@ impl Vault {
         }
     }
 
-    /// Updates the metadata of one note from its file on disk.
-    ///
-    /// If the file is gone, the note leaves the vault. This handles edits made
-    /// outside the app: a full [`Vault::rescan`] for one file is too costly.
     pub fn refresh(&mut self, id: &NoteId) -> Result<Option<&Note>> {
         let path = self.path_for(id);
 
@@ -184,7 +168,6 @@ impl Vault {
         Ok(self.notes.get(id))
     }
 
-    /// Moves the note to the [`Trash`]. Nothing leaves the disk for good.
     pub fn remove(&mut self, id: &NoteId) -> Result<()> {
         let note = self
             .get(id)
@@ -203,7 +186,6 @@ impl Vault {
         Trash::new(&self.root)
     }
 
-    /// Restores a trash entry and returns its notes, now in the vault again.
     pub fn restore(&mut self, entry: &str) -> Result<Vec<NoteId>> {
         let restored = self.trash().restore(entry)?;
         for id in &restored {
@@ -212,14 +194,6 @@ impl Vault {
         Ok(restored)
     }
 
-    /// Moves the note to a new id.
-    ///
-    /// Rename and move to another folder are one operation: the id is the
-    /// path, and only a different part of it changes. Creates the target
-    /// folder. Does not overwrite a taken path.
-    ///
-    /// On a case-insensitive disk `Note` and `note` are one file, and this
-    /// rename is valid too: "taken" here means "taken by another file".
     pub fn rename(&mut self, from: &NoteId, to: &NoteId) -> Result<&Note> {
         let source = self
             .get(from)
@@ -246,7 +220,6 @@ impl Vault {
         Ok(self.notes.entry(to.clone()).or_insert(note))
     }
 
-    /// Copies the note to a new id. Does not overwrite a taken path.
     pub fn copy(&mut self, from: &NoteId, to: &NoteId) -> Result<&Note> {
         let source = self
             .get(from)
@@ -273,12 +246,6 @@ impl Vault {
         Ok(self.notes.entry(to.clone()).or_insert(note))
     }
 
-    /// Moves a folder with all its content to a new path.
-    ///
-    /// Returns "old, new" id pairs for the notes inside: the vault knows
-    /// nothing about search and the graph, and the caller must rebuild them.
-    /// A move of a folder into itself has no meaning, so it is rejected before
-    /// any disk operation.
     pub fn rename_folder(&mut self, from: &str, to: &str) -> Result<Vec<(NoteId, NoteId)>> {
         let from_key = folder_key(from)?;
         let to_key = folder_key(to)?;
@@ -330,8 +297,6 @@ impl Vault {
         Ok(moved)
     }
 
-    /// All vault folders, empty ones included. Empty folders have no notes, so
-    /// the note list cannot give them, but the side panel tree shows them.
     pub fn folders(&self) -> Result<Vec<String>> {
         let walker = WalkDir::new(&self.root)
             .follow_links(false)
@@ -355,17 +320,12 @@ impl Vault {
         Ok(folders)
     }
 
-    /// Creates the folder with its parents. An existing folder is not an error.
     pub fn create_folder(&self, relative: &str) -> Result<()> {
         let key = folder_key(relative)?;
         let path = self.root.join(&key);
         fs::create_dir_all(&path).map_err(|source| Error::io(&path, source))
     }
 
-    /// Moves a folder with all its content to the [`Trash`].
-    ///
-    /// Returns the ids of the removed notes: the vault knows nothing about
-    /// search and the graph, and the caller must clean them up.
     pub fn remove_folder(&mut self, relative: &str) -> Result<Vec<NoteId>> {
         let key = folder_key(relative)?;
         let path = self.root.join(&key);
@@ -388,12 +348,6 @@ impl Vault {
     }
 }
 
-/// Folder path from the vault root in canonical form: `/` as the separator,
-/// no empty segments.
-///
-/// All segments that start with a dot are rejected: `..` leaves the vault,
-/// and the scanner does not see hidden folders, so such a "created" folder
-/// looks as if it does not exist.
 fn folder_key(relative: &str) -> Result<String> {
     let normalized = relative.replace('\\', "/");
     let trimmed = normalized.trim_matches('/');
@@ -407,11 +361,6 @@ fn folder_key(relative: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-/// Checks if the path is taken by something other than the moved file.
-///
-/// On a case-insensitive disk `exists()` for `note.md` says "yes" when the disk
-/// has `Note.md`, and this is the same file. Both have one canonical path, so
-/// it tells "taken" from "the same file".
 fn is_taken(target: &Path, source: &Path) -> bool {
     if !target.exists() {
         return false;
@@ -436,8 +385,6 @@ fn has_markdown_extension(path: &Path) -> bool {
         .is_some_and(is_markdown_extension)
 }
 
-/// Hidden files and service folders (`.git`, `.trash`, our `.kknow`) are not
-/// part of the vault.
 pub(crate) fn is_hidden(entry: &DirEntry) -> bool {
     entry.depth() > 0
         && entry
@@ -532,7 +479,6 @@ mod tests {
         assert!(!vault.contains(&id));
         assert!(!dir.path().join("Projects/Rust/kknow.md").exists());
 
-        // The trash is hidden: a rescan does not bring the note back.
         vault.rescan().unwrap();
         assert!(!vault.contains(&id));
 
@@ -685,7 +631,6 @@ mod tests {
         assert_eq!(vault.read(&id).unwrap(), "# Today\n");
         assert!(dir.path().join("Daily/2026-07-18.md").is_file());
 
-        // The temporary file must not survive the write.
         assert!(!dir.path().join("Daily/2026-07-18.md.tmp").exists());
     }
 

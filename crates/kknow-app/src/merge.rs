@@ -1,11 +1,3 @@
-//! Joins two versions of a shared file of `.kknow` after both machines
-//! changed it.
-//!
-//! The sync engine knows only bytes; this module knows the formats. A note
-//! conflict gives two copies, and the person picks. A shared file has no such
-//! person: nobody opens a copy of `bookmarks.json`. So each format joins both
-//! sides itself, and the result is a superset of both where possible.
-
 use kknow_sync::{DataKey, RemoteConfig, SyncEngine, SyncProvider};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -14,9 +6,6 @@ use crate::bookmarks::{BOOKMARKS_PATH, Bookmarks};
 use crate::proposals::{EditState, PROPOSALS_DIR, Proposal};
 use crate::threads::{THREADS_DIR, Thread};
 
-/// The sync engine for the saved settings, with the merge of shared files.
-///
-/// Both frontends build the engine here, so neither one can forget the merge.
 pub fn sync_engine(
     config: &RemoteConfig,
     secret: Option<String>,
@@ -25,8 +14,6 @@ pub fn sync_engine(
     Ok(kknow_sync::engine(config, secret, key)?.with_merge(merge_shared))
 }
 
-/// [`kknow_sync::shared::Merge`] for the files of this app. `None` for a file
-/// that does not parse: then sync keeps the local version.
 pub fn merge_shared(key: &str, mine: &[u8], theirs: &[u8]) -> Option<Vec<u8>> {
     if key == BOOKMARKS_PATH {
         let mine: Bookmarks = serde_json::from_slice(mine).ok()?;
@@ -58,8 +45,6 @@ fn to_bytes<T: Serialize>(value: &T) -> Vec<u8> {
     bytes
 }
 
-/// All messages of both sides in time order; the state of the side that
-/// changed the thread last.
 fn merge_threads(mine: Thread, theirs: Thread) -> Thread {
     let (mut newer, older) = if theirs.updated > mine.updated {
         (theirs, mine)
@@ -76,8 +61,6 @@ fn merge_threads(mine: Thread, theirs: Thread) -> Thread {
     newer
 }
 
-/// A decision on an edit wins over "pending": one machine reviewed it, the
-/// other did not see the review yet. Of two decisions, the newer side wins.
 fn merge_proposals(mine: Proposal, theirs: Proposal) -> Proposal {
     let (mut newer, older) = if theirs.updated > mine.updated {
         (theirs, mine)

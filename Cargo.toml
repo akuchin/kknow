@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "src-tauri"]
+members = ["crates/*", "src-tauri", "tools/*"]
 
 [workspace.package]
 # Release builds take the version from the git tag (see release.yml).

@@ -1,6 +1,3 @@
-// Tests for the Confluence page comment (`src/confluence-field.ts`). Run:
-// `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

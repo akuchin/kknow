@@ -1,77 +1,33 @@
-//! Locked notes: single notes that stay encrypted on the local disk.
-//!
-//! Sync encryption ([`crate::encrypted`]) protects only the storage. A locked
-//! note is ciphertext also in the vault folder, in the trash and in git.
-//!
-//! - One password for each vault opens all its locked notes. A random notes
-//!   key encrypts them; `.kknow/lock.json` keeps that key wrapped by the
-//!   password and by a recovery code. It is the same envelope as the
-//!   [`KeyFile`] of sync, so a new password rewrites only that file.
-//! - A locked note keeps its name and its `.md` extension. The file is text
-//!   ([`seal`](NotesKey::seal)), so the vault, sync and git still read it as
-//!   a note:
-//!
-//!   ```text
-//!   -----BEGIN KKNOW LOCKED NOTE-----
-//!   This note is locked. Open it in kknow with the vault password.
-//!   Key: <a hash of the notes key>
-//!   <the sealed text in base32, on one line>
-//!   -----END KKNOW LOCKED NOTE-----
-//!   ```
-//!
-//!   The sealed text is on one line on purpose: git merges different lines
-//!   of a file by itself, and a merge of two halves of two ciphertexts is
-//!   garbage. With one line, two edits always conflict, and the conflict
-//!   becomes a copy.
-//! - The `Key:` line tells "this note was locked with another notes key"
-//!   (two devices that set a password before a sync) from a damaged file.
-//!
-//! This module only transforms text. The app reads and writes the files.
-
 use crate::crypto::{self, Cipher, DataKey, KdfParams, KeyFile, RecoveryCode, base32};
 use crate::{Error, Result};
 
-/// The key file of locked notes, relative to the vault root. It syncs with
-/// the notes, so a second device opens them with the same password.
 pub const LOCK_FILE: &str = ".kknow/lock.json";
 
-/// The first line of a locked note.
 pub const BEGIN: &str = "-----BEGIN KKNOW LOCKED NOTE-----";
 
-/// The last line of a locked note.
 pub const END: &str = "-----END KKNOW LOCKED NOTE-----";
 
-/// The line for a person who opens the file in another editor.
 const NOTICE: &str = "This note is locked. Open it in kknow with the vault password.";
 
 const KEY_PREFIX: &str = "Key: ";
 
-/// The associated data of each locked note. Not the note path: a rename must
-/// not need a new encryption.
 const AAD: &str = "kknow locked note v1";
 
-/// True for the text of a locked note. Only the first line counts, so the
-/// check is cheap enough for each read of a note.
 pub fn is_locked(bytes: &[u8]) -> bool {
     let first = bytes.split(|&b| b == b'\n').next().unwrap_or_default();
     let first = first.strip_suffix(b"\r").unwrap_or(first);
     first == BEGIN.as_bytes()
 }
 
-/// A new key file of locked notes: the key file, the notes key and the
-/// recovery code that a person sees once.
 pub fn create(password: &str) -> Result<(KeyFile, NotesKey, RecoveryCode)> {
     create_with(password, KdfParams::default())
 }
 
-/// [`create`] with other Argon2 parameters. Tests give weak ones to stay fast.
 pub fn create_with(password: &str, kdf: KdfParams) -> Result<(KeyFile, NotesKey, RecoveryCode)> {
     let (file, key, code) = KeyFile::create_with(password, kdf)?;
     Ok((file, NotesKey::new(&key), code))
 }
 
-/// The key that encrypts the locked notes of one vault. It lives only in
-/// memory: it is never written to disk or to the keychain.
 pub struct NotesKey {
     key: DataKey,
     cipher: Cipher,
@@ -87,13 +43,10 @@ impl NotesKey {
         }
     }
 
-    /// The data key, for a new password in the key file.
     pub fn data_key(&self) -> &DataKey {
         &self.key
     }
 
-    /// The text of a locked note for `text`. Each call gives a different
-    /// text: the nonce is random.
     pub fn seal(&self, text: &str) -> Result<String> {
         let sealed = self.cipher.seal(AAD, text.as_bytes())?;
         Ok(format!(
@@ -103,7 +56,6 @@ impl NotesKey {
         ))
     }
 
-    /// The plain text of a locked note from [`NotesKey::seal`].
     pub fn open(&self, locked: &str) -> Result<String> {
         let armor = Armor::parse(locked).ok_or_else(damaged)?;
         if armor.check != self.check {
@@ -125,15 +77,12 @@ fn damaged() -> Error {
     Error::Damaged("locked note".into())
 }
 
-/// The parts of a locked note.
 struct Armor<'a> {
     check: &'a str,
     body: &'a str,
 }
 
 impl<'a> Armor<'a> {
-    /// The lines in order; empty lines and `\r` do not count, so a file that
-    /// an editor saved with other line ends still opens.
     fn parse(text: &'a str) -> Option<Self> {
         let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
         if lines.next()? != BEGIN {

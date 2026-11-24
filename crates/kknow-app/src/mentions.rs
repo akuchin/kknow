@@ -1,9 +1,3 @@
-//! Unlinked mentions of a note, and the change of a mention into a link.
-//!
-//! The names of a note are its file name and the aliases from its
-//! frontmatter. The search index gives the notes that can have a name; the
-//! exact check (`kknow_index::mention::find`) then finds the places.
-
 use std::collections::BTreeSet;
 use std::ops::Range;
 
@@ -12,22 +6,16 @@ use kknow_core::NoteId;
 use crate::lines::LineContext;
 use crate::{Error, Result, Workspace};
 
-/// How many candidate notes the index gives for one name. A name that many
-/// notes have is a common word, and a longer list helps nobody.
 const CANDIDATES: usize = 500;
 
-/// A place where the name of a note stands as plain text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mention {
     pub from: NoteId,
-    /// Byte range of the name in the source text.
     pub span: Range<usize>,
     pub context: LineContext,
 }
 
 impl Workspace {
-    /// The names a mention of note `id` can use: the file name and the
-    /// aliases, each one time without case.
     pub fn names_of(&self, id: &NoteId) -> Vec<String> {
         let mut seen = BTreeSet::new();
         std::iter::once(id.name().to_string())
@@ -40,8 +28,6 @@ impl Workspace {
             .collect()
     }
 
-    /// Places in other notes where a name of note `id` stands as plain text:
-    /// by note, then in text order.
     pub fn unlinked_mentions(&self, id: &NoteId) -> Result<Vec<Mention>> {
         let names = self.names_of(id);
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
@@ -54,7 +40,6 @@ impl Workspace {
 
         let mut mentions = Vec::new();
         for from in candidates {
-            // A note that cannot be read now has no mentions to show.
             let Ok(source) = self.read(&from) else {
                 continue;
             };
@@ -71,12 +56,6 @@ impl Workspace {
         Ok(mentions)
     }
 
-    /// Changes the mention at `span` of note `from` into a link to `target`
-    /// and returns the new text of `from`.
-    ///
-    /// The span comes from an older read. The text is read again, and the
-    /// span must still be a mention with the same text; else the note
-    /// changed, and the change is an error, not a guess.
     pub fn link_mention(
         &mut self,
         from: &NoteId,
@@ -103,14 +82,10 @@ impl Workspace {
             format!("[[{link}|{text}]]")
         };
         let changed = format!("{}{written}{}", &source[..span.start], &source[span.end..]);
-        // As `set_task`: the text was read a moment ago, the change is one
-        // link, and a conflict copy for it would be noise.
         self.save(from, &changed)?;
         Ok(changed)
     }
 
-    /// The shortest link from `from` that finds `target`: its name, else its
-    /// full path.
     fn link_text(&self, from: &NoteId, target: &NoteId) -> String {
         let name = target.name();
         if self.resolve(name, from).as_ref() == Some(target) {

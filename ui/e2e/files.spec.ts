@@ -26,7 +26,6 @@ test("a standalone file from the list opens, saves and gives way to a note", asy
 });
 
 test("a file picked in the dialog joins the list and opens", async ({ page }) => {
-  // The mock dialog is a prompt with the path.
   page.once("dialog", (dialog) => dialog.accept("/Users/me/Desktop/draft.md"));
   await page.locator("#open-file").click();
 

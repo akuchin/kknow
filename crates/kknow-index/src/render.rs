@@ -8,57 +8,24 @@ use crate::graph::Resolver;
 use crate::parse::{ParsedNote, options, parse};
 use crate::wikilink::{WikiKind, WikiLink};
 
-/// URL scheme of the links that the renderer makes. The UI catches clicks on
-/// them: `kknow://note/<id>` opens a note, `kknow://missing/<target>` is a
-/// note that does not exist, `kknow://tag/<name>` filters by tag.
 pub const SCHEME: &str = "kknow://";
 
-/// Code block language that marks a mermaid diagram.
 pub const MERMAID_LANG: &str = "mermaid";
 
-/// Class of the block with the diagram source. The frontend draws it: mermaid
-/// is JavaScript, and the core does not have it.
 pub const MERMAID_CLASS: &str = "mermaid";
 
-/// Class of an image from a note. Its path is in `data-src`, not `src`: the
-/// webview does not read the disk, and the window gets the bytes from the core
-/// with a separate command.
 pub const IMAGE_CLASS: &str = "note-image";
 
-/// Class that highlights the words an agent note refers to.
 pub const AGENT_NOTE_CLASS: &str = "agent-note";
 
-/// Class of an empty mark "source line N starts here" (`data-line`).
-///
-/// The preview is HTML, and it does not show which note line a paragraph comes
-/// from. The window needs this for bookmarks: the icon goes next to the mark,
-/// and ⌘⇧B in reading mode gets the line from it. The mark is at the start of
-/// a paragraph, heading and list item. Before a code block, table and rule it
-/// is a separate zero-height block (`is-block`): it cannot go inside `<pre>`
-/// and `<table>`.
 pub const LINE_MARK_CLASS: &str = "line-mark";
 
-/// Marker of a line mark in the event stream while it goes through the
-/// filters. A note cannot contain NUL: the parser replaces it with U+FFFD. So
-/// raw HTML from the text cannot pass for a line mark.
 const LINE_SENTINEL: &str = "\0kknow-line:";
 
-/// Renders a note to HTML.
-///
-/// Wikilinks and tags become plain markdown links before parsing. So the
-/// renderer sees them, and the code does not need to change the parser event
-/// stream.
 pub fn to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
     render(source, from, &mut Context::new(resolver, None, from), false)
 }
 
-/// The same as [`to_html`], and `![[note]]` and `![[note#Heading]]` show the
-/// content of that note or section in place.
-///
-/// An embed is a block: inside a paragraph, the paragraph closes before it
-/// and opens again after it. Embeds go [`MAX_EMBED_DEPTH`] levels deep; a
-/// deeper one, and one that would show a part already open above it (a
-/// loop), stays a link in a `div.embed.embed-stopped` with `data-reason`.
 pub fn to_html_with_embeds(
     source: &str,
     from: &NoteId,
@@ -68,28 +35,18 @@ pub fn to_html_with_embeds(
     render(source, from, &mut Context::new(resolver, Some(embeds), from), false)
 }
 
-/// How deep embeds go: a note, its embed, an embed in that, and one more.
 pub const MAX_EMBED_DEPTH: usize = 3;
 
-/// Class of an embedded note or section.
 pub const EMBED_CLASS: &str = "embed";
 
-/// Where the text of an embedded note comes from. The index does not read the
-/// disk: the workspace does.
 pub trait EmbedSource {
-    /// The text of note `id`, or of its part `subpath` (`Heading`,
-    /// `Part#Heading`, `^block`), without frontmatter. `None` when the note
-    /// or the part does not exist.
     fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String>;
 }
 
-/// The state of one render with its nested embeds.
 struct Context<'a> {
     resolver: &'a Resolver,
     embeds: Option<&'a dyn EmbedSource>,
-    /// How deep the text being rendered is: 0 for the note itself.
     depth: usize,
-    /// The parts open above the current text, to stop a loop.
     open: Vec<(NoteId, Option<String>)>,
 }
 
@@ -111,18 +68,10 @@ fn render(source: &str, from: &NoteId, context: &mut Context<'_>, fragment: bool
     markdown_to_html(&prepared, &lines, fragment.then_some(from), &embedded)
 }
 
-/// Renders a part of note `from` to show inside a different note: a hover
-/// preview or an embed.
-///
-/// There are no line marks: their numbers would be lines of a different text,
-/// and the window would put bookmarks and task clicks on the wrong note. An
-/// image gets `data-note`: the window loads it relative to `from`, not to the
-/// open note.
 pub fn fragment_to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
     render(source, from, &mut Context::new(resolver, None, from), true)
 }
 
-/// [`fragment_to_html`] with embeds, as in [`to_html_with_embeds`].
 pub fn fragment_to_html_with_embeds(
     source: &str,
     from: &NoteId,
@@ -132,24 +81,14 @@ pub fn fragment_to_html_with_embeds(
     render(source, from, &mut Context::new(resolver, Some(embeds), from), true)
 }
 
-/// Where a piece of the prepared text comes from in the source.
 struct Piece {
-    /// Start of the piece in the prepared text.
     prepared: usize,
-    /// Start in the source.
     source: usize,
-    /// Copied as is, so offsets inside the piece match. If not, it is a
-    /// rewritten link or tag, and all offsets inside it map to its start.
     copied: bool,
 }
 
-/// Source line numbers for offsets in the prepared text.
-///
-/// Preparation rewrites links and drops the frontmatter, so parser offsets do
-/// not map to the source directly.
 struct LineMap {
     pieces: Vec<Piece>,
-    /// Start offsets of the source lines.
     starts: Vec<usize>,
 }
 
@@ -167,8 +106,6 @@ impl LineMap {
     }
 }
 
-/// `embedded` gets the HTML of each embed; the prepared text has a
-/// `kknow://embed/<index>` link in its place.
 fn rewrite(
     source: &str,
     parsed: &ParsedNote,
@@ -205,7 +142,6 @@ fn rewrite(
     }
     replacements.sort_by_key(|(span, _)| span.start);
 
-    // Frontmatter is not rendered: it is metadata, not note text.
     let mut cursor = parsed
         .frontmatter
         .as_ref()
@@ -242,9 +178,6 @@ fn rewrite(
     (out, LineMap { pieces, starts })
 }
 
-/// The HTML of a note embed, or `None` when the link is no note embed: a plain
-/// link, an image, an embed inside the same note, a missing note, or a render
-/// without an embed source.
 fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Option<String> {
     if link.kind != WikiKind::Embed || link.is_internal() || kknow_core::image::is_image(&link.target) {
         return None;
@@ -280,7 +213,6 @@ fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Opti
     if context.depth >= MAX_EMBED_DEPTH {
         return stopped("depth");
     }
-    // A missing part stays a plain link, as a link to a missing note does.
     let text = source.embed_text(&id, sub.as_deref())?;
 
     context.depth += 1;
@@ -297,8 +229,6 @@ fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Opti
 }
 
 fn link_markdown(link: &WikiLink, from: &NoteId, resolver: &Resolver) -> String {
-    // `![[diagram.png|300]]` is an embedded image. From here it takes the same
-    // path as `![300](diagram.png)`, with the size in the alt text.
     if link.kind == WikiKind::Embed && kknow_core::image::is_image(&link.target) {
         let alt = escape_text(link.alias.as_deref().unwrap_or_default());
         let target = link.target.replace(['<', '>'], "");
@@ -313,8 +243,6 @@ fn link_markdown(link: &WikiLink, from: &NoteId, resolver: &Resolver) -> String 
     }
 
     match resolver.resolve(&link.target, from) {
-        // `#` after the ID keeps the heading or the block: a click goes there,
-        // and a hover preview shows that part. Inside the ID, `#` is encoded.
         Some(id) => {
             let part = match &link.subpath {
                 Some(crate::wikilink::Subpath::Heading(heading)) => format!("#{}", encode(heading)),
@@ -334,17 +262,12 @@ fn subpath_text(subpath: &crate::wikilink::Subpath) -> String {
     }
 }
 
-/// `fragment` is the note of a fragment (see `fragment_to_html`): no line
-/// marks, and images name their note.
 fn markdown_to_html(
     source: &str,
     lines: &LineMap,
     fragment: Option<&NoteId>,
     embedded: &[String],
 ) -> String {
-    // Text is merged into one event per paragraph piece. The parser splits it
-    // at special characters, but the words to highlight are searched at the end
-    // of one piece.
     let marked = Parser::new_ext(source, options())
         .into_offset_iter()
         .flat_map(|(event, range)| match fragment {
@@ -359,12 +282,9 @@ fn markdown_to_html(
     if embedded.is_empty() {
         return html;
     }
-    // An embed alone in its paragraph leaves the paragraph empty.
     html.replace("<p></p>", "")
 }
 
-/// Is the open paragraph empty so far, but for its line mark? Then it goes
-/// away, and the mark becomes a block mark before the embed.
 fn paragraph_is_empty(out: &mut Vec<Event<'_>>) -> bool {
     let mark = match out.last() {
         Some(Event::Html(html)) if html.starts_with(LINE_SENTINEL) => Some(html.to_string()),
@@ -382,10 +302,6 @@ fn paragraph_is_empty(out: &mut Vec<Event<'_>>) -> bool {
     true
 }
 
-/// Puts the HTML of each embed in place of its `kknow://embed/<index>` link.
-///
-/// An embed is a block, and a block cannot stand in a paragraph. So inside a
-/// paragraph the embed closes it and opens a new one after itself.
 fn embeds<'a>(events: Vec<Event<'a>>, embedded: &[String]) -> Vec<Event<'a>> {
     if embedded.is_empty() {
         return events;
@@ -405,8 +321,6 @@ fn embeds<'a>(events: Vec<Event<'a>>, embedded: &[String]) -> Vec<Event<'a>> {
                     .and_then(|index| embedded.get(index));
                 if let Some(html) = html {
                     let html = if paragraph && paragraph_is_empty(&mut out) {
-                        // The embed starts the paragraph: no empty paragraph
-                        // before it. Its line mark becomes a block mark.
                         format!("{html}<p>")
                     } else if paragraph {
                         format!("</p>{html}<p>")
@@ -431,9 +345,6 @@ fn embeds<'a>(events: Vec<Event<'a>>, embedded: &[String]) -> Vec<Event<'a>> {
     out
 }
 
-/// Puts a line mark at the start of a block. In a paragraph, heading and list
-/// item it goes after the opening tag. Before code, a table and a rule it goes
-/// before the tag.
 fn mark_line(event: Event<'_>, line: usize) -> Vec<Event<'_>> {
     let mark = |kind: &str| Event::Html(format!("{LINE_SENTINEL}{kind}{line}").into());
     match event {
@@ -443,7 +354,6 @@ fn mark_line(event: Event<'_>, line: usize) -> Vec<Event<'_>> {
     }
 }
 
-/// Turns a mark from the event stream into an empty `<span data-line>`.
 fn line_marks(event: Event<'_>) -> Event<'_> {
     let Event::Html(html) = &event else {
         return event;
@@ -458,28 +368,16 @@ fn line_marks(event: Event<'_>) -> Event<'_> {
     Event::InlineHtml(format!("<span class=\"{class}\" data-line=\"{line}\"></span>").into())
 }
 
-/// Removes raw HTML and turns agent notes into highlights.
-///
-/// Raw HTML from a note must not reach the webview: the note can come from
-/// sync or from another person's vault, and a script in it runs with the app
-/// rights. An agent note `<!-- @agent «words»: text -->` is the exception, but
-/// the HTML gets our `<mark>` with escaped text, not the note itself.
-///
-/// The words just before the comment are highlighted if they match the words
-/// in it. If not, only an icon stays: the task exists, but the words near it
-/// were changed.
 fn agent_notes<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
     let mut out: Vec<Event<'a>> = Vec::new();
 
     for event in events {
         let html = match event {
-            // Our own line mark, not text from the note.
             Event::Html(ref html) if html.starts_with(LINE_SENTINEL) => {
                 out.push(event);
                 continue;
             }
             Event::InlineHtml(html) => html,
-            // An agent note on its own line has nothing to highlight.
             Event::Html(_) => continue,
             other => {
                 out.push(other);
@@ -517,17 +415,11 @@ fn agent_notes<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
     out
 }
 
-/// Turns an image into an `<img>` that the window fills in.
-///
-/// The alt text can carry a size: `![diagram|300](a.png)` sets the width,
-/// `|300x200` sets width and height, `![300](a.png)` is a size without alt
-/// text. CSS limits the rest, so a huge screenshot does not break reading.
 fn images<'a>(
     events: impl Iterator<Item = Event<'a>>,
     note: Option<&NoteId>,
 ) -> impl Iterator<Item = Event<'a>> {
     let note = note.map(|id| escape_html(id.as_str()));
-    // `Some` while inside an image: the URL and the alt text collected so far.
     let mut image: Option<(String, String)> = None;
 
     events.filter_map(move |event| match event {
@@ -569,7 +461,6 @@ fn image_html<'a>(target: &str, alt: &str, note: Option<&str>) -> Event<'a> {
     )
 }
 
-/// `300` or `300x200`: image size in pixels.
 fn parse_size(raw: &str) -> Option<(u32, Option<u32>)> {
     let raw = raw.trim();
     let (width, height) = match raw.split_once('x') {
@@ -579,14 +470,7 @@ fn parse_size(raw: &str) -> Option<(u32, Option<u32>)> {
     Some((width.parse().ok()?, height))
 }
 
-/// Turns ```` ```mermaid ```` into `<pre class="mermaid">` with the diagram
-/// source inside.
-///
-/// Code block markup does not work for the frontend: mermaid reads the element
-/// content as text, and `<pre><code>` adds a nested tag. The frontend draws
-/// the diagram: mermaid is JavaScript, and the core does not have it.
 fn mermaid_blocks<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = Event<'a>> {
-    // `Some` while inside a diagram block: its text collected so far.
     let mut diagram: Option<String> = None;
 
     events.filter_map(move |event| match event {
@@ -614,16 +498,12 @@ fn mermaid_blocks<'a>(events: impl Iterator<Item = Event<'a>>) -> impl Iterator<
     })
 }
 
-/// `mermaid`, `Mermaid`, `mermaid theme=dark`: the block language is the first word.
 fn is_mermaid(info: &str) -> bool {
     info.split_whitespace()
         .next()
         .is_some_and(|lang| lang.eq_ignore_ascii_case(MERMAID_LANG))
 }
 
-/// Escapes text inside a tag. The diagram source comes from a note, that is,
-/// possibly from another person's vault, and a `<script>` in it would run with
-/// the app rights.
 fn escape_html(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -649,7 +529,6 @@ fn escape_text(text: &str) -> String {
     escaped
 }
 
-/// Percent-encodes a link path. `/` stays a separator.
 fn encode(raw: &str) -> String {
     let mut encoded = String::with_capacity(raw.len());
     for byte in raw.bytes() {
@@ -739,7 +618,6 @@ mod tests {
         let html = render("---\ntags: [секрет]\n---\n\n# Тело\n", &[]);
 
         assert!(!html.contains("секрет"), "{html}");
-        // Frontmatter lines count: the heading is line 5 of the file.
         assert!(
             html.contains(&format!("<h1>{}Тело</h1>", mark(5))),
             "{html}"
@@ -857,7 +735,6 @@ mod tests {
         );
 
         assert!(html.contains(&format!("<p>{}абзац", mark(3))), "{html}");
-        // `push_html` puts a newline before the block itself.
         assert!(
             html.contains(&format!("{}\n<pre>", block_mark(6))),
             "{html}"
@@ -878,8 +755,6 @@ mod tests {
 
     #[test]
     fn rewritten_links_do_not_shift_the_lines() {
-        // Links and tags become longer markup before parsing. Line numbers
-        // must not shift because of this.
         let html = render("[[Rust|язык]] и #тег\n\n[[Rust]]\n\nтретий\n", &["Rust"]);
 
         assert!(html.contains(&format!("<p>{}<a", mark(1))), "{html}");
@@ -910,7 +785,6 @@ mod tests {
 
         assert!(html.contains(r#"<pre class="mermaid">"#), "{html}");
         assert!(html.contains("graph TD;"), "{html}");
-        // Only text inside: mermaid reads the element content as is.
         assert!(!html.contains("<code"), "{html}");
     }
 
@@ -984,7 +858,6 @@ mod tests {
         assert!(html.contains(r#"href="kknow://note/Rust#^key""#), "{html}");
     }
 
-    /// Notes for embeds: the whole text for `None`, a section by its key.
     struct Notes(Vec<(&'static str, Option<&'static str>, &'static str)>);
 
     impl EmbedSource for Notes {
@@ -1012,7 +885,6 @@ mod tests {
         assert!(html.contains(r#"<div class="embed" data-note="Plan" data-sub="Goals">"#), "{html}");
         assert!(html.contains(r#"<a href="kknow://note/Plan#Goals">Plan</a>"#), "{html}");
         assert!(html.contains("<strong>it</strong>"), "{html}");
-        // The embedded text has no line marks of its own.
         let body = &html[html.find("embed-body").unwrap()..html.find("</div></div>").unwrap()];
         assert!(!body.contains("data-line"), "{html}");
         assert!(!html.contains("<p></p>"), "{html}");

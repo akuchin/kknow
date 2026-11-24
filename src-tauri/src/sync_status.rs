@@ -1,10 +1,3 @@
-//! Sync status of each vault and the auto-sync schedule.
-//!
-//! Each vault syncs separately and does not block the others, so each has its
-//! own status: off, idle, syncing (N of M), conflicts, error. The window shows
-//! it in the status bar and never opens a modal dialog for it. Another vault
-//! only gets a chip.
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,54 +8,35 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::state::{AppState, VaultSlot};
 
-/// Event name for the frontend.
 pub const EVENT: &str = "sync-status";
 
-/// How often the scheduler wakes up to check if a sync is due.
 const TICK: Duration = Duration::from_secs(1);
 
-/// The maximum number of times the pause doubles after failures.
 const BACKOFF_LIMIT: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub enum SyncState {
-    /// Sync is not configured.
     Off,
-    /// Configured and not active now.
     Idle,
     Syncing,
-    /// Sync finished, but the folder has conflict copies.
     Conflict,
-    /// The last attempt failed.
     Error,
 }
 
-/// What to show for one vault.
-///
-/// The whole struct is comparable. Windows redraw on each event, so sending an
-/// unchanged status makes them redraw for nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SyncStatus {
     pub vault: String,
     pub state: SyncState,
-    /// Sync progress: how many actions of the total are done.
     pub done: usize,
     pub total: usize,
-    /// End of the last successful sync, in ms since the epoch. The window
-    /// formats the time ("2 min ago") because the format depends on the
-    /// language.
     pub at: Option<u64>,
-    /// What went wrong: a code with values, like all other errors.
     pub message: Option<crate::errors::ErrorView>,
-    /// Number of conflict copies in the folder.
     pub conflicts: usize,
-    /// Sync target: a bucket or a folder.
     pub location: Option<String>,
-    /// Auto-sync interval in minutes; `0` means manual only.
     pub auto_sync_minutes: u32,
 }
 
@@ -82,17 +56,12 @@ impl SyncStatus {
     }
 }
 
-/// Statuses of all vaults. They live apart from `AppState`: that one is about
-/// folders, this one is about sync, and they do not need each other.
 #[derive(Default)]
 pub struct SyncStatuses {
     inner: Mutex<HashMap<String, SyncStatus>>,
 }
 
 impl SyncStatuses {
-    /// Status of one vault. In the app, the `sync_status` command returns it
-    /// and also recalculates what is visible without a sync. Tests need direct
-    /// reads.
     #[cfg(test)]
     pub fn get(&self, vault: &str) -> SyncStatus {
         self.lock()
@@ -107,12 +76,6 @@ impl SyncStatuses {
         all
     }
 
-    /// Changes the status and sends it to the windows if it changed.
-    ///
-    /// Silence on no change is required, not an optimisation. On each event the
-    /// settings window reads the statuses again with `sync_statuses`, and that
-    /// command recalculates them. A "nothing changed" event closes the loop,
-    /// and the vaults section redraws without end.
     pub fn update<R: Runtime>(
         &self,
         app: &AppHandle<R>,
@@ -140,7 +103,6 @@ impl SyncStatuses {
     }
 }
 
-/// Current time in ms since the epoch, the format `Date` in the window uses.
 pub fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -148,11 +110,6 @@ pub fn now_millis() -> u64 {
         .unwrap_or_default()
 }
 
-/// Decides when to sync automatically.
-///
-/// It is separate from the thread, so tests check the rule without real-time
-/// waits. After a failure the pause doubles: if the network is down, there is
-/// no point to retry each minute. A successful sync resets the counter.
 #[derive(Debug)]
 pub struct Cadence {
     interval: Duration,
@@ -173,15 +130,12 @@ impl Cadence {
         self.interval = interval;
     }
 
-    /// How long to wait until the next attempt.
     pub fn delay(&self) -> Duration {
         self.interval * 2u32.pow(self.failures.min(BACKOFF_LIMIT))
     }
 
     pub fn due(&self, now: Instant) -> bool {
         match self.last {
-            // The first sync is not delayed: the app just opened, and notes
-            // must be fresh at once.
             None => true,
             Some(last) => now.duration_since(last) >= self.delay(),
         }
@@ -198,11 +152,6 @@ impl Cadence {
     }
 }
 
-/// Starts auto-sync for one vault.
-///
-/// The thread lives while the vault is open. On each tick it reads the setting
-/// again: the interval can change, and a thread restart is not necessary. A
-/// tick is skipped if a sync is already running.
 pub fn schedule<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
     std::thread::spawn(move || {
         let mut cadence = Cadence::new(Duration::ZERO);
@@ -225,18 +174,12 @@ pub fn schedule<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
 
             match crate::sync::exchange(&app, &slot) {
                 Ok(_) => cadence.succeeded(Instant::now()),
-                // The status bar already shows the error. Here we only make
-                // the next attempt later.
                 Err(_) => cadence.failed(Instant::now()),
             }
         }
     });
 }
 
-/// The last sync before the window closes.
-///
-/// The wait is short. Sync is idempotent, so the next start finishes an
-/// incomplete one. The user must not look at a frozen window.
 pub fn sync_on_close<R: Runtime>(app: &AppHandle<R>, wait: Duration) {
     let state = app.state::<AppState>();
     let slots: Vec<Arc<VaultSlot>> = state
@@ -265,7 +208,6 @@ pub fn sync_on_close<R: Runtime>(app: &AppHandle<R>, wait: Duration) {
     while Instant::now() < deadline && wait_for.recv_timeout(TICK).is_ok() {}
 }
 
-/// The window is already closing: do not start the sync a second time.
 pub static CLOSING: AtomicBool = AtomicBool::new(false);
 
 pub fn start_closing() -> bool {
@@ -276,8 +218,6 @@ pub fn start_closing() -> bool {
 mod tests {
     use super::*;
 
-    /// A recalculation with no change must not wake the windows. They read
-    /// the statuses again in response, and the event comes back.
     #[test]
     fn an_unchanged_status_is_not_broadcast() {
         use std::sync::atomic::AtomicUsize;
@@ -344,7 +284,6 @@ mod tests {
             "пауза упирается в потолок, а не растёт до суток"
         );
 
-        // A successful sync restores the normal interval.
         cadence.succeeded(start);
         assert_eq!(cadence.delay(), Duration::from_secs(60));
     }

@@ -2,13 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { t } from "./window";
 
-/** The recovery code of the mock storage (`MOCK_CODE` in `src/mock/core.ts`). */
 const CODE = "K7QF-2MXA-PL4D-WN6E-ZR3T-YB5H-JC";
 
-/**
- * The vault page with a folder storage. `encrypted` makes the storage one
- * that another device already encrypted: this device has no key yet.
- */
 async function openVault(page: Page, encrypted = false): Promise<void> {
   await page.addInitScript((encrypted) => {
     sessionStorage.setItem(
@@ -41,7 +36,6 @@ test("encryption turns on and shows the recovery code one time", async ({ page }
   await encrypt.click();
   await expect(page.locator(".settings-form-error")).toHaveText(t("settings.encryption.mismatch"));
 
-  // The core checks the length: its error comes in the language of the window.
   await field(page, "settings.encryption.passphrase").fill("short");
   await field(page, "settings.encryption.repeat").fill("short");
   await encrypt.click();
@@ -67,14 +61,12 @@ test("a second device unlocks an encrypted storage with the recovery code", asyn
   await openVault(page, true);
   await page.getByRole("button", { name: t("palette.action.sync") }).click();
 
-  // The sync said "locked": the page asks for the passphrase.
   const secret = field(page, "settings.encryption.secret");
   await expect(secret).toBeVisible();
   await secret.fill("wrong horse");
   await page.getByRole("button", { name: t("settings.encryption.unlock") }).click();
   await expect(page.locator(".settings-form-error")).toHaveText(t("error.wrongPassphrase"));
 
-  // The code works in any case and without dashes.
   await secret.fill(CODE.replaceAll("-", "").toLowerCase());
   await page.getByRole("button", { name: t("settings.encryption.unlock") }).click();
   await expect(secret).toHaveCount(0);

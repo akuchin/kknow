@@ -58,7 +58,6 @@ pub enum Error {
     #[error("cannot install the update: {0}")]
     Update(String),
 
-    // In the test build, secrets live in memory, so this error cannot happen.
     #[cfg_attr(test, allow(dead_code))]
     #[error("keychain: {0}")]
     Keychain(String),
@@ -81,22 +80,15 @@ pub enum Error {
     Run(#[from] kknow_run::Error),
 }
 
-/// The error goes to the window as a code with values, so the window can show
-/// it in its own language (`errors.rs`).
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         ErrorView::from(self).serialize(serializer)
     }
 }
 
-/// An open vault: the registry entry and the parsed workspace.
-///
-/// Each vault has its own lock, not one lock for the app. A network sync in
-/// one vault must not delay a note save in another.
 pub struct VaultSlot {
     pub entry: VaultEntry,
     workspace: Mutex<Workspace>,
-    /// The vault was removed from the list: the watcher must exit.
     closed: AtomicBool,
 }
 
@@ -126,8 +118,6 @@ impl VaultSlot {
         self.closed.load(Ordering::SeqCst)
     }
 
-    /// A poisoned mutex means a panic in another command. The state is not
-    /// reliable, so we must not continue with it.
     fn lock(&self) -> MutexGuard<'_, Workspace> {
         self.workspace
             .lock()
@@ -135,56 +125,22 @@ impl VaultSlot {
     }
 }
 
-/// App vaults: the list from the registry and the vaults that are open.
-///
-/// Vaults open lazily (on switch, search or sync) and do not close again. Each
-/// has its own search index in memory, and a rebuild on each visit costs more
-/// than keeping it.
-///
-/// Paths and the open hook are set once at start, so they are `OnceLock`, not
-/// `Mutex`: a read takes no lock, and two locks cannot meet in a wrong order.
-/// Only the data that changes while the app runs is under a `Mutex`.
 #[derive(Default)]
 pub struct AppState {
-    /// Where to write the registry. `None` means nowhere (tests use this).
     registry_file: OnceLock<Option<PathBuf>>,
-    /// Where to read commands from. `None` means no commands.
-    ///
-    /// The caller sets the path; this code does not look it up. The real file
-    /// is in the settings of the person who runs the tests, and `cargo test`
-    /// must not touch it. The keyring has the same reason.
     commands_file: OnceLock<Option<PathBuf>>,
-    /// Global themes folder. `None` means no global themes; same reason as for
-    /// commands.
     themes_dir: OnceLock<Option<PathBuf>>,
     registry: Mutex<VaultRegistry>,
     open: Mutex<HashMap<String, Arc<VaultSlot>>>,
-    /// What to start for a vault that just opened.
-    ///
-    /// The watcher needs an `AppHandle`. It comes with the window and is generic
-    /// over the runtime. Storing it in the state would make all commands
-    /// generic over the runtime, so a closure goes here at start.
     #[allow(clippy::type_complexity)]
     on_open: OnceLock<Box<dyn Fn(Arc<VaultSlot>) + Send + Sync>>,
-    /// Where to write the loose files list. `None` means nowhere (tests).
     files_file: OnceLock<Option<PathBuf>>,
-    /// Loose files opened without a vault.
     files: Mutex<OpenFiles>,
-    /// An "open" request from outside that the window did not take yet.
-    ///
-    /// On a cold start, a double click on a file arrives before the window
-    /// loads and listens to events, so the event is lost. The request waits
-    /// here until the window takes it: on load or on the event, whichever
-    /// comes first.
     pending: Mutex<Option<Opened>>,
-    /// Commands that run now, by the run ID from the window, with their stop
-    /// flags. "Stop" in the output popup sets the flag of its run.
     runs: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl AppState {
-    /// Registers a run and gives its stop flag. The ID comes from the window:
-    /// the run reports to the window only at its end, too late to name it.
     pub fn start_run(&self, id: &str) -> Arc<AtomicBool> {
         let stop = Arc::new(AtomicBool::new(false));
         lock(&self.runs).insert(id.to_string(), stop.clone());
@@ -195,8 +151,6 @@ impl AppState {
         lock(&self.runs).remove(id);
     }
 
-    /// Asks a run to stop. `false` if it already ended: the stop came too late,
-    /// which is not an error.
     pub fn stop_run(&self, id: &str) -> bool {
         match lock(&self.runs).get(id) {
             Some(stop) => {
@@ -207,19 +161,15 @@ impl AppState {
         }
     }
 
-    /// Sets the loaded registry and the file to write it to.
-    /// `None` for the file means write nothing: tests use this.
     pub fn use_registry(&self, file: Option<PathBuf>, registry: VaultRegistry) {
         set_once(&self.registry_file, file);
         *lock(&self.registry) = registry;
     }
 
-    /// Sets the commands file; `None` means the app has no commands.
     pub fn use_commands(&self, file: Option<PathBuf>) {
         set_once(&self.commands_file, file);
     }
 
-    /// Sets the global themes folder; `None` means no global themes.
     pub fn use_themes(&self, dir: Option<PathBuf>) {
         set_once(&self.themes_dir, dir);
     }
@@ -228,16 +178,10 @@ impl AppState {
         self.themes_dir.get().cloned().flatten()
     }
 
-    /// Path of the commands file, to show in the file manager.
     pub fn commands_path(&self) -> Option<PathBuf> {
         self.commands_file.get().cloned().flatten()
     }
 
-    /// Commands of this machine.
-    ///
-    /// They are read from disk on each request, not kept in memory. Users edit
-    /// the file by hand in another window and will not restart the app for a
-    /// new command. Themes are read the same way.
     pub fn commands(&self) -> Result<CommandSet> {
         let Some(path) = self.commands_file.get().and_then(Option::as_ref) else {
             return Ok(CommandSet::default());
@@ -263,7 +207,6 @@ impl AppState {
         self.active().is_some()
     }
 
-    /// Vault ID by its ⌘1…⌘9 number.
     pub fn by_hotkey(&self, number: usize) -> Option<String> {
         self.registry()
             .by_hotkey(number)
@@ -289,8 +232,6 @@ impl AppState {
         Ok(entry)
     }
 
-    /// Forgets a vault: removes the registry entry and the slot in memory, and
-    /// stops the watcher. Files on disk stay.
     pub fn remove(&self, id: &str) -> Result<VaultEntry> {
         let mut registry = self.registry();
         let removed = registry.remove(id)?;
@@ -309,8 +250,6 @@ impl AppState {
         Ok(())
     }
 
-    /// Changes the label color. The color name comes from the window. We refuse
-    /// unknown names, otherwise the label becomes invisible.
     pub fn set_color(&self, id: &str, color: &str) -> Result<()> {
         let color = LabelColor::ALL
             .into_iter()
@@ -329,7 +268,6 @@ impl AppState {
         Ok(())
     }
 
-    /// Vault by ID; `None` means the active vault. Opens a closed vault.
     pub fn slot(&self, id: Option<&str>) -> Result<Arc<VaultSlot>> {
         let entry = match id {
             Some(id) => self
@@ -344,14 +282,9 @@ impl AppState {
             return Ok(slot);
         }
 
-        // Parse and index without the lock on the open map. Otherwise opening a
-        // large vault delays commands to all other vaults.
         let fresh = Arc::new(VaultSlot::open(entry.clone())?);
 
         let mut open = lock(&self.open);
-        // Someone else can open the vault while we read the disk. Then their
-        // slot wins: two `Workspace`s for one folder mean two watchers and two
-        // inconsistent parsed copies.
         if let Some(existing) = open.get(&entry.id) {
             return Ok(existing.clone());
         }
@@ -364,15 +297,10 @@ impl AppState {
         Ok(fresh)
     }
 
-    /// An open vault, which we can query without a disk read.
     pub fn opened(&self, id: &str) -> Option<Arc<VaultSlot>> {
         lock(&self.open).get(id).cloned()
     }
 
-    /// Vault order for a search in all vaults: the active vault first.
-    ///
-    /// Tantivy scores from different indexes are not strictly comparable, so
-    /// results show in groups by vault, not in one mixed list.
     pub fn search_order(&self) -> Vec<VaultEntry> {
         let registry = self.registry();
         let active = registry.active().map(|entry| entry.id.clone());
@@ -382,13 +310,11 @@ impl AppState {
         order
     }
 
-    /// Sets the loaded loose files list and the file to write it to.
     pub fn use_files(&self, file: Option<PathBuf>, files: OpenFiles) {
         set_once(&self.files_file, file);
         *lock(&self.files) = files;
     }
 
-    /// Loose files. Files missing from disk are forgotten here.
     pub fn files(&self) -> Vec<PathBuf> {
         let mut files = self.files_list();
         let forgotten = files.prune();
@@ -401,25 +327,18 @@ impl AppState {
         entries
     }
 
-    /// Remembers a loose file and returns its canonical path.
     pub fn remember_file(&self, path: &std::path::Path) -> Result<PathBuf> {
         let added = self.files_list().add(path)?;
         self.persist_files();
         Ok(added)
     }
 
-    /// Forgets a loose file. The file stays on disk.
     pub fn forget_file(&self, path: &std::path::Path) {
         if self.files_list().remove(path) {
             self.persist_files();
         }
     }
 
-    /// Path of a loose file, if it is in the list.
-    ///
-    /// The window can read and write only opened files: picked in a dialog,
-    /// dropped on the window, or opened from Finder. Otherwise the save command
-    /// could write to any path the frontend sends.
     pub fn known_file(&self, raw: &str) -> Result<PathBuf> {
         let path = std::path::Path::new(raw);
         if !self.files_list().contains(path) {
@@ -432,19 +351,16 @@ impl AppState {
         Ok(path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
     }
 
-    /// The vault that contains the file, and the note ID of the file there.
     pub fn locate(&self, path: &std::path::Path) -> Option<(String, String)> {
         self.registry()
             .locate(path)
             .map(|(entry, id)| (entry.id.clone(), id.as_str().to_string()))
     }
 
-    /// Keeps an "open this" request until the window takes it.
     pub fn set_pending(&self, opened: Opened) {
         *lock(&self.pending) = Some(opened);
     }
 
-    /// Takes the pending request. A second call returns nothing.
     pub fn take_pending(&self) -> Option<Opened> {
         lock(&self.pending).take()
     }
@@ -453,8 +369,6 @@ impl AppState {
         lock(&self.files)
     }
 
-    /// Writes the loose files list. A write error goes to the log, as for the
-    /// registry.
     fn persist_files(&self) {
         let Some(path) = self.files_file.get().and_then(Option::as_ref) else {
             return;
@@ -468,8 +382,6 @@ impl AppState {
         lock(&self.registry)
     }
 
-    /// Writes the registry. A write error must not fail an action that already
-    /// happened in memory, so we report it to the log.
     fn persist(&self) {
         let Some(path) = self.registry_file.get().and_then(Option::as_ref) else {
             return;
@@ -480,21 +392,16 @@ impl AppState {
     }
 }
 
-/// A poisoned mutex means a panic in another command. The state is not
-/// reliable, so we must not continue with it; same rule as for a vault.
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().expect("the state is poisoned")
 }
 
-/// Sets a path that is fixed for the life of the app. A second set is a bug in
-/// the start code: the first value is already in use.
 fn set_once(cell: &OnceLock<Option<PathBuf>>, value: Option<PathBuf>) {
     if cell.set(value).is_err() {
         panic!("the path is set once, at start");
     }
 }
 
-/// A state with a ready vault list, for command tests.
 #[cfg(test)]
 pub fn testing(roots: &[&std::path::Path]) -> AppState {
     let state = AppState::default();
@@ -502,8 +409,6 @@ pub fn testing(roots: &[&std::path::Path]) -> AppState {
     for root in roots {
         registry.add(root, None).expect("каталог добавлен в реестр");
     }
-    // No file: a test must leave nothing in the settings of the person who
-    // runs it.
     state.use_registry(None, registry);
     state
 }
@@ -535,8 +440,6 @@ mod tests {
         let slot = state.slot(None).expect("активное открывается");
         assert_eq!(slot.entry.id, ids[0]);
         assert!(state.opened(&ids[0]).is_some());
-        // A second call returns the same slot: two parses of one folder mean
-        // two watchers and two diverged copies.
         assert!(Arc::ptr_eq(&slot, &state.slot(Some(&ids[0])).unwrap()));
         assert!(state.opened(&ids[1]).is_none(), "чужое не открывалось");
     }
@@ -551,7 +454,6 @@ mod tests {
         let busy = state.slot(Some(&ids[0])).unwrap();
         let free = state.slot(Some(&ids[1])).unwrap();
 
-        // One vault is busy for a long time, as during a sync.
         let holder = std::thread::spawn(move || {
             busy.write(|_| {
                 std::thread::sleep(Duration::from_millis(400));
@@ -583,7 +485,6 @@ mod tests {
 
         assert!(slot.is_closed(), "наблюдателю пора выходить");
         assert!(state.opened(&ids[0]).is_none());
-        // The other vault becomes active: the window must show something.
         assert_eq!(state.active().unwrap().id, ids[1]);
     }
 

@@ -4,13 +4,10 @@ import { editorText, openWindow, t } from "./window";
 
 test.beforeEach(async ({ page }) => {
   await openWindow(page);
-  // Live preview draws links and lists only in the "Edit" mode; the default
-  // mode of the mock is "Side by side".
   await page.locator('.mode-switch button[data-mode="edit"]').click();
   await expect(page.locator("#app")).toHaveAttribute("data-mode", "edit");
 });
 
-/** Puts the cursor at the end of the note on a new line. */
 async function typeAtEnd(page: Page, text: string): Promise<void> {
   await editorText(page).click();
   await page.keyboard.press("ControlOrMeta+End");
@@ -20,16 +17,8 @@ async function typeAtEnd(page: Page, text: string): Promise<void> {
 
 const completion = (page: Page) => page.locator(".cm-tooltip-autocomplete");
 
-/**
- * CodeMirror ignores Enter for `interactionDelay` (75 ms) after the list
- * opens or changes: a user who types Enter at that moment wants a new line,
- * not an option they did not see. Then Enter is a line break. A test sees
- * the list at once and is faster than that, so it waits out the delay, with
- * a margin for a slow runner.
- */
 const PICK_DELAY = 150;
 
-/** Takes the selected option of the completion list that shows `text`. */
 async function pick(page: Page, text: string): Promise<void> {
   await expect(completion(page)).toContainText(text);
   await page.waitForTimeout(PICK_DELAY);
@@ -37,14 +26,9 @@ async function pick(page: Page, text: string): Promise<void> {
   await expect(completion(page)).toBeHidden();
 }
 
-/**
- * A drawn link by its text. The Markdown grammar also sees `[x]` inside
- * `[[x]]`, so a wikilink has two nested link marks; the inner one is last.
- */
 const liveLink = (page: Page, text: string) =>
   page.locator("#editor .cm-live-link", { hasText: text }).last();
 
-/** The visible text of the editor lines, in order. */
 async function lines(page: Page): Promise<string[]> {
   return page.locator("#editor .cm-line").allTextContents();
 }
@@ -54,7 +38,6 @@ test("[[ offers notes, and the pick closes the link", async ({ page }) => {
   await pick(page, "kknow");
   await page.keyboard.type(" done");
 
-  // The cursor left the link, so it shows as a link: no brackets.
   await expect(liveLink(page, "kknow")).toBeVisible();
   await expect(editorText(page)).toContainText("See kknow done");
 });
@@ -63,7 +46,6 @@ test("[[note# offers the headings of that note", async ({ page }) => {
   await typeAtEnd(page, "[[kknow#Pl");
   await pick(page, "Plans");
   await expect(editorText(page)).toContainText("kknow#Plans");
-  // The pick closed the link: the next word goes after it.
   await page.keyboard.type(" next");
   await expect(liveLink(page, "kknow#Plans")).toBeVisible();
 });
@@ -104,7 +86,6 @@ test("Tab nests a list item and ⇧Tab takes it back", async ({ page }) => {
 
   await page.keyboard.press("Tab");
   await expect(page.locator("#editor .cm-list-bullet", { hasText: "◦" })).toHaveCount(1);
-  // The focus stays in the editor.
   await page.keyboard.type("!");
   await expect(editorText(page)).toContainText("second!");
 
@@ -150,8 +131,6 @@ test("a wide code block scrolls on its own, not the whole editor", async ({ page
   await page.keyboard.press("ControlOrMeta+Home");
   await expect(page.locator("#editor .cm-code-block")).toBeVisible();
 
-  // The text shares the scroller row with the gutter: with or without line
-  // numbers, the row must fit, or the right edge of the text is cut off.
   const overflow = () =>
     page.evaluate(() => {
       const scroller = document.querySelector("#editor .cm-scroller") as HTMLElement;

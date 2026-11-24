@@ -1,5 +1,3 @@
-// Tests for the list keys (`src/list-editing.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

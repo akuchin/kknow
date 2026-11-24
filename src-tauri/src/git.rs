@@ -1,10 +1,3 @@
-//! Git from the window: the connection, the changes panel and the sync steps.
-//!
-//! The algorithm is in `kknow_sync::git`. This module finds the program (the
-//! app settings), the token (the keychain or a variable) and the lock: the
-//! commands that touch the index take the vault lock, so a commit never meets
-//! a running merge, and a note save never meets the merge either.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -18,8 +11,6 @@ use crate::settings::SettingsState;
 use crate::state::{AppState, Error, Result, VaultSlot};
 use crate::sync::{SyncSettings, settings_of};
 
-/// The `git` program from the app settings. kknow does not guess it: the
-/// settings have a "Find" button, and the person confirms the path.
 fn program(settings: &SettingsState) -> Result<PathBuf> {
     settings
         .get()
@@ -28,12 +19,6 @@ fn program(settings: &SettingsState) -> Result<PathBuf> {
         .ok_or(Error::GitPathNotSet)
 }
 
-/// The token for the repository at `url`.
-///
-/// `typed` is a token that the person just typed in the form; it wins over
-/// the keychain. A missing token for the "token" or "variable" way is an
-/// error: without it git would fall back to its own sign-in, and the person
-/// would not see why their choice did not work.
 fn token(
     settings: &GitSettings,
     url: Option<&str>,
@@ -55,7 +40,6 @@ fn token(
     }
 }
 
-/// git for a vault with git settings.
 pub fn open<R: Runtime>(app: &AppHandle<R>, root: &Path, config: &RemoteConfig) -> Result<Git> {
     let Provider::Git(settings) = &config.provider else {
         return Err(Error::NotConfigured);
@@ -73,10 +57,6 @@ fn git_of<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot) -> Result<Git> {
     open(app, &root, &config)
 }
 
-/// Tells the window which notes a merge or a checkout changed.
-///
-/// The workspace already read them again, so the watcher does not report them
-/// as new: this event is the only news for the window.
 pub fn announce<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot, paths: &[String]) {
     let root = &slot.entry.path;
     let mut changed = VaultChanged {
@@ -99,23 +79,16 @@ pub fn announce<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot, paths: &[Strin
     }
 }
 
-/// Where git is on this machine: a suggestion for the settings field.
 #[tauri::command(async)]
 pub fn git_locate() -> Option<String> {
     kknow_run::locate("git").map(|path| path.to_string_lossy().into_owned())
 }
 
-/// `git version` of a path: the check that the field points to git.
 #[tauri::command(async)]
 pub fn git_version(path: String) -> Result<String> {
     Ok(Git::new(path, std::env::temp_dir()).version()?)
 }
 
-/// Connects the vault to a repository, or changes how it signs in.
-///
-/// `url` is needed only for an empty vault: a vault that is already a
-/// repository takes the address of `origin`. `token` = `None` keeps the token
-/// in the keychain, as the S3 secret field does.
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn connect_git<R: Runtime>(
@@ -146,8 +119,6 @@ pub fn connect_git<R: Runtime>(
     let typed = tidy(token);
     let git = probe.with_token(self::token(&wanted, known.as_deref(), typed.clone())?);
 
-    // A checkout writes the notes of the remote into the vault: the vault
-    // lock keeps autosave away for that time.
     let url = slot.write(|workspace| {
         let url = git.attach(url.as_deref())?;
         workspace.reload()?;
@@ -169,7 +140,6 @@ pub fn connect_git<R: Runtime>(
     settings_of(config)
 }
 
-/// The changes panel: the branch, the distance to the remote and the files.
 #[tauri::command(async)]
 pub fn git_status<R: Runtime>(
     app: AppHandle<R>,
@@ -211,8 +181,6 @@ pub fn git_unstage<R: Runtime>(
     })
 }
 
-/// Throws away the changes of one file; its work tree version goes to the
-/// trash. `staged` picks the side, as for the diff.
 #[tauri::command(async)]
 pub fn git_discard<R: Runtime>(
     app: AppHandle<R>,
@@ -233,7 +201,6 @@ pub fn git_discard<R: Runtime>(
     slot.read(|_| Ok(git.status()?))
 }
 
-/// The diff of one file for the changes view; `staged` picks the side.
 #[tauri::command(async)]
 pub fn git_diff<R: Runtime>(
     app: AppHandle<R>,
@@ -263,8 +230,6 @@ pub fn git_commit<R: Runtime>(
     })
 }
 
-/// The git steps of a sync: fetch and push without the vault, the merge
-/// with it. Gives the merge and the count of pushed commits.
 pub fn exchange<R: Runtime>(
     app: &AppHandle<R>,
     slot: &Arc<VaultSlot>,
@@ -294,9 +259,6 @@ mod tests {
 
     use crate::sync_status::SyncStatuses;
 
-    /// git with the configuration of the person who runs the tests hidden,
-    /// as in the core tests. The window passes the program path, so a wrapper
-    /// script gives it the environment.
     struct World {
         dir: tempfile::TempDir,
         git: PathBuf,
@@ -324,8 +286,6 @@ mod tests {
 
             let remote = dir.path().join("remote.git");
             fs::create_dir_all(&remote).unwrap();
-            // Another test thread can fork while the script is still open for
-            // writing. The kernel then answers "Text file busy" for a moment.
             let mut tries = 0;
             let status = loop {
                 match std::process::Command::new(&git)

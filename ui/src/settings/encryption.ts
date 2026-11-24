@@ -1,13 +1,3 @@
-/**
- * Encryption of a sync storage: turn it on, show the recovery code one time,
- * unlock a storage on a new device, change the passphrase.
- *
- * The keys never come to the window. The core makes them, wraps them and
- * keeps the data key in the keychain; the window sends only what the person
- * types. Typed secrets are drafts in memory (`drafts.ts`): a sync status
- * event draws the page again, and the person must not lose half a passphrase.
- */
-
 import { api, type SyncSettings, type SyncStatus, type VaultView } from "../api";
 import {
   bindDraft,
@@ -18,30 +8,22 @@ import {
 import { describeError, t, type Key } from "../i18n";
 import { row } from "./controls";
 
-/** Draws the vault page again. `vaults.ts` gives it, as for the sync form. */
 let redraw: () => Promise<void> = async () => {};
 
 export function initEncryption(onChange: () => Promise<void>): void {
   redraw = onChange;
 }
 
-/** The open form of each vault: none, "turn on" or "new passphrase". */
 const forms = new Map<string, "on" | "change">();
 
-/**
- * Recovery codes that the person did not confirm yet. The core gives the code
- * one time; until "Done" it stays here, so a redraw does not lose it.
- */
 const codes = new Map<string, string>();
 
-/** Errors of the core that mean "this device has no key for the storage". */
 const LOCKED = new Set(["storageLocked", "wrongStorageKey"]);
 
 function drafts(vault: VaultView): string {
   return `encryption:${vault.id}:`;
 }
 
-/** The encryption rows of a folder or a bucket. */
 export function encryptionSection(
   vault: VaultView,
   remote: SyncSettings,
@@ -78,7 +60,6 @@ export function encryptionSection(
   return items;
 }
 
-/** A form in the layout of the S3 fields, with a hint, fields and buttons. */
 function form(className: string, hint: Key): {
   root: HTMLElement;
   field: (name: string, label: Key) => HTMLInputElement;
@@ -124,7 +105,6 @@ function button(label: Key, primary = false): HTMLButtonElement {
   return item;
 }
 
-/** Runs a core call with the button off, and shows its error under the form. */
 async function submit(
   action: HTMLButtonElement,
   problem: HTMLElement,
@@ -226,8 +206,6 @@ function unlockForm(vault: VaultView): HTMLElement {
     void submit(action, problem, async () => {
       await api.syncUnlock(secret.value, vault.id);
       clearDraftsUnder(drafts(vault));
-      // The error of the last sync said "locked". A sync now shows that the
-      // key works and clears it.
       try {
         await api.syncNow(vault.id);
       } catch (error) {
@@ -243,7 +221,6 @@ function unlockForm(vault: VaultView): HTMLElement {
   return root;
 }
 
-/** The recovery code, shown one time, with "I saved it" before "Done". */
 function recoveryPanel(vault: VaultView, code: string): HTMLElement {
   const root = document.createElement("div");
   root.className = "settings-s3 settings-encryption settings-recovery";

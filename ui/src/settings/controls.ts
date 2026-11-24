@@ -1,14 +1,6 @@
-/**
- * Building blocks of the settings pages: rows, fields, lists and switches.
- *
- * Each function only builds markup and calls back on a change; what to save
- * is the business of the section that uses it.
- */
-
 import { t } from "../i18n";
 import { SCALE_PERCENT } from "../note-scale";
 
-/** Settings row: label on the left, field on the right, hint under the label. */
 export function row(label: string, control: HTMLElement, detail?: string): HTMLElement {
   const item = document.createElement("div");
   item.className = "settings-row";
@@ -57,12 +49,6 @@ export function toggle(on: boolean, onPick: (value: boolean) => void): HTMLButto
   return button;
 }
 
-/**
- * Full-width field: label on top, field below it, hint at the bottom.
- *
- * Not [`row`]: the script and the pattern list need the full panel width, and
- * a "label left, field right" pair leaves them only half.
- */
 export function field(label: string, control: HTMLElement, detail?: string): HTMLElement {
   const item = document.createElement("label");
   item.className = "settings-field";
@@ -81,12 +67,6 @@ export function field(label: string, control: HTMLElement, detail?: string): HTM
   return item;
 }
 
-/**
- * A row of toggles: several can be on, and none is also a valid answer.
- *
- * Not a multi-select list: there are three or four short options, and seeing
- * the selection at once matters more than saving space.
- */
 export function chips(
   options: { value: string; label: string }[],
   chosen: string[],
@@ -108,13 +88,6 @@ export function chips(
   return group;
 }
 
-/**
- * Default font size: − / slider / + / value, as in the status bar. The value
- * resets to 100%.
- *
- * The slider writes on release, not on each step: a write renders the page
- * again, and a new slider under the pointer would stop the drag.
- */
 export function scaleControl(percent: number, onPick: (percent: number) => void): HTMLElement {
   const group = document.createElement("div");
   group.className = "settings-scale";

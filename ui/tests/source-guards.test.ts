@@ -1,7 +1,3 @@
-// Guards for the layout of the frontend code in `ui/src`: the rules from
-// `docs/refactor-ui-2026.md` that the type system does not check.
-// Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -10,12 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
-/** A path with `/` separators, so a guard reads the same on every OS. */
 function slashes(path: string): string {
   return path.replaceAll("\\", "/");
 }
 
-/** The TypeScript files of `ui/src`, as paths relative to it. */
 function sources(): string[] {
   return readdirSync(SRC, { recursive: true, encoding: "utf8" })
     .filter((path) => path.endsWith(".ts"))
@@ -27,13 +21,8 @@ function read(path: string): string {
   return readFileSync(join(SRC, path), "utf8");
 }
 
-/** `import`/`export … from` statements and bare `import "…"`. */
 const STATEMENT = /^\s*(?:import|export)\s+(?:([^'";]*?)\s+from\s+)?["']([^"']+)["']/gms;
 
-/**
- * True when the build removes the statement: `import type …`, or a list of
- * `type` names only. Such an import does not run the other module.
- */
 function typeOnly(clause: string): boolean {
   if (/^type\s/.test(clause)) return true;
   const names = /^\{([^}]*)\}$/.exec(clause.trim());
@@ -42,7 +31,6 @@ function typeOnly(clause: string): boolean {
   return parts.length > 0 && parts.every((part) => part.startsWith("type "));
 }
 
-/** The modules of `ui/src` that the file imports at run time. */
 function importsOf(path: string, text: string): string[] {
   const result: string[] = [];
   for (const [, clause, specifier] of text.matchAll(STATEMENT)) {
@@ -54,7 +42,6 @@ function importsOf(path: string, text: string): string[] {
   return result;
 }
 
-/** Each cycle in the graph once, as the path that closes it. */
 function findCycles(graph: Map<string, string[]>): string[][] {
   const cycles: string[][] = [];
   const done = new Set<string>();
@@ -115,10 +102,6 @@ test("ui/src has no import cycles", () => {
 
 const MAX_LINES = 800;
 
-/**
- * Files that may be longer than MAX_LINES. Each one was already this long
- * before the refactor of the window code, or the build writes it.
- */
 const LONG_FILES: Record<string, string> = {
   "bindings.ts": "generated from the Rust types; nobody edits it",
   "table-widget.ts": "one widget: the drawn table and its cell editor",
@@ -145,7 +128,6 @@ test("the list of long files names only files that exist", () => {
 });
 
 test("main.ts keeps no state of its own", () => {
-  // Module level is column 0: the code has no top-level blocks.
   const found = read("main.ts")
     .split("\n")
     .map((line, index) => ({ line, number: index + 1 }))
@@ -154,7 +136,6 @@ test("main.ts keeps no state of its own", () => {
   assert.deepEqual(found, [], "the state belongs to a zone in window/ or to window/state.ts");
 });
 
-/** The only module that may call each setter of the window store. */
 const OWNERS: Record<string, string> = {
   setNote: "window/note.ts",
   setMode: "window/note.ts",
@@ -178,7 +159,6 @@ test("each setter of the store has one owner", () => {
 });
 
 test("the entry points of both windows stay small", () => {
-  // From the "Done when" list of docs/refactor-ui-2026.md.
   assert.ok(lines(read("main.ts")) < 200, "main.ts only starts the zones of window/");
   assert.ok(lines(read("settings/main.ts")) < 300, "a section belongs in its own module");
 });

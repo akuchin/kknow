@@ -1,26 +1,3 @@
-/**
- * Table editing in the markup, as the Advanced Tables plugin for Obsidian does
- * it.
- *
- * Usually a table is drawn, and its cells open in place (`table-widget.ts`).
- * The markup is for the `</>` button, for a ⌘F match in a table and for the
- * "side by side" mode, where the editor shows plain Markdown. There the keys
- * work as in a spreadsheet:
- * - Tab goes to the next cell, ⇧Tab to the previous one;
- * - Enter goes to the next row and adds one at the end;
- * - ⌘Enter leaves the table;
- * - ⌥⇧ and an arrow move the row or the column.
- *
- * Each of these formats the whole table: pads the columns and fixes the
- * separator line. So the user types without thinking about pipes and spaces,
- * and the `.md` stays readable in any program.
- *
- * A table also starts here: type `| Name`, press Tab, and the separator
- * appears. The CodeMirror parser does not see a table without a separator, so
- * this module finds a table by its text, as the plugin does: lines that start
- * with a pipe.
- */
-
 import { syntaxTree } from "@codemirror/language";
 import { Prec, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -41,31 +18,20 @@ import {
   type Table,
 } from "./table";
 
-/** Where the cursor is in the table. */
 interface Focus {
-  /** The row in `Table.rows`; `-1` is the separator line. */
   row: number;
-  /** Equals `table.columns` when the cursor is after the closing pipe. */
   column: number;
-  /** The cursor offset in the cell text. */
   offset: number;
 }
 
-/**
- * Blocks where a line with a pipe is text, not a table. Only blocks: inline
- * code in a cell is still in the table.
- */
 const NOT_TABLE = new Set(["FencedCode", "CodeBlock", "HTMLBlock", "CommentBlock"]);
 
-/** The table around `pos`, or `null` if `pos` is not in a table. */
 export function tableAt(state: EditorState, pos: number): Table | null {
   const { doc } = state;
   const line = doc.lineAt(pos);
 
   for (let node = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent!) {
     if (node.name === "Table") {
-      // The parser node can start or end in the middle of a line; the table
-      // is whole lines.
       const from = doc.lineAt(node.from).from;
       const to = doc.lineAt(node.to).to;
       return parseTable(doc.sliceString(from, to), from);
@@ -94,23 +60,15 @@ function focusOf(state: EditorState, table: Table, pos: number): Focus {
   const row = Math.max(0, table.lines.indexOf(index));
   const cell = table.rows[row]?.[column];
   const offset = cell ? Math.min(Math.max(0, pos - cell.from), cell.text.length) : 0;
-  // A short row has fewer cells than the table: the cursor after its last
-  // pipe is in a missing cell, not past the table.
   return { row, column: cell || column < table.columns ? column : table.columns, offset };
 }
 
-/** The table at the main cursor with the cursor place in it. */
 function context(state: EditorState): { table: Table; focus: Focus } | null {
   const pos = state.selection.main.head;
   const table = tableAt(state, pos);
   return table ? { table, focus: focusOf(state, table, pos) } : null;
 }
 
-/**
- * The start column of a Tab run: Enter goes back to it, as a spreadsheet does
- * after you fill a row with Tab. It lives until the cursor leaves the place
- * where the last Tab or Enter put it.
- */
 let run: { from: number; row: number; column: number; start: number } | null = null;
 
 function runStart(table: Table, focus: Focus): number | null {
@@ -120,20 +78,8 @@ function runStart(table: Table, focus: Focus): number | null {
   return run.start;
 }
 
-/** How to put the cursor into the target cell. */
 type Place = "select" | "offset";
 
-/**
- * Writes the formatted table and puts the cursor into a cell.
- *
- * Only the changed part of the text goes into the transaction: when only one
- * cell changed, the undo history and the other cursors see a small edit, not
- * a new table.
- *
- * A column past the table end is the place for a new column: the row gets a
- * space after the closing pipe, and the cursor stands there. What the user
- * types there becomes a cell on the next Tab.
- */
 function write(
   view: EditorView,
   table: Table,
@@ -174,7 +120,6 @@ function write(
   });
 }
 
-/** The change from `old` to `next` without the common start and end. */
 export function smallestChange(old: string, next: string, from: number) {
   let start = 0;
   while (start < old.length && start < next.length && old[start] === next[start]) start += 1;
@@ -189,7 +134,6 @@ export function smallestChange(old: string, next: string, from: number) {
   return { from: from + start, to: from + old.length - end, insert: next.slice(start, next.length - end) };
 }
 
-/** Tab: the next cell. Past the last column it prepares a new column. */
 export function nextCell(view: EditorView): boolean {
   const found = context(view.state);
   if (!found) return false;
@@ -200,13 +144,10 @@ export function nextCell(view: EditorView): boolean {
   let target: { row: number; column: number };
 
   if (focus.row === -1) {
-    // From the separator line to the first body row.
     if (rows.length < 2) rows = insertRow(rows, 0);
     target = { row: 1, column: 0 };
   } else {
     let column = focus.column;
-    // A second Tab past the table end: the user wants a new column even if
-    // it is empty.
     if (column >= table.columns) {
       ({ rows, aligns } = insertColumn(rows, aligns, table.columns - 1));
       column = table.columns;
@@ -220,7 +161,6 @@ export function nextCell(view: EditorView): boolean {
   return true;
 }
 
-/** ⇧Tab: the previous cell; from the row start, the end of the row above. */
 export function previousCell(view: EditorView): boolean {
   const found = context(view.state);
   if (!found) return false;
@@ -236,13 +176,6 @@ export function previousCell(view: EditorView): boolean {
   return true;
 }
 
-/**
- * Enter: the same column one row below; at the table end, a new row.
- *
- * Enter in an empty last row leaves the table and removes that row: this is
- * how a list ends in any editor. Advanced Tables has no such exit, only a
- * separate command, but without it Enter at the end of a table never stops.
- */
 export function nextRow(view: EditorView): boolean {
   const found = context(view.state);
   if (!found) return false;
@@ -265,13 +198,6 @@ export function nextRow(view: EditorView): boolean {
   return true;
 }
 
-/**
- * ⌘Enter: formats the table and puts the cursor below it.
- *
- * Between the table and the cursor there is always an empty line. By the GFM
- * rules a text line right below a table is one more row of it, even without
- * pipes.
- */
 export function escapeTable(view: EditorView): boolean {
   const found = context(view.state);
   if (!found) return false;
@@ -288,10 +214,6 @@ function leaveTable(view: EditorView): boolean {
   return true;
 }
 
-/**
- * Puts the cursor below the table that ends at `end`. The drawn table uses it
- * too: ⌘Enter in a cell leaves the table the same way.
- */
 export function leaveBelow(view: EditorView, end: number): void {
   const { doc } = view.state;
   const last = doc.lineAt(end);
@@ -301,7 +223,6 @@ export function leaveBelow(view: EditorView, end: number): void {
   if (next && next.text.trim() === "" && after && after.text.trim() === "") {
     view.dispatch({ selection: { anchor: after.from }, scrollIntoView: true });
   } else if (next && next.text.trim() === "") {
-    // Text right below: one more empty line keeps the cursor line apart from it.
     view.dispatch({
       changes: { from: next.to, insert: after ? "\n\n" : "\n" },
       selection: { anchor: next.to + 1 },
@@ -316,14 +237,12 @@ export function leaveBelow(view: EditorView, end: number): void {
   }
 }
 
-/** The cursor cell as an action target. */
 function cursorRect(table: Table, focus: Focus): Rect {
   const row = Math.max(0, focus.row);
   const column = Math.min(focus.column, table.columns - 1);
   return { top: row, left: column, bottom: row, right: column };
 }
 
-/** Whether an action is possible at the cursor: the toolbar dims the others. */
 export function canRunAtCursor(state: EditorState, command: Command): boolean {
   const found = context(state);
   if (!found) return false;
@@ -331,7 +250,6 @@ export function canRunAtCursor(state: EditorState, command: Command): boolean {
   return runCommand(command, cellsOf(table), table.aligns, cursorRect(table, focus)) !== null;
 }
 
-/** Runs a table action on the cursor cell and keeps the cursor in the same cell. */
 export function runAtCursor(view: EditorView, command: Command): boolean {
   const found = context(view.state);
   if (!found) return false;
@@ -348,11 +266,6 @@ function command(name: Command) {
   return (view: EditorView) => runAtCursor(view, name);
 }
 
-/**
- * The table keys. The highest precedence: the markdown keymap also binds
- * Enter (list continuation), and in a table ours must win. Outside a table
- * each command returns `false`, and the key does what it did before.
- */
 export function tableEditing(): Extension {
   return Prec.highest(
     keymap.of([

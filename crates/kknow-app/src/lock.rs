@@ -1,16 +1,3 @@
-//! Locked notes of a vault: the password, the session and the lock of one
-//! note.
-//!
-//! The format and the crypto are in `kknow_sync::locked`. This module keeps
-//! the session: the notes key lives in [`Workspace`] while the session is
-//! unlocked, and only in memory. It is never written to disk or to the
-//! keychain, and [`Workspace::lock_all`] drops it.
-//!
-//! The rule for readers: [`Workspace::read`] refuses a locked note, also in
-//! an unlocked session. That is the read of agents, MCP tools, proposals and
-//! threads. Only [`Workspace::open_text`], the read of the person in the
-//! window, opens it.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,26 +8,19 @@ use kknow_sync::locked::{self, LOCK_FILE, NotesKey};
 
 use crate::{Error, Result, Workspace};
 
-/// The lock state of the vault for the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LockState {
-    /// The vault has a password: `.kknow/lock.json` exists.
     pub password: bool,
-    /// The notes key is in memory: locked notes open.
     pub unlocked: bool,
 }
 
-/// What opened the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unlocked {
     Password,
-    /// The recovery code: the person forgot the password, so the window asks
-    /// for a new one.
     RecoveryCode,
 }
 
 impl Workspace {
-    /// The path of `.kknow/lock.json`.
     pub fn lock_path(&self) -> PathBuf {
         self.root().join(LOCK_FILE)
     }
@@ -52,24 +32,18 @@ impl Workspace {
         }
     }
 
-    /// True if the file of the note is a locked note.
     pub fn is_locked(&self, id: &NoteId) -> bool {
         self.locked.contains(id)
     }
 
-    /// The locked notes of the vault, in ID order.
     pub fn locked_notes(&self) -> impl Iterator<Item = &NoteId> {
         self.locked.iter()
     }
 
-    /// Sets the first password of the vault and unlocks the session. The
-    /// recovery code comes back once: kknow does not keep it.
     pub fn set_lock_password(&mut self, password: &str) -> Result<RecoveryCode> {
         self.set_lock_password_with(password, KdfParams::default())
     }
 
-    /// [`Workspace::set_lock_password`] with other Argon2 parameters. Tests
-    /// give weak ones to stay fast.
     #[doc(hidden)]
     pub fn set_lock_password_with(
         &mut self,
@@ -85,9 +59,6 @@ impl Workspace {
         Ok(code)
     }
 
-    /// Opens the session with the password or the recovery code. All locked
-    /// notes of the vault open until [`Workspace::lock_all`] or the end of
-    /// the process.
     pub fn unlock_notes(&mut self, secret: &str) -> Result<Unlocked> {
         let file = self.lock_file()?;
         let (key, secret) = file.open(secret)?;
@@ -98,8 +69,6 @@ impl Workspace {
         })
     }
 
-    /// A new password for the same notes key. It needs an unlocked session;
-    /// only `lock.json` changes, not the notes. The recovery code stays.
     pub fn change_lock_password(&mut self, password: &str) -> Result<()> {
         let mut file = self.lock_file()?;
         let key = self.notes_key()?;
@@ -107,13 +76,10 @@ impl Workspace {
         write_lock_file(&self.lock_path(), &file)
     }
 
-    /// Drops the notes key from memory. All locked notes close.
     pub fn lock_all(&mut self) {
         self.notes_key = None;
     }
 
-    /// Locks a plain note: its file becomes a locked note with the same name.
-    /// It needs an unlocked session.
     pub fn lock_note(&mut self, id: &NoteId) -> Result<()> {
         if !self.contains(id) {
             return Err(kknow_core::Error::NoteNotFound(id.clone()).into());
@@ -128,7 +94,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// Writes a locked note back as plain text. It needs an unlocked session.
     pub fn remove_lock(&mut self, id: &NoteId) -> Result<()> {
         if !self.is_locked(id) {
             return Err(Error::NotLocked(id.clone()));
@@ -140,8 +105,6 @@ impl Workspace {
         Ok(())
     }
 
-    /// The text of the note for the person in the window: a locked note opens
-    /// with the key of the session, or gives [`Error::NotesClosed`].
     pub fn open_text(&self, id: &NoteId) -> Result<String> {
         let content = self.vault.read(id)?;
         if !locked::is_locked(content.as_bytes()) {
@@ -171,8 +134,6 @@ impl Workspace {
     }
 }
 
-/// Writes through a temp file and `rename`: a half-written `lock.json` would
-/// lose all locked notes.
 fn write_lock_file(path: &Path, file: &KeyFile) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
@@ -249,7 +210,6 @@ mod tests {
     fn the_index_never_has_the_text_of_a_locked_note() {
         let (_dir, workspace, _) = locked_workspace();
         let diary = id("Diary");
-        // The session is unlocked, and still nothing is in the index.
         assert!(workspace.search("zebra", 10).unwrap().is_empty());
         assert!(workspace.search("health", 10).unwrap().is_empty());
         let by_name: Vec<_> = workspace
@@ -258,14 +218,12 @@ mod tests {
             .into_iter()
             .map(|hit| hit.id)
             .collect();
-        // Anna links to it by name, so it is found too.
         assert!(by_name.contains(&diary));
 
         let parsed = workspace.parsed(&diary).unwrap();
         assert!(parsed.tags.is_empty() && parsed.tasks.is_empty());
         assert!(workspace.outgoing(&diary).is_empty());
         assert!(workspace.backlinks(&id("Anna")).is_empty());
-        // A link to the locked note still works.
         assert_eq!(workspace.backlinks(&diary).len(), 1);
     }
 
@@ -367,7 +325,6 @@ mod tests {
             Unlocked::RecoveryCode
         );
         workspace.change_lock_password("battery staple").unwrap();
-        // The notes stay as they are: only lock.json changed.
         assert_eq!(disk(&dir, "Diary.md"), before);
 
         workspace.lock_all();

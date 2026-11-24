@@ -1,5 +1,3 @@
-// The autosave queue (`src/session.ts`). Run: `pnpm ui:test`.
-
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

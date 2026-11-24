@@ -1,43 +1,15 @@
-//! Shared files: the parts of `.kknow` that sync carries with the notes.
-//!
-//! Most of `.kknow` belongs to one machine: the sync state, the storage
-//! address, the trash. But some files belong to the notes: bookmarks,
-//! proposals of agents and comment threads. Without them, a comment that an
-//! agent answered on the laptop would have no answer on the desktop.
-//!
-//! The list is closed on purpose. A new file in `.kknow` does not sync until
-//! someone adds it here, so a file with a secret or a machine path cannot
-//! leave by accident.
-//!
-//! A shared file has no conflict copy, as a note has. A copy of
-//! `bookmarks.json` next to it would do nothing: no part of the app reads it.
-//! Instead, the engine gives both versions to a merge function from the app,
-//! which knows the format ([`Merge`]).
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use crate::{Error, Result};
 
-/// Single shared files, relative to the vault root.
-///
-/// `lock.json` holds the key of locked notes wrapped by the password: a
-/// second device needs it to open them, and it has no secret in plain form.
 pub const SHARED_FILES: &[&str] = &[".kknow/bookmarks.json", crate::locked::LOCK_FILE];
 
-/// Folders of shared records: each `<id>.json` inside syncs.
 pub const SHARED_DIRS: &[&str] = &[".kknow/proposals", ".kknow/threads"];
 
-/// Joins two versions of a shared file: the path, the local bytes and the
-/// remote bytes. `None` means the function cannot join them; then the local
-/// version wins.
 pub type Merge = fn(&str, &[u8], &[u8]) -> Option<Vec<u8>>;
 
-/// True for a key that sync carries as a shared file.
-///
-/// A key comes from the storage, so this is also the check that a remote
-/// object cannot write outside these folders: no `/` and no `..` in the name.
 pub fn is_shared(key: &str) -> bool {
     if SHARED_FILES.contains(&key) {
         return true;
@@ -56,7 +28,6 @@ pub fn is_shared(key: &str) -> bool {
     })
 }
 
-/// All shared files of the vault with their bytes.
 pub fn read_all(root: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     let mut files = BTreeMap::new();
     for key in SHARED_FILES {
@@ -84,7 +55,6 @@ pub fn read_all(root: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     Ok(files)
 }
 
-/// The bytes of one shared file, or `None` if it is not there.
 pub fn read(root: &Path, key: &str) -> Result<Option<Vec<u8>>> {
     let path = root.join(key);
     match fs::read(&path) {
@@ -94,7 +64,6 @@ pub fn read(root: &Path, key: &str) -> Result<Option<Vec<u8>>> {
     }
 }
 
-/// Writes a shared file through a temporary one, as the app does.
 pub fn write(root: &Path, key: &str, bytes: &[u8]) -> Result<()> {
     let path = root.join(key);
     if let Some(parent) = path.parent() {

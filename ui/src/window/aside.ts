@@ -1,21 +1,3 @@
-// The side panel of the open note: the outline, the backlinks and the
-// unlinked mentions.
-//
-// The panel is on the right in all three modes. It is a window state, not a
-// note state: one key in `localStorage` keeps it shown or hidden for all
-// notes. Each section is a `<details>`; the window remembers which ones are
-// open in the same way.
-//
-// - The outline comes from the editor (`headingsOf`), so it follows unsaved
-//   edits. The section on the screen follows the editor scroll, or the
-//   preview scroll in "Read".
-// - Backlinks with their lines and the mentions come from the core. It reads
-//   the source notes for them, so the panel asks only when the note changes
-//   or a different note changes, not on each save. A hidden panel or a closed
-//   section asks nothing.
-//
-// The module does not touch the DOM on import.
-
 import { api, type BacklinkLineView, type MentionView } from "../api";
 import { t } from "../i18n";
 import { currentHeading, type Heading } from "../outline";
@@ -30,13 +12,8 @@ import { fail, setStatus } from "./status";
 const SHOWN = "kknow:aside";
 const SECTIONS = "kknow:aside:sections";
 
-/** The outline waits for a pause in typing, as the preview does. */
 const OUTLINE_DELAY = 250;
 
-/**
- * Lines of one source note before "more". A note can link here hundreds of
- * times, and the other sources must stay in sight.
- */
 const LINES_SHOWN = 3;
 
 type Section = "outline" | "backlinks" | "mentions";
@@ -46,10 +23,6 @@ let headings: Heading[] = [];
 let outlineTimer: number | undefined;
 let scrollFrame = 0;
 
-/**
- * The note that the backlinks and the mentions belong to. A new key means a
- * new request; `null` asks again even for the same note.
- */
 let linksKey: string | null = null;
 let mentionsKey: string | null = null;
 
@@ -65,11 +38,9 @@ function write(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    // Browser storage can refuse; then the state lasts until restart.
   }
 }
 
-/** The key of the open note in the active vault, or `null` for none or a file. */
 function noteKey(): string | null {
   const note = state.note;
   if (!note || note.file) return null;
@@ -90,14 +61,12 @@ function apply(): void {
   if (visible) refresh();
 }
 
-/** Shows or hides the panel: the button, the key and the palette. */
 export function toggleAside(): void {
   hidden = !hidden;
   write(SHOWN, hidden ? "hidden" : "shown");
   apply();
 }
 
-/** Shows the panel with one section open, for the backlinks button. */
 export function showAside(section: Section): void {
   if (hidden) toggleAside();
   const box = details(section);
@@ -105,7 +74,6 @@ export function showAside(section: Section): void {
   box.scrollIntoView({ block: "nearest" });
 }
 
-/** Draws what the open note needs now. */
 function refresh(): void {
   if (hidden || !state.note) return;
   const file = state.note.file === true;
@@ -117,31 +85,22 @@ function refresh(): void {
   if (el.asideMentions.open && mentionsKey !== noteKey()) void loadMentions();
 }
 
-/**
- * Other notes changed: their links to the open note can be new. The next
- * draw asks the core again.
- */
 export function refreshAsideLinks(): void {
   linksKey = null;
   mentionsKey = null;
   refresh();
 }
 
-/** The editor text changed: the outline follows after a pause. */
 function edited(): void {
   if (hidden) return;
   window.clearTimeout(outlineTimer);
   outlineTimer = window.setTimeout(renderOutline, OUTLINE_DELAY);
 }
 
-// ---- outline ----
-
-/** The headings the outline shows now, to skip a redraw that changes nothing. */
 let drawn = "";
 
 function renderOutline(): void {
   headings = editor.getHeadings();
-  // A save or a typed letter usually leaves the headings as they are.
   const key = JSON.stringify(headings);
   if (key === drawn && el.asideOutlineList.childElementCount > 0) {
     markCurrent();
@@ -155,7 +114,6 @@ function renderOutline(): void {
     list.append(empty(t("aside.outline.empty")));
     return;
   }
-  // The smallest level is the left edge: a note without `#` starts at `##`.
   const base = Math.min(...headings.map((heading) => heading.level));
   for (const heading of headings) {
     const item = document.createElement("li");
@@ -171,14 +129,12 @@ function renderOutline(): void {
   markCurrent();
 }
 
-/** Marks the heading of the section at the top of the view. */
 function markCurrent(): void {
   scrollFrame = 0;
   if (hidden || headings.length === 0) return;
   const read = state.mode === "read";
   const scroller = read ? el.preview : editor.scroller;
   const top = read ? (topLine(el.preview) ?? 1) : editor.topLine();
-  // A note that does not scroll is not "at the end": its top section is current.
   const atEnd =
     scroller.scrollTop > 0 &&
     scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
@@ -193,13 +149,10 @@ function markCurrent(): void {
   }
 }
 
-/** A scroll calls this many times a frame; the mark changes once a frame. */
 function onScroll(): void {
   if (hidden || scrollFrame) return;
   scrollFrame = window.requestAnimationFrame(markCurrent);
 }
-
-// ---- backlinks and mentions ----
 
 function empty(text: string): HTMLLIElement {
   const item = document.createElement("li");
@@ -208,7 +161,6 @@ function empty(text: string): HTMLLIElement {
   return item;
 }
 
-/** A line of a source note, with the link or the name marked. */
 function lineText(line: { before: string; text: string; after: string }): HTMLElement {
   const text = document.createElement("span");
   text.className = "aside-line-text";
@@ -218,10 +170,6 @@ function lineText(line: { before: string; text: string; after: string }): HTMLEl
   return text;
 }
 
-/**
- * Opens a source note at a line. "Read" keeps its mode and scrolls the
- * preview; the other modes put the cursor on the line.
- */
 async function openAt(id: string, line: number): Promise<void> {
   await openNote(id);
   if (state.note?.id !== id) return;
@@ -229,7 +177,6 @@ async function openAt(id: string, line: number): Promise<void> {
   else editor.goToLine(line);
 }
 
-/** Groups the rows by source note, in the order the core gives them. */
 function bySource<T extends { id: string; title: string }>(rows: T[]): [T, T[]][] {
   const groups = new Map<string, [T, T[]]>();
   for (const row of rows) {
@@ -240,7 +187,6 @@ function bySource<T extends { id: string; title: string }>(rows: T[]): [T, T[]][
   return [...groups.values()];
 }
 
-/** Adds the rows of one source note; after `LINES_SHOWN` a button shows the rest. */
 function fillLines<T>(list: HTMLUListElement, rows: T[], make: (row: T) => HTMLLIElement): void {
   for (const row of rows.slice(0, LINES_SHOWN)) list.append(make(row));
   const rest = rows.slice(LINES_SHOWN);
@@ -286,7 +232,6 @@ function renderBacklinks(rows: BacklinkLineView[]): void {
   const list = el.asideBacklinksList;
   list.replaceChildren();
   const sources = bySource(rows);
-  // Notes, not lines: the toolbar button counts the same.
   el.asideBacklinksCount.textContent = sources.length > 0 ? String(sources.length) : "";
   if (rows.length === 0) {
     list.append(empty(t("aside.backlinks.empty")));
@@ -355,7 +300,6 @@ function renderMentions(rows: MentionView[]): void {
   }
 }
 
-/** Makes one mention a link; the lists come again from the core. */
 async function linkMention(mention: MentionView, button: HTMLButtonElement): Promise<void> {
   const note = state.note;
   if (!note || note.file) return;
@@ -366,18 +310,15 @@ async function linkMention(mention: MentionView, button: HTMLButtonElement): Pro
     setStatus(t("status.mentionLinked", { name: mention.title }));
     linksKey = null;
     mentionsKey = null;
-    // The store event of the new backlinks draws the panel again.
     setBacklinks(backlinks);
   } catch (error) {
     button.disabled = false;
-    // The note changed under the list: show the list as it is now.
     mentionsKey = null;
     refresh();
     fail(error);
   }
 }
 
-/** Wires the panel: the toggle, the sections, the scroll and the store events. */
 export function initAside(): void {
   el.toggleAside.onclick = () => toggleAside();
 
@@ -389,7 +330,6 @@ export function initAside(): void {
       for (const section of saved) open.add(String(section));
     }
   } catch {
-    // A broken value: the default sections open.
   }
   for (const section of ["outline", "backlinks", "mentions"] as const) {
     const box = details(section);
@@ -405,7 +345,6 @@ export function initAside(): void {
   editor.onText(edited);
   editor.scroller.addEventListener("scroll", onScroll, { passive: true });
   el.preview.addEventListener("scroll", onScroll, { passive: true });
-  // The note event comes before the editor gets the new text: draw after it.
   state.on("note", () => queueMicrotask(apply));
   state.on("mode", () => queueMicrotask(markCurrent));
   apply();

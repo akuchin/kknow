@@ -1,9 +1,3 @@
-//! Remote storage as sync sees it.
-//!
-//! Sync needs only four operations on bytes by key. Thus the sync algorithm
-//! does not depend on S3: the same code runs on in-memory storage in tests,
-//! and can later run on WebDAV or another disk.
-
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -11,7 +5,6 @@ use std::sync::{Arc, Mutex};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// The operation that failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
     Get,
@@ -31,40 +24,18 @@ impl fmt::Display for Operation {
     }
 }
 
-/// What went wrong, for the common problems that a person can fix.
-///
-/// A new user meets these first: a wrong key, a typo in the bucket name, no
-/// network, a cloud folder of a disk that is not connected. The text of the
-/// library says nothing to them ("PermissionDenied (permanent) at list,
-/// context: …"), so a backend names the cause, and the CLI and the window
-/// give their own words for it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Cause {
-    /// Anything else: the text of the backend.
     #[default]
     Other,
-    /// The storage refused the access keys. The code of the storage, for
-    /// example `InvalidAccessKeyId` or `SignatureDoesNotMatch`.
     KeysRefused(String),
-    /// The bucket does not exist.
     NoBucket(String),
-    /// Nothing answers at the address: no network, a wrong host or port.
     Unreachable(String),
-    /// The app cannot read or write the folder.
     FolderDenied(PathBuf),
-    /// The folder and its parent do not exist: a disk that is not
-    /// connected, or a cloud drive that is not installed.
     FolderMissing(PathBuf),
-    /// A cloud drive keeps the file in the cloud only: it is not on the disk
-    /// yet.
     NotDownloaded,
 }
 
-/// Storage error.
-///
-/// The source is behind `dyn Error`: `SyncProvider` must not expose the error
-/// types of a specific backend, or the abstraction leaks. The [`Cause`] says
-/// what it means for a person.
 #[derive(Debug, thiserror::Error)]
 #[error("{}", self.text())]
 pub struct Error {
@@ -125,30 +96,15 @@ impl Error {
     }
 }
 
-/// Object storage: bytes by string key.
-///
-/// Implementations must be idempotent where possible: a delete of a missing
-/// key is a success, not an error. Sync can stop at any moment and start
-/// again, so a repeated action must not break it.
 pub trait SyncProvider {
-    /// The object contents, or `None` if the key does not exist.
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
 
-    /// Writes the object and replaces the old one.
     fn put(&self, key: &str, bytes: &[u8]) -> Result<()>;
 
-    /// Deletes the object. A missing key is not an error.
     fn delete(&self, key: &str) -> Result<()>;
 
-    /// Keys with the given prefix, including nested "directories".
     fn list(&self, prefix: &str) -> Result<Vec<String>>;
 
-    /// Work before a sync. Gives the keys that it changed: the remote
-    /// manifest can have an old hash for them.
-    ///
-    /// A plain storage only checks that it is not encrypted: a device without
-    /// the key must not write plaintext notes into it. [`crate::Encrypted`]
-    /// also encrypts the plaintext objects that other programs put there.
     fn prepare(&self) -> crate::Result<Vec<String>> {
         if self.get(crate::crypto::KEY_FILE)?.is_some() {
             return Err(crate::Error::Locked);
@@ -157,8 +113,6 @@ pub trait SyncProvider {
     }
 }
 
-/// A reference to a provider is also a provider: the encryption operations
-/// wrap a storage that they do not own.
 impl<P: SyncProvider + ?Sized> SyncProvider for &P {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         (**self).get(key)
@@ -181,10 +135,6 @@ impl<P: SyncProvider + ?Sized> SyncProvider for &P {
     }
 }
 
-/// A boxed provider is also a provider.
-///
-/// The storage is chosen at run time: the settings give a folder or S3, but
-/// the engine is generic over the provider type.
 impl<P: SyncProvider + ?Sized> SyncProvider for Box<P> {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         (**self).get(key)
@@ -207,10 +157,6 @@ impl<P: SyncProvider + ?Sized> SyncProvider for Box<P> {
     }
 }
 
-/// In-memory storage.
-///
-/// A clone shares objects with the original. Tests use this to simulate two
-/// devices connected to one bucket.
 #[derive(Debug, Clone, Default)]
 pub struct MemoryProvider {
     objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,

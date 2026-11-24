@@ -1,9 +1,3 @@
-// The agent notes float and the two selection popups (preview and table cell).
-//
-// The editor reports the notes of the open text; this zone lists them and
-// jumps to each. The module does not touch the DOM on import: `main.ts` calls
-// `initNotesFloat` right after the editor exists.
-
 import type { AgentNote } from "../agent-notes";
 import { api, type NoteView, type Thread } from "../api";
 import { messageAuthor, messageText } from "../core-text";
@@ -16,33 +10,19 @@ import { editor } from "./editor";
 import { state } from "./state";
 import { fail, setStatus } from "./status";
 
-/**
- * What the floats need from the note zone. `main.ts` passes them: the note
- * zone imports this module, so an import back would be a cycle.
- */
 export interface NoteCalls {
-  /** Shows a new view of the open note (`applyNote`). */
   apply: (view: NoteView, options?: { keepEditor?: boolean; reload?: boolean }) => void;
-  /** Writes the pending edits of the editor to disk. */
   flush: () => Promise<void>;
 }
 
 let calls: NoteCalls;
 
-/** Agent notes in the open text, listed in the float. */
 let agentNotes: AgentNote[] = [];
 
-/** Agent notes from the preview: in "Read" mode the editor is hidden. */
 export let previewNotes: PreviewNotes;
 
-/**
- * Agent notes from a closed table cell in "Live preview" mode. A drag there
- * selects text for reading and does not open the cell, so the selection belongs to
- * the browser, not to the editor: it gets the same popup as the preview.
- */
 export let tableNotes: PreviewNotes;
 
-/** Creates the two popups and the buttons of the float. */
 export function initNotesFloat(noteCalls: NoteCalls): void {
   calls = noteCalls;
   previewNotes = new PreviewNotes(el.preview, {
@@ -64,29 +44,18 @@ export function initNotesFloat(noteCalls: NoteCalls): void {
 
   el.toggleNotes.onclick = () => showNotesFloat(el.notesFloat.hidden);
   el.notesHide.onclick = () => showNotesFloat(false);
-  // Threads come with the note: a reply or a sync brings a new view.
   state.on("note", () => showNotes(agentNotes));
 }
 
-/** The thread of a note, if the agent or the person already wrote in it. */
 function threadOf(note: AgentNote): Thread | undefined {
   if (note.id === null) return undefined;
   return state.note?.threads?.find((thread) => thread.id === note.id);
 }
 
-/** A question of the agent waits for the person: the button shows it. */
 function asking(): boolean {
   return agentNotes.some((note) => threadOf(note)?.status === "question");
 }
 
-/**
- * Updates the agent notes button and float.
- *
- * The button is visible only when notes exist: most texts have none, and an
- * empty counter would be noise. An open float stays open after the last note
- * is deleted: a window that disappears under the cursor is worse than an
- * empty one.
- */
 export function showNotes(notes: AgentNote[]): void {
   agentNotes = notes;
   el.notesCount.textContent = String(notes.length);
@@ -96,22 +65,12 @@ export function showNotes(notes: AgentNote[]): void {
   if (!el.notesFloat.hidden) renderNotes();
 }
 
-/**
- * The draft key of the reply field under a note. A note without an ID goes
- * by its text: the core gives it an ID only with the first reply.
- */
 function replyKey(note: AgentNote): string {
   return `reply:${state.note?.id ?? ""}:${note.id ?? `new:${note.text}`}`;
 }
 
-/** Reply fields the person opened: a render keeps them open. */
 const openReplies = new Set<string>();
 
-/**
- * Draws the list again. Each reply field keeps its text in a draft, so a
- * reply to one thread, a sync or an edit does not erase what the person typed
- * under another thread.
- */
 function renderNotes(): void {
   const refocus = keepFocus(el.notesList);
   try {
@@ -135,13 +94,11 @@ function fillNotes(): void {
   for (const note of agentNotes) {
     const button = document.createElement("button");
     button.className = "notes-item";
-    // CSS truncates the text; the tooltip keeps the full text.
     button.title = note.anchor ? `«${note.anchor}»\n${note.text}` : note.text;
 
     const words = document.createElement("span");
     words.className = "notes-words";
     words.textContent = note.anchor || t("panel.notes.noWords");
-    // A note without words is about its paragraph; it did not lose them.
     if (note.anchorFrom === null && note.anchor !== "") {
       words.classList.add("is-detached");
       words.title = t("editor.note.detached");
@@ -174,7 +131,6 @@ function statusChip(thread: Thread): HTMLElement {
   return chip;
 }
 
-/** The messages after the task: the task itself is already the item text. */
 function threadMessages(thread: Thread): HTMLElement {
   const list = document.createElement("ol");
   list.className = "thread-messages";
@@ -190,10 +146,6 @@ function threadMessages(thread: Thread): HTMLElement {
   return list;
 }
 
-/**
- * The reply field under a comment. Most comments never need it, so it is a
- * small link that opens the field; a question of the agent opens it at once.
- */
 function replyForm(note: AgentNote, thread: Thread | undefined): HTMLElement {
   const box = document.createElement("div");
   box.className = "thread-reply";
@@ -234,11 +186,6 @@ function replyForm(note: AgentNote, thread: Thread | undefined): HTMLElement {
   return box;
 }
 
-/**
- * Sends the answer. A comment without an ID goes by its line and task: the
- * core gives it an ID, so the editor text changes, and the pending edits go
- * to disk first.
- */
 async function reply(
   note: AgentNote,
   thread: Thread | undefined,
@@ -257,11 +204,9 @@ async function reply(
           text: note.text,
         };
     const view = await api.replyThread(id, target, text);
-    // Only this field is sent: the drafts of the other threads stay.
     clearDraft(key);
     openReplies.delete(key);
     if (state.note?.id !== id) return;
-    // Without a thread the ID went into the text: the editor takes it.
     calls.apply(view, thread ? { keepEditor: true } : { reload: true });
     setStatus(t("status.replySent"));
   } catch (error) {
@@ -269,12 +214,6 @@ async function reply(
   }
 }
 
-/**
- * Jumps to a note from the list. In "Read" mode the editor is hidden, so the
- * preview scrolls to the highlight instead. Highlights are matched by note
- * text, not by order: the core does not highlight words that start inside
- * markup.
- */
 function revealNote(note: AgentNote): void {
   if (state.mode !== "read") {
     editor.revealNote(note);

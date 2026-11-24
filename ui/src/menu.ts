@@ -1,70 +1,27 @@
-/**
- * Popup menu attached to a button.
- *
- * One implementation serves all window menus: vault switcher, theme,
- * language, conflict resolution. It does not know what it shows; callers
- * give it ready items.
- *
- * An item can have a key of its own: while the menu is open, that key runs the
- * item, as in the context menus of macOS apps. The key shows on the right,
- * where a global shortcut shows on other items.
- *
- * Only one menu is open at a time: opening a second one closes the first.
- * The menu lives in `document.body` because its anchor button is in the
- * header or the status bar, and both clip their content.
- *
- * The editor context menu has no button: it opens at the mouse pointer
- * (`openMenuAt`) and gives the focus back to the text.
- */
-
 import { formatKey, shortcut, type Action } from "./actions";
 import { icon, type IconName } from "./icons";
 
-/** Menu item. Everything except the label and the action is optional. */
 export interface MenuItem {
   label: string;
-  /** Second line: provider, path, last sync time. */
   detail?: string;
-  /** The window action that the item runs: its key shows on the right. */
   action?: Action;
-  /** A key to show that is not an action of its own: `⌘1` for a vault. */
   hint?: string;
-  /**
-   * Key that runs the item while the menu is open: a Latin letter, a digit,
-   * `,` or `⌫`. It is shown instead of `hint`.
-   */
   key?: string;
   glyph?: IconName;
-  /** Vault color label: a color name from the set in `styles.css`. */
   color?: string;
-  /** Current choice: theme, language, active vault. */
   checked?: boolean;
   disabled?: boolean;
   tone?: "danger" | "warning";
   run: () => void;
 }
 
-/** Group of items with an optional title. */
 export interface MenuSection {
   title?: string;
   items: MenuItem[];
 }
 
-/**
- * The open menu. Close it before opening another one.
- *
- * `toggle`: the anchor is a button that opens and closes the menu itself. A
- * context menu has none: its anchor is the text, and a click there closes it.
- */
 let current: { root: HTMLElement; anchor: HTMLElement; toggle: boolean } | null = null;
 
-/**
- * Opens the menu below the button (or above it, if the button is at the
- * bottom of the window).
- *
- * A second click on the same button closes the menu, as users expect from
- * toggles.
- */
 export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
   const sameAnchor = current?.anchor === anchor;
   closeMenu();
@@ -74,10 +31,6 @@ export function openMenu(anchor: HTMLElement, sections: MenuSection[]): void {
   anchor.setAttribute("aria-expanded", "true");
 }
 
-/**
- * Opens a context menu at the pointer. `focus` gets the focus back when the
- * menu closes: the editor, so typing goes on where it was.
- */
 export function openMenuAt(x: number, y: number, focus: HTMLElement, sections: MenuSection[]): void {
   closeMenu();
   show(sections, focus, new DOMRect(x, y, 0, 0), false);
@@ -96,7 +49,6 @@ function show(sections: MenuSection[], anchor: HTMLElement, rect: DOMRect, toggl
       title.textContent = section.title;
       root.append(title);
     } else if (root.childElementCount > 0) {
-      // A group without a title still needs a border from the group above.
       const line = document.createElement("div");
       line.className = "menu-separator";
       line.setAttribute("role", "separator");
@@ -110,18 +62,14 @@ function show(sections: MenuSection[], anchor: HTMLElement, rect: DOMRect, toggl
 
   place(root, rect);
   root.addEventListener("keydown", onKeyDown);
-  // Focus the current choice first: arrow keys move from there.
   const items = enabledItems(root);
   (items.find((button) => button.dataset.checked === "true") ?? items[0])?.focus();
 
   document.addEventListener("pointerdown", onPointerDown, true);
   window.addEventListener("resize", closeMenu);
-  // The menu has a fixed position at the button; after a scroll it is in the
-  // wrong place.
   window.addEventListener("scroll", closeMenu, true);
 }
 
-/** Closes the menu and returns focus to the button that opened it. */
 export function closeMenu(): void {
   if (!current) return;
   const { root, anchor, toggle } = current;
@@ -185,8 +133,6 @@ function itemButton(item: MenuItem): HTMLButtonElement {
     button.append(hint);
   }
 
-  // Close first, then act: the action can open a dialog, and the menu would
-  // stay on top of it.
   button.onclick = () => {
     closeMenu();
     item.run();
@@ -194,12 +140,6 @@ function itemButton(item: MenuItem): HTMLButtonElement {
   return button;
 }
 
-/**
- * Places the menu below the button (or the pointer), or above it if there is
- * no room below.
- *
- * The status bar is at the bottom edge, so its menus always open upward.
- */
 function place(root: HTMLElement, rect: DOMRect): void {
   const size = root.getBoundingClientRect();
   const margin = 6;
@@ -217,12 +157,6 @@ function place(root: HTMLElement, rect: DOMRect): void {
   }
 }
 
-/**
- * Physical key of a menu key, as in `KeyboardEvent.code`.
- *
- * The code does not depend on the layout: with the Russian layout on, the key
- * with the Latin "R" still runs the item that shows "R".
- */
 function keyCode(key: string): string {
   if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
   if (/^[0-9]$/.test(key)) return `Digit${key}`;
@@ -241,7 +175,6 @@ function onKeyDown(event: KeyboardEvent): void {
   const index = items.indexOf(document.activeElement as HTMLButtonElement);
 
   if (event.key === "Escape" || event.key === "Tab") {
-    // Tab also closes: the next stop is the window, not the next item.
     event.preventDefault();
     closeMenu();
   } else if (event.key === "ArrowDown") {
@@ -257,7 +190,6 @@ function onKeyDown(event: KeyboardEvent): void {
     event.preventDefault();
     items[items.length - 1]?.focus();
   } else if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-    // The item's own key. With a modifier it is a global shortcut, not ours.
     const item = items.find((button) => button.dataset.key === event.code);
     if (item) {
       event.preventDefault();
@@ -269,8 +201,6 @@ function onKeyDown(event: KeyboardEvent): void {
 function onPointerDown(event: PointerEvent): void {
   if (!current) return;
   const target = event.target as Node;
-  // A click on the anchor button does not close here: the button toggles the
-  // menu itself, else the menu would close and open again.
   if (current.root.contains(target)) return;
   if (current.toggle && current.anchor.contains(target)) return;
   closeMenu();

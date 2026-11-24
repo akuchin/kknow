@@ -1,51 +1,12 @@
-//! Agent notes: the comment `<!-- @agent «words»: text -->`.
-//!
-//! A person selects words and leaves a task for an agent that reads the file
-//! later. The task is a plain HTML comment just after the selected words:
-//!
-//! ```text
-//! Search must be fast<!-- @agent «fast»: measure on 10k notes -->.
-//! ```
-//!
-//! A note can have no words: `<!-- @agent: text -->` at the end of a
-//! paragraph is about the whole paragraph. The editor writes it so when the
-//! person leaves a note with only the cursor in the paragraph.
-//!
-//! The window calls these notes "comments"; the marker stays `@agent`,
-//! because agents look for it.
-//!
-//! The words are repeated in the comment on purpose. The agent reads raw
-//! markdown and does not need to guess what the task refers to. The preview
-//! uses them to know what to highlight: it highlights the words **just
-//! before** the comment if they match. If they differ (someone edited the
-//! text), the note stays, but without a highlight.
-//!
-//! A note can carry an ID: `<!-- @agent#k3f «words»: text -->`. The ID names
-//! the comment thread in `.kknow/threads/k3f.json`, where the agent and the
-//! person talk about the task. A note gets its ID with the first reply, so an
-//! old note without one is still a note.
-//!
-//! The frontend has the same parser (`ui/src/agent-notes.ts`): the editor
-//! draws notes itself, without a call to the core. If you change the format,
-//! change both places.
-
-/// Marker at the start of an agent note comment.
 pub const MARKER: &str = "@agent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentNote<'a> {
-    /// The thread ID after `#`, if the note has one.
     pub id: Option<&'a str>,
-    /// Words the note refers to. Empty if the note is not attached to words.
     pub anchor: &'a str,
-    /// The task text.
     pub text: &'a str,
 }
 
-/// Parses `<!-- @agent «words»: text -->`. Returns `None` for anything else.
-///
-/// The quoted words are optional: `<!-- @agent text -->` is also a note, just
-/// not attached to words.
 pub fn parse(html: &str) -> Option<AgentNote<'_>> {
     let body = html
         .trim()
@@ -67,13 +28,10 @@ pub fn parse(html: &str) -> Option<AgentNote<'_>> {
     Some(AgentNote { id, anchor, text })
 }
 
-/// True for an agent note. Field parsing skips it, because it is not metadata.
 pub fn is_note(comment_body: &str) -> bool {
     split_marker(comment_body.trim_start()).is_some()
 }
 
-/// Splits `@agent#id rest` into the ID and the rest. `@agentX` and `@agent#`
-/// without a valid ID are not our marker.
 fn split_marker(body: &str) -> Option<(Option<&str>, &str)> {
     let rest = body.strip_prefix(MARKER)?;
     let (id, rest) = match rest.strip_prefix('#') {
@@ -98,8 +56,6 @@ fn split_marker(body: &str) -> Option<(Option<&str>, &str)> {
     Some((id, rest))
 }
 
-/// The comment again, with the thread ID `id`. The editor and the core write
-/// comments in the same form.
 pub fn with_id(html: &str, id: &str) -> Option<String> {
     let note = parse(html)?;
     let anchor = if note.anchor.is_empty() {
@@ -140,7 +96,6 @@ mod tests {
 
     #[test]
     fn note_written_by_the_editor_without_words_is_parsed() {
-        // The exact form `formatNote` in `ui/src/agent-notes.ts` writes.
         let note = parse("<!-- @agent: сократить вдвое -->").unwrap();
 
         assert_eq!(note.anchor, "");

@@ -1,10 +1,3 @@
-// The vaults: the vault menus, rename, colour, remove, switch, add, the
-// switch by ⌘1…⌘9 and edits made outside the app.
-//
-// Only this module calls `state.setVault` and `state.setVaults`. A switch
-// reloads the tree, the themes, the sync settings and the last note of the
-// vault. The module does not touch the DOM on import.
-
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { formKeys, formatKey, vaultKey } from "../actions";
@@ -34,18 +27,10 @@ import { refreshSync } from "./sync";
 import { expandVault, forgetTree, loadNotes, refreshTree, renderTree } from "./tree";
 import { openSettings } from "./util";
 
-/** Wires the "Add vault" button of the sidebar. */
 export function initVaults(): void {
   el.addVault.onclick = () => void pickVault();
 }
 
-/**
- * Vault menu: the list, add and settings.
- *
- * An unavailable vault (for example, the disk is unplugged) stays in the list
- * but is disabled. A silent removal would lose its settings for an external
- * reason.
- */
 export function openVaultMenu(anchor: HTMLElement): void {
   const items: MenuItem[] = state.vaults.map((entry, index) => ({
     label: entry.name,
@@ -74,16 +59,8 @@ export function openVaultMenu(anchor: HTMLElement): void {
   ]);
 }
 
-/** Label colors. The theme sets the actual values (`--label-*`). */
 const LABEL_COLORS = ["blue", "violet", "amber", "red", "green", "teal"] as const;
 
-/**
- * Menu of a vault row in the sidebar: actions for the whole folder.
- *
- * The "⋯" button and a right click open it. Sync settings stay in their own
- * window because they are large. This menu has the frequent actions: make
- * active, rename, reveal in Finder, remove from the list.
- */
 export function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
   openMenu(anchor, [
     {
@@ -122,9 +99,6 @@ export function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
           run: () => void revealVault(entry.id),
         },
         {
-          // A separate item, not an inline section: the core reads the folder
-          // to list commands, but this menu must open at once. It has "Remove
-          // from the list", which must not wait for a folder busy with sync.
           label: t("commands.open"),
           glyph: "terminal",
           key: "K",
@@ -135,7 +109,6 @@ export function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
         {
           label: t("menu.vault.settings"),
           glyph: "gear",
-          // The labels are set there, so the item shows them.
           detail: entry.labels.map((label) => `#${label}`).join(" ") || undefined,
           action: "settings.open",
           run: () => void openSettings("vaults"),
@@ -166,12 +139,6 @@ export function openVaultRowMenu(anchor: HTMLElement, entry: VaultView): void {
   ]);
 }
 
-/**
- * Inline rename in the tree: an input replaces the row.
- *
- * The name identifies the vault in the sidebar and in search results, so the
- * user renames it where they see it, not in the settings window.
- */
 function startRename(entry: VaultView): void {
   const row = el.noteList.querySelector<HTMLElement>(
     `.vault-row[data-vault="${CSS.escape(entry.id)}"]`,
@@ -182,7 +149,6 @@ function startRename(entry: VaultView): void {
 async function renameVault(id: string, name: string): Promise<void> {
   try {
     state.setVaults(await api.renameVault(id, name));
-    // The status bar also shows the active vault name.
     if (state.vault?.id === id) {
       state.setVault({ ...state.vault, name });
       status.setVault(name, state.vault.color);
@@ -205,7 +171,6 @@ async function recolorVault(id: string, color: string): Promise<void> {
   renderTree();
 }
 
-/** Forgets a vault: the entry leaves the list, the notes stay on disk. */
 async function forgetVault(entry: VaultView): Promise<void> {
   try {
     state.setVaults(await api.removeVault(entry.id));
@@ -216,7 +181,6 @@ async function forgetVault(entry: VaultView): Promise<void> {
 
   forgetTree(entry.id);
 
-  // If the active vault was removed, the core already picked another; open it.
   if (entry.id === state.vault?.id) {
     const info = await api.currentVault().catch(() => null);
     if (info) {
@@ -242,25 +206,18 @@ async function revealVault(id: string): Promise<void> {
   }
 }
 
-/** Shows a vault: tree, themes, sync and its last note. */
 export async function useVault(info: VaultInfo): Promise<void> {
-  // The position key includes the old vault, so save before the switch.
   stashPosition();
   state.setVault(info);
   releaseNote();
   status.setVault(info.name, info.color);
 
-  // Collapsed folders and recent notes are per vault: ⌘2 must return to where
-  // the user left, not to another vault's tree.
   loadVaultMemory(info.id);
 
-  // Expand the active vault in the sidebar: the user came for it.
   expandVault(info.id);
   const notes = await loadNotes(info.id);
   renderTree();
 
-  // Themes and sync settings live in the vault folder, so reload both after a
-  // switch.
   await refreshThemes();
   await refreshSync();
   setStatus(t("status.notes", { count: info.noteCount }));
@@ -270,8 +227,6 @@ export async function useVault(info: VaultInfo): Promise<void> {
   if (restore) {
     await openNote(restore.id);
   } else {
-    // Empty folder: no note is open, so the header, status bar and editor must
-    // not keep a note from the previous vault.
     showHeading(null);
     status.setWords(0);
     editor.setText("");
@@ -279,7 +234,6 @@ export async function useVault(info: VaultInfo): Promise<void> {
   }
 }
 
-/** Switches the active vault: ⌘1…⌘9, the menu, or a result from another vault. */
 export async function switchVault(id: string): Promise<void> {
   if (state.vault?.id === id) return;
   await flushPendingSave();
@@ -293,11 +247,6 @@ export async function switchVault(id: string): Promise<void> {
   }
 }
 
-/**
- * Reads the vault list when the window gets the focus back. Names, colors and
- * labels change in the settings window, and that window does not tell this
- * one. The tree redraws only if the list differs.
- */
 export async function refreshVaultsOnFocus(): Promise<void> {
   try {
     const fresh = await api.listVaults();
@@ -323,13 +272,6 @@ async function pickVault(): Promise<void> {
   await adoptVaults([picked]);
 }
 
-/**
- * Adds vaults from paths. Both the folder picker and drag and drop come here.
- *
- * Several folders can arrive, and one bad path must not cancel the others.
- * The core rejects files, duplicates and nested folders: we report those and
- * add the valid ones.
- */
 export async function adoptVaults(paths: string[]): Promise<void> {
   let added: VaultInfo | null = null;
   let problem: string | null = null;
@@ -344,7 +286,6 @@ export async function adoptVaults(paths: string[]): Promise<void> {
 
   await refreshVaults();
   if (added) {
-    // The core already made the last added vault active: the user wants it.
     await useVault(added);
   } else {
     renderTree();
@@ -365,7 +306,6 @@ export async function reloadVault(): Promise<void> {
   }
 }
 
-/** Switches the vault by hotkey. The core maps the number, so there is one list. */
 export async function switchByHotkey(number: number): Promise<void> {
   try {
     const id = await api.vaultByHotkey(number);
@@ -375,19 +315,14 @@ export async function switchByHotkey(number: number): Promise<void> {
   }
 }
 
-/** Edits made outside the app: an external editor, git, sync. */
 export async function onExternalChange(
   changedVault: string,
   updated: string[],
   removed: string[],
 ): Promise<void> {
-  // Each open vault has a watcher, and the sidebar shows all vaults: an edit
-  // in another vault must show in its branch.
   await refreshTree(changedVault);
   if (changedVault !== state.vault?.id || !state.note || state.note.file) return;
-  // Other notes can link to the open one now, or stop.
   refreshAsideLinks();
-  // An embedded note changed: the embed shows its new text.
   const embeds = [...el.preview.querySelectorAll<HTMLElement>(".embed[data-note]")];
   if (embeds.some((embed) => updated.includes(embed.dataset.note ?? ""))) redrawPreview();
 

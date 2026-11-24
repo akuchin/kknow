@@ -1,5 +1,3 @@
-//! The sync itself: compute the plan and run it.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use kknow_core::{NoteId, Vault};
@@ -10,19 +8,12 @@ use crate::provider::SyncProvider;
 use crate::shared::{self, Merge};
 use crate::{Error, Result};
 
-/// Manifest key in the storage. It is hidden in the same way as
-/// `.kknow/sync.json` in the vault, so the storage looks like the vault.
 pub const MANIFEST_KEY: &str = ".kknow/manifest.json";
 
-/// Key of the object with the note contents: the same path as in the vault.
 pub fn note_key(id: &NoteId) -> String {
     format!("{id}.md")
 }
 
-/// The note that a storage object holds, if it is a note.
-///
-/// The reverse of [`note_key`]. Hidden paths are not notes, as in the vault:
-/// they hold the manifest and the files of other programs.
 pub fn note_of_key(key: &str) -> Option<NoteId> {
     let path = key.strip_suffix(".md")?;
     if path.split('/').any(|part| part.starts_with('.')) {
@@ -31,32 +22,20 @@ pub fn note_of_key(key: &str) -> Option<NoteId> {
     NoteId::parse(path)
 }
 
-/// How many sync objects are already transferred.
-///
-/// Counts plan actions, not bytes: for a sync of eight notes, "3 of 8" is
-/// clearer than megabytes, and notes are never large single files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Progress {
     pub done: usize,
     pub total: usize,
 }
 
-/// A sync ready for transfer: the plan and the contents of all outgoing notes.
-///
-/// The contents are read in advance while the vault is locked. The network
-/// part comes next, and the vault must not stay locked during it: an edit in
-/// the editor would wait for the sync to end. The cost is that outgoing notes
-/// stay in memory. For note sizes this is cheaper than a busy vault.
 #[derive(Debug)]
 pub struct Staged {
     plan: Plan,
     outgoing: BTreeMap<NoteId, String>,
-    /// Local bytes of the shared files to upload or merge.
     outgoing_files: BTreeMap<String, Vec<u8>>,
 }
 
 impl Staged {
-    /// Number of actions to do. Progress counts them.
     pub fn len(&self) -> usize {
         self.plan.actions().len() + self.plan.file_actions().len()
     }
@@ -70,18 +49,12 @@ impl Staged {
     }
 }
 
-/// What the sync brought: contents to write to disk and the new state.
 #[derive(Debug)]
 pub struct Fetched {
-    /// Notes to write: downloaded notes and conflict copies.
     incoming: Vec<(NoteId, String)>,
-    /// Notes that disappeared from the storage. They go to the vault trash.
     remove_local: Vec<NoteId>,
-    /// Shared files to write: downloaded or merged.
     incoming_files: Vec<(String, Vec<u8>)>,
-    /// Shared files that disappeared from the storage.
     remove_local_files: Vec<String>,
-    /// The state both sides agreed on.
     next: Manifest,
     report: Report,
 }
@@ -92,16 +65,12 @@ impl Fetched {
     }
 }
 
-/// A note that diverged on two devices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conflict {
-    /// The note that keeps the local version.
     pub id: NoteId,
-    /// The copy that gets the cloud version.
     pub copy: NoteId,
 }
 
-/// What the sync did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Report {
     pub uploaded: Vec<NoteId>,
@@ -109,10 +78,7 @@ pub struct Report {
     pub removed_local: Vec<NoteId>,
     pub removed_remote: Vec<NoteId>,
     pub conflicts: Vec<Conflict>,
-    /// Shared files of `.kknow` that sync changed on disk. A caller that keeps
-    /// bookmarks in memory must read them again.
     pub files_local: Vec<String>,
-    /// Shared files that sync sent to the storage.
     pub files_remote: Vec<String>,
 }
 
@@ -127,28 +93,17 @@ impl Report {
             && self.files_remote.is_empty()
     }
 
-    /// Notes that the sync wrote to disk. A caller that keeps the vault open
-    /// must parse them again.
     pub fn local_updated(&self) -> impl Iterator<Item = &NoteId> {
         self.downloaded
             .iter()
             .chain(self.conflicts.iter().map(|conflict| &conflict.copy))
     }
 
-    /// Notes removed from disk, that is, moved to the vault trash.
     pub fn local_removed(&self) -> impl Iterator<Item = &NoteId> {
         self.removed_local.iter()
     }
 }
 
-/// Sync of a vault with one remote storage.
-///
-/// The storage is a mirror of the vault: each note is at its own path
-/// (`<id>.md`). The manifest (`.kknow/manifest.json`) keeps the hashes of
-/// the notes that kknow wrote. Notes are
-/// written first and the manifest last. An extra object in the cloud does no
-/// harm until the manifest changes. But a manifest that lists a note not yet
-/// uploaded would cause an error on another device.
 pub struct SyncEngine<P> {
     provider: P,
     policy: ConflictPolicy,
@@ -164,8 +119,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         }
     }
 
-    /// The function that joins two versions of a shared file. Without it the
-    /// local version wins a conflict.
     pub fn with_merge(mut self, merge: Merge) -> Self {
         self.merge = Some(merge);
         self
@@ -180,18 +133,12 @@ impl<P: SyncProvider> SyncEngine<P> {
         &self.provider
     }
 
-    /// Computes what to do and changes nothing.
-    ///
-    /// This does not run [`SyncProvider::prepare`], which writes: a plaintext
-    /// note in an encrypted storage shows up only in a real sync.
     pub fn plan(&self, vault: &Vault) -> Result<Plan> {
         self.plan_after(vault, &[])
     }
 
-    /// The plan after `prepare` changed the given keys in the storage.
     fn plan_after(&self, vault: &Vault, changed: &[String]) -> Result<Plan> {
         let (mut remote, revision) = self.fetch_manifest()?;
-        // A changed key gets its hash from the contents again in `reconcile`.
         for key in changed {
             match note_of_key(key) {
                 Some(id) => remote.remove(&id),
@@ -211,10 +158,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         })
     }
 
-    /// Prepares the sync: computes the plan and reads all outgoing notes.
-    ///
-    /// The vault is read-only here. This is the first of three sync parts, and
-    /// the only one that holds the vault during network access (the manifest).
     pub fn stage(&self, vault: &Vault) -> Result<Staged> {
         let changed = self.provider.prepare()?;
         let plan = self.plan_after(vault, &changed)?;
@@ -225,8 +168,6 @@ impl<P: SyncProvider> SyncEngine<P> {
                 Action::Upload(id) => {
                     outgoing.insert(id.clone(), vault.read(id)?);
                 }
-                // On a conflict the local version goes out too: the storage
-                // must get both versions.
                 Action::KeepBoth { id, .. } => {
                     outgoing.insert(id.clone(), vault.read(id)?);
                 }
@@ -249,11 +190,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         })
     }
 
-    /// Transfer: uploads, downloads, remote deletes, and the manifest write.
-    ///
-    /// The vault is not needed here at all. This is why the sync has parts:
-    /// the network runs without the lock, and an edit in the editor does not
-    /// wait for it.
     pub fn transfer(&self, staged: Staged, progress: &mut dyn FnMut(Progress)) -> Result<Fetched> {
         let Staged {
             plan,
@@ -268,9 +204,6 @@ impl<P: SyncProvider> SyncEngine<P> {
             revision,
         } = plan;
 
-        // Build the final state step by step, do not compute it from disk at
-        // the end. Otherwise an edit made during the sync would go into base
-        // as "already synced" and would never be uploaded.
         let mut next = Manifest::new();
         for (id, entry) in local.entries() {
             if remote.hash_of(id) == Some(entry.hash.as_str()) {
@@ -309,8 +242,6 @@ impl<P: SyncProvider> SyncEngine<P> {
                     fetched.report.downloaded.push(id.clone());
                 }
                 Action::RemoveLocal(id) => {
-                    // The local commit step moves the file to the trash, not
-                    // this step.
                     next.remove(id);
                     fetched.remove_local.push(id.clone());
                     fetched.report.removed_local.push(id.clone());
@@ -359,12 +290,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         Ok(fetched)
     }
 
-    /// Writes the fetched notes to disk and saves the state.
-    ///
-    /// A note that another device deleted goes to the vault trash, not away
-    /// for good: that delete can be a mistake.
-    ///
-    /// This is the third sync part, and the only one that needs the vault lock.
     pub fn commit_local(&self, vault: &mut Vault, fetched: Fetched) -> Result<Report> {
         let Fetched {
             incoming,
@@ -392,36 +317,18 @@ impl<P: SyncProvider> SyncEngine<P> {
         Ok(report)
     }
 
-    /// Syncs the vault: all three parts in one call.
-    ///
-    /// The terminal uses this because it has no lock to release. The window
-    /// calls the parts one by one so the vault is not busy during network
-    /// access.
     pub fn run(&self, vault: &mut Vault) -> Result<Report> {
         let staged = self.stage(vault)?;
         let fetched = self.transfer(staged, &mut |_| {})?;
         self.commit_local(vault, fetched)
     }
 
-    /// Keys of all notes in the storage. This shows what is really there, not
-    /// what the manifest says.
     pub fn remote_keys(&self) -> Result<Vec<String>> {
         let mut keys = self.provider.list("")?;
         keys.retain(|key| note_of_key(key).is_some());
         Ok(keys)
     }
 
-    /// Makes the remote manifest match the objects in the storage.
-    ///
-    /// Other programs also write to the storage: a person drops a file in the
-    /// bucket, an agent saves its research there. A note that the manifest
-    /// does not list gets its hash from its contents, and the plan downloads
-    /// it as any other remote note. A listed note with no object was deleted
-    /// in the storage, and the plan removes it locally.
-    ///
-    /// A note that another program changed in place keeps its old hash: the
-    /// list gives keys, not contents, and a download of each note on each
-    /// sync is too expensive.
     fn reconcile(&self, remote: &mut Manifest) -> Result<()> {
         let keys = self.provider.list("")?;
         let present: BTreeSet<NoteId> = keys.iter().filter_map(|key| note_of_key(key)).collect();
@@ -442,8 +349,6 @@ impl<P: SyncProvider> SyncEngine<P> {
             }
         }
 
-        // The same for shared files. An older build drops the `files` field
-        // when it writes the manifest; this finds the objects again.
         let present: BTreeSet<String> = keys
             .into_iter()
             .filter(|key| shared::is_shared(key))
@@ -466,7 +371,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         Ok(())
     }
 
-    /// One action on a shared file during the transfer.
     fn transfer_file(
         &self,
         action: &FileAction,
@@ -516,7 +420,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         Ok(())
     }
 
-    /// The remote manifest and its revision, that is, the hash of the bytes read.
     fn fetch_manifest(&self) -> Result<(Manifest, Option<String>)> {
         match self.provider.get(MANIFEST_KEY)? {
             Some(bytes) => Ok((
@@ -536,13 +439,6 @@ impl<P: SyncProvider> SyncEngine<P> {
         String::from_utf8(bytes).map_err(|_| Error::NotUtf8(id.clone()))
     }
 
-    /// Writes the manifest if the cloud did not move ahead.
-    ///
-    /// A gap of a few milliseconds stays between the check and the write: S3
-    /// gives no real lock. Without the check, the gap between "read the
-    /// manifest" and "write the new one" lasts the whole sync. A second device
-    /// that wrote its manifest in that time would lose its notes: other
-    /// devices would see them as deleted.
     fn commit(&self, manifest: &Manifest, revision: Option<&str>) -> Result<()> {
         let (_, current) = self.fetch_manifest()?;
         if current.as_deref() != revision {

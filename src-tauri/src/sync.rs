@@ -1,14 +1,3 @@
-//! Sync from the window: settings, run and report.
-//!
-//! The algorithm is in `kknow-sync`. The decision "what to do with files that
-//! arrived from remote" is in `kknow-app`. This module translates between them
-//! and the UI: it builds settings from the form, gets the secret from the
-//! keyring, and shows the report.
-//!
-//! While sync writes notes to disk, it cannot share the vault with autosave.
-//! Edits in the editor are safe (the text is in the window), but their save
-//! waits for the write step. The UI indicator exists for this reason.
-
 use kknow_app::Workspace;
 use kknow_sync::{
     DataKey, GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider,
@@ -25,47 +14,33 @@ use crate::secrets;
 use crate::state::{AppState, Error, Result, VaultSlot};
 use crate::sync_status::{self, SyncState, SyncStatus, SyncStatuses};
 
-/// Sync settings as the UI sees them.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct SyncSettings {
     #[serde(flatten)]
     config: RemoteConfig,
-    /// Remote storage address as a string, to show to the user.
     location: String,
-    /// The secret key is already in the keyring. The form cannot show it, but
-    /// it must say that the key exists.
     has_secret: bool,
-    /// Whether a secret is needed at all. A folder has none, so the form hides
-    /// the key fields for it.
     needs_secret: bool,
-    /// The data key of an encrypted storage is in the keyring. Without it,
-    /// the window asks for the passphrase.
     has_key: bool,
 }
 
-/// The result of turning encryption on.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct EncryptionOn {
-    /// The person must write it down: it is shown only this one time.
     recovery_code: String,
     settings: SyncSettings,
 }
 
-/// A conflict: both sides edited the same note.
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(rename = "SyncConflict"))]
 pub struct ConflictView {
-    /// The note that keeps the local version.
     id: String,
-    /// The copy that holds the remote version.
     copy: String,
 }
 
-/// What the sync did.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -74,13 +49,10 @@ pub struct SyncReport {
     downloaded: usize,
     removed_local: usize,
     removed_remote: usize,
-    /// Commits that went to a git repository. The other providers have no
-    /// commits, so it is zero for them.
     pub(crate) pushed: usize,
     conflicts: Vec<ConflictView>,
 }
 
-/// An empty form field means "not set", not an empty string.
 fn tidy(value: Option<String>) -> Option<String> {
     value
         .map(|text| text.trim().to_string())
@@ -92,9 +64,6 @@ fn config_of(workspace: &Workspace) -> Result<Option<RemoteConfig>> {
 }
 
 impl SyncSettings {
-    // Only the git tests read these, and that module is `cfg(all(test, unix))`:
-    // it drives a real remote through a shell. Outside unix the methods have no
-    // caller, and `-D warnings` makes dead code an error.
     #[cfg(all(test, unix))]
     pub fn location(&self) -> &str {
         &self.location
@@ -111,7 +80,6 @@ pub(crate) fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
     let needs_secret = config.needs_secret();
 
     Ok(SyncSettings {
-        // A folder has no secret, so there is no need to ask the keyring.
         has_secret: needs_secret && secrets::load(&location)?.is_some(),
         needs_secret,
         has_key: config.encrypted && secrets::load(&key_entry(&location))?.is_some(),
@@ -120,16 +88,10 @@ pub(crate) fn settings_of(config: RemoteConfig) -> Result<SyncSettings> {
     })
 }
 
-/// The keyring entry of the data key of an encrypted storage.
-///
-/// Next to the secret access key and under the same address: the key belongs
-/// to the storage, and two vaults in one storage share it.
 fn key_entry(location: &str) -> String {
     format!("{location} encryption key")
 }
 
-/// The data key from the keyring. `None` if the storage is not encrypted or
-/// the key is not there yet: then `connect` says "locked".
 fn data_key(config: &RemoteConfig) -> Result<Option<DataKey>> {
     if !config.encrypted {
         return Ok(None);
@@ -140,7 +102,6 @@ fn data_key(config: &RemoteConfig) -> Result<Option<DataKey>> {
     }
 }
 
-/// The secret access key, if this storage needs one.
 fn secret(config: &RemoteConfig) -> Result<Option<String>> {
     if config.needs_secret() {
         secrets::load(&config.location())
@@ -149,16 +110,10 @@ fn secret(config: &RemoteConfig) -> Result<Option<String>> {
     }
 }
 
-/// The storage under the encryption, for the encryption commands.
 fn storage(config: &RemoteConfig) -> Result<Box<dyn SyncProvider>> {
     Ok(kknow_sync::storage(config, secret(config)?)?)
 }
 
-/// Turns encryption on: a new key, then the storage goes under encryption.
-///
-/// The work is in the storage, not in the vault, so the vault stays free.
-/// An auto sync that starts at the same time meets the key file and stops
-/// with "locked"; the next one uses the key.
 #[tauri::command(async)]
 pub fn sync_encrypt(
     state: State<'_, AppState>,
@@ -178,8 +133,6 @@ pub fn sync_encrypt(
     })
 }
 
-/// Opens an encrypted storage with the passphrase or the recovery code: on a
-/// new device, or after the key changed in the storage.
 #[tauri::command(async)]
 pub fn sync_unlock(
     state: State<'_, AppState>,
@@ -196,8 +149,6 @@ pub fn sync_unlock(
     settings_of(config)
 }
 
-/// A new passphrase. `current` is the old passphrase or the recovery code.
-/// The notes stay as they are; other devices keep their key.
 #[tauri::command(async)]
 pub fn sync_change_passphrase(
     state: State<'_, AppState>,
@@ -211,10 +162,6 @@ pub fn sync_change_passphrase(
     secrets::store(&key_entry(&config.location()), &key.export())
 }
 
-/// Connects to remote storage with the saved settings.
-///
-/// The core builds the provider: the window and the CLI must read the settings
-/// in the same way. The secret comes from the keyring, and only when needed.
 fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
     let key = data_key(config)?;
     Ok(kknow_app::merge::sync_engine(
@@ -224,7 +171,6 @@ fn engine(config: &RemoteConfig) -> Result<SyncEngine<Box<dyn SyncProvider>>> {
     )?)
 }
 
-/// Sync settings of the vault, if sync is configured.
 #[tauri::command(async)]
 pub fn sync_settings(
     state: State<'_, AppState>,
@@ -234,12 +180,6 @@ pub fn sync_settings(
     config.map(settings_of).transpose()
 }
 
-/// Saves the settings. The secret goes to the keyring, the rest to the vault.
-///
-/// `secret` = `None` means "keep the stored key". The form sends an empty field
-/// each time the user does not type the key again. The keyring finds the key
-/// by the storage address, so a new endpoint, bucket or prefix would lose it:
-/// [`carry_secret`] moves it to the new address.
 #[tauri::command(async)]
 pub fn save_sync_settings(
     state: State<'_, AppState>,
@@ -250,10 +190,6 @@ pub fn save_sync_settings(
     let slot = state.slot(vault.as_deref())?;
     let old = slot.read(config_of)?;
 
-    // Encryption is not a field of the form: it is turned on by its own
-    // command, which also changes the storage. A new address is a new
-    // storage: if it is encrypted, the sync says "locked" and the window
-    // asks for its passphrase.
     let mut config = RemoteConfig {
         provider: tidy_provider(settings.provider),
         policy: settings.policy,
@@ -264,8 +200,6 @@ pub fn save_sync_settings(
         .as_ref()
         .is_some_and(|old| old.encrypted && old.location() == config.location());
 
-    // Settings first: if the bucket settings are not saved, there is no address
-    // to store the key under.
     slot.read(|workspace| Ok(config.save(&RemoteConfig::path(workspace.root()))?))?;
 
     match tidy(secret).filter(|_| config.needs_secret()) {
@@ -275,14 +209,6 @@ pub fn save_sync_settings(
     settings_of(config)
 }
 
-/// Keeps the stored key when the address of the same storage changes.
-///
-/// The keyring stores the key under the address. A person who fixes a typo
-/// in the endpoint or changes the prefix did not ask to forget the key, so it
-/// is copied to the new address. The old entry stays: another vault can use
-/// the same bucket and the same key. A key that is already at the new address
-/// wins: it was typed for that address. A new kind of storage (S3 after git)
-/// is a new login, so nothing is carried there.
 fn carry_secret(old: Option<&RemoteConfig>, new: &RemoteConfig) -> Result<()> {
     let Some(old) = old else { return Ok(()) };
     let same_kind = std::mem::discriminant(&old.provider) == std::mem::discriminant(&new.provider);
@@ -299,7 +225,6 @@ fn carry_secret(old: Option<&RemoteConfig>, new: &RemoteConfig) -> Result<()> {
     Ok(())
 }
 
-/// Applies [`tidy`] to each provider field.
 fn tidy_provider(provider: Provider) -> Provider {
     match provider {
         Provider::S3(s3) => Provider::S3(S3Settings {
@@ -318,10 +243,6 @@ fn tidy_provider(provider: Provider) -> Provider {
     }
 }
 
-/// Turns off sync: forgets both the settings and the secret key.
-///
-/// The snapshot of the last sync stays. If the user connects the storage
-/// again, it prevents treating all notes as conflicts.
 #[tauri::command(async)]
 pub fn forget_sync_settings(state: State<'_, AppState>, vault: Option<String>) -> Result<()> {
     let slot = state.slot(vault.as_deref())?;
@@ -338,12 +259,6 @@ pub fn forget_sync_settings(state: State<'_, AppState>, vault: Option<String>) -
     slot.read(|workspace| Ok(RemoteConfig::forget(&RemoteConfig::path(workspace.root()))?))
 }
 
-/// What sync would do now, without changes.
-///
-/// Same as `kknow sync --dry-run` in the CLI: a way to check the address and
-/// keys without a write. The window does not call it yet, because there is no
-/// place to show the plan. The function stays: it is cheap and returns with a
-/// "show plan" feature.
 #[allow(dead_code)]
 pub fn sync_preview(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<String>> {
     let slot = state.slot(vault.as_deref())?;
@@ -356,7 +271,6 @@ pub fn sync_preview(state: State<'_, AppState>, vault: Option<String>) -> Result
     })
 }
 
-/// Syncs the vault with its remote storage.
 #[tauri::command(async)]
 pub fn sync_now<R: Runtime>(
     app: AppHandle<R>,
@@ -367,10 +281,6 @@ pub fn sync_now<R: Runtime>(
     exchange(&app, &slot)
 }
 
-/// Auto-sync interval of this vault, in minutes.
-///
-/// The scheduler reads it from disk on each tick: the setting can change, and
-/// a thread restart is not necessary.
 pub fn auto_sync_minutes(slot: &VaultSlot) -> u32 {
     slot.read(config_of)
         .ok()
@@ -379,11 +289,6 @@ pub fn auto_sync_minutes(slot: &VaultSlot) -> u32 {
         .unwrap_or(0)
 }
 
-/// The full sync: staging under the lock, network without it, write under it
-/// again.
-///
-/// Sync has three parts for this reason. Before, the vault was locked for the
-/// whole time, including the network, and a note save waited for the end.
 pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result<SyncReport> {
     let id = slot.entry.id.clone();
     let statuses = app.state::<SyncStatuses>();
@@ -395,14 +300,11 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
         return exchange_git(app, slot, &config);
     }
 
-    // The connection is part of the sync too. Unavailable storage must show in
-    // the status, not escape as an error past the status bar.
     let engine = match engine(&config) {
         Ok(engine) => engine,
         Err(error) => return Err(failed(app, &statuses, &id, &location, error)),
     };
 
-    // Stage under the lock: the plan and the content to upload.
     let staged = match slot.read(|workspace| Ok(workspace.sync_stage(&engine)?)) {
         Ok(staged) => staged,
         Err(error) => return Err(failed(app, &statuses, &id, &location, error)),
@@ -417,8 +319,6 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
         status.message = None;
     });
 
-    // Network. The vault is free during this step: editor edits save without
-    // a wait for the sync.
     let progress_app = app.clone();
     let progress_id = id.clone();
     let fetched = engine.transfer(staged, &mut |progress| {
@@ -434,18 +334,11 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
         Err(error) => return Err(failed(app, &statuses, &id, &location, error.into())),
     };
 
-    // Only the write of downloaded files takes the lock again.
     let report = match slot.write(|workspace| Ok(workspace.sync_finish(&engine, fetched)?)) {
         Ok(report) => report,
         Err(error) => return Err(failed(app, &statuses, &id, &location, error)),
     };
 
-    // Remote notes reach the UI with the same event as external editor edits:
-    // the window has one update path, not two. The watcher does not report
-    // them: the index already has these files, so they do not look like a new
-    // change.
-    // A note whose thread or proposal came from the other machine is
-    // "updated" too: the window draws its comments again.
     let threaded = slot
         .read(|workspace| Ok(workspace.notes_of_shared(&report.files_local)))
         .unwrap_or_default();
@@ -484,8 +377,6 @@ pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result
     })
 }
 
-/// A git sync: fetch, merge under the lock, push. Git counts commits, not
-/// files, so the progress has no steps: the segment shows "busy".
 fn exchange_git<R: Runtime>(
     app: &AppHandle<R>,
     slot: &Arc<VaultSlot>,
@@ -524,15 +415,11 @@ fn exchange_git<R: Runtime>(
     })
 }
 
-/// A conflict in a note shows as the note ID, so a click opens it; a
-/// conflict in another file (a picture, bookmarks) shows as its path.
 fn note_or_path(path: &str) -> String {
     kknow_core::NoteId::from_relative_path(std::path::Path::new(path))
         .map_or_else(|| path.to_string(), |id| id.as_str().to_string())
 }
 
-/// The status after a successful sync: the time, and the conflicts that the
-/// copies in the vault show.
 fn succeeded<R: Runtime>(
     app: &AppHandle<R>,
     slot: &VaultSlot,
@@ -556,8 +443,6 @@ fn succeeded<R: Runtime>(
     Ok(())
 }
 
-/// A sync failure. It lives in the status bar segment, not in a modal dialog,
-/// and stays visible until the next successful attempt.
 fn failed<R: Runtime>(
     app: &AppHandle<R>,
     statuses: &SyncStatuses,
@@ -573,7 +458,6 @@ fn failed<R: Runtime>(
     error
 }
 
-/// Sync status of one vault; without an ID, of the active vault.
 #[tauri::command(async)]
 pub fn sync_status<R: Runtime>(
     app: AppHandle<R>,
@@ -585,10 +469,6 @@ pub fn sync_status<R: Runtime>(
     Ok(refresh_status(&app, &statuses, &slot))
 }
 
-/// Statuses of all vaults that were opened.
-///
-/// The status bar chip also shows conflicts in other vaults, so the window
-/// needs the full list, not only the active vault.
 #[tauri::command(async)]
 pub fn sync_statuses<R: Runtime>(
     app: AppHandle<R>,
@@ -603,8 +483,6 @@ pub fn sync_statuses<R: Runtime>(
     statuses.all()
 }
 
-/// Recalculates what is visible without a sync: whether sync is configured
-/// and how many conflict copies the vault has.
 fn refresh_status<R: Runtime>(
     app: &AppHandle<R>,
     statuses: &SyncStatuses,
@@ -620,13 +498,11 @@ fn refresh_status<R: Runtime>(
         status.location = config.as_ref().map(|config| config.location());
         status.auto_sync_minutes = config.as_ref().map_or(0, RemoteConfig::auto_sync);
 
-        // Do not touch a running sync: it has its own status and progress.
         if status.state == SyncState::Syncing {
             return;
         }
         status.state = match (config.is_some(), conflicts > 0, status.state) {
             (false, _, _) => SyncState::Off,
-            // The error stays until the next successful sync.
             (true, _, SyncState::Error) => SyncState::Error,
             (true, true, _) => SyncState::Conflict,
             (true, false, _) => SyncState::Idle,
@@ -646,8 +522,6 @@ mod tests {
     fn app(root: &std::path::Path) -> tauri::App<MockRuntime> {
         mock_builder()
             .manage(crate::state::testing(&[root]))
-            // Sync statuses are a separate managed state, as `run()` does in
-            // the real app.
             .manage(SyncStatuses::default())
             .build(mock_context(noop_assets()))
             .expect("мок-приложение собрано")
@@ -659,8 +533,6 @@ mod tests {
         dir
     }
 
-    /// Each test has its own bucket. In the test build, secrets live in shared
-    /// process memory, and the storage address is their key.
     fn form(bucket: &str) -> RemoteConfig {
         RemoteConfig {
             policy: ConflictPolicy::PreferLocal,
@@ -674,7 +546,6 @@ mod tests {
         }
     }
 
-    /// Settings for a shared folder: no bucket and no keys.
     fn folder_form(path: &std::path::Path) -> RemoteConfig {
         RemoteConfig::folder(path)
     }
@@ -757,7 +628,6 @@ mod tests {
             secrets::load(&saved.location).unwrap().as_deref(),
             Some("secret")
         );
-        // Another vault in the old bucket still finds its key.
         assert_eq!(
             secrets::load("http://localhost:9000/new-endpoint/")
                 .unwrap()
@@ -796,7 +666,6 @@ mod tests {
         )
         .unwrap();
 
-        // The form sends an empty field until the user types the key again.
         let saved = save_sync_settings(app.state(), form("keeps-secret"), None, None).unwrap();
 
         assert!(saved.has_secret);
@@ -812,13 +681,10 @@ mod tests {
 
         assert!(sync_settings(app.state(), None).unwrap().is_none());
         assert!(!dir.path().join(".kknow/remote.json").exists());
-        // The user can add the settings again: the old key must not come back.
         let saved = save_sync_settings(app.state(), form("forget"), None, None).unwrap();
         assert!(!saved.has_secret);
     }
 
-    /// A folder has no secrets: it does not touch the keyring, and the form
-    /// does not need the key fields.
     #[test]
     fn a_folder_needs_no_keychain() {
         let dir = vault();
@@ -831,14 +697,11 @@ mod tests {
         assert!(!saved.has_secret);
         assert_eq!(saved.location, cloud.path().to_string_lossy());
 
-        // Sync through the folder really runs, without network or keys.
         let report = sync_now(app.handle().clone(), app.state(), None).unwrap();
         assert_eq!(report.uploaded, 1);
         assert!(cloud.path().join("Index.md").is_file());
     }
 
-    /// This is why sync has parts: during the network step the vault is free,
-    /// and a note saves without a wait for the sync.
     #[test]
     fn a_note_can_be_saved_while_the_exchange_is_on_the_network() {
         let dir = vault();
@@ -851,12 +714,10 @@ mod tests {
         let config = slot.read(config_of).unwrap().unwrap();
         let engine = engine(&config).unwrap();
 
-        // Staging holds the lock. Then the "network" step starts.
         let staged = slot
             .read(|workspace| Ok(workspace.sync_stage(&engine).unwrap()))
             .unwrap();
 
-        // During the transfer the window saves an edit: the lock is free.
         let saved = std::thread::scope(|scope| {
             let writer = scope.spawn(|| {
                 slot.write(|workspace| {
@@ -876,8 +737,6 @@ mod tests {
         assert!(cloud.path().join("Index.md").is_file());
     }
 
-    /// The status is visible without a sync: whether sync is configured and
-    /// how many conflict copies the vault has.
     #[test]
     fn status_says_off_conflict_and_idle() {
         let dir = vault();
@@ -896,7 +755,6 @@ mod tests {
             Some(cloud.path().to_string_lossy().as_ref())
         );
 
-        // A conflict copy is a file in the folder; the list comes from files.
         fs::write(
             dir.path().join("Index (conflict 3f9a1c2b).md"),
             "# чужая версия\n",
@@ -913,8 +771,6 @@ mod tests {
         assert_eq!(conflicted.conflicts, 1);
     }
 
-    /// A sync reports itself: progress reaches the end, and the time of the
-    /// last success is saved.
     #[test]
     fn a_finished_exchange_reports_progress_and_time() {
         let dir = vault();
@@ -933,12 +789,10 @@ mod tests {
         assert!(status.at.is_some(), "время удачного обмена запомнено");
     }
 
-    /// A storage failure shows in the status and stays until the next success.
     #[test]
     fn a_failed_exchange_leaves_the_error_visible() {
         let dir = vault();
         let app = app(dir.path());
-        // A folder that cannot open: a file takes the path.
         let taken = dir.path().join("Index.md");
         save_sync_settings(app.state(), RemoteConfig::folder(&taken), None, None).unwrap();
 
@@ -950,7 +804,6 @@ mod tests {
         assert_eq!(status.state, SyncState::Error);
         assert!(status.message.is_some());
 
-        // A recalculation does not clear the error: it stays until a success.
         let again = sync_status(app.handle().clone(), app.state(), app.state(), None).unwrap();
         assert_eq!(again.state, SyncState::Error);
     }
@@ -993,8 +846,6 @@ mod tests {
         assert!(!dir.path().join(".kknow/remote.json").exists());
     }
 
-    /// Encryption from the window: on, sync, a second device that unlocks
-    /// with the recovery code, a new passphrase.
     #[test]
     fn an_encrypted_folder_from_turn_on_to_a_second_device() {
         let cloud = tempfile::tempdir().unwrap();
@@ -1008,8 +859,6 @@ mod tests {
         assert!(!cloud.path().join("Index.md").exists());
         assert!(cloud.path().join(".kknow/key.json").is_file());
 
-        // The second device connects the same folder and does not know yet
-        // that it is encrypted.
         let desktop_dir = tempfile::tempdir().unwrap();
         let desktop = app(desktop_dir.path());
         save_sync_settings(desktop.state(), folder_form(cloud.path()), None, None).unwrap();
@@ -1035,11 +884,9 @@ mod tests {
         )
         .unwrap();
         assert!(sync_unlock(laptop.state(), "battery staple".into(), None).is_ok());
-        // The laptop keeps its key: a new passphrase does not change it.
         sync_now(laptop.handle().clone(), laptop.state(), None).unwrap();
     }
 
-    /// A new address is a new storage: the flag does not move to it.
     #[test]
     fn a_new_address_is_not_encrypted_by_inheritance() {
         let cloud = tempfile::tempdir().unwrap();
