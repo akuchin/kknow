@@ -31,6 +31,7 @@ in the repository.
 ```mermaid
 flowchart TB
   core["kknow-core<br/>Vault, Note, NoteId, trash"]
+  crypto["kknow-crypto<br/>cipher, key file, locked notes"]
   index["kknow-index<br/>parsing, links, graph, HTML, tantivy"]
   sync["kknow-sync<br/>manifests, plan, S3, folder, git"]
   run["kknow-run<br/>custom commands, timeouts"]
@@ -41,6 +42,8 @@ flowchart TB
 
   core --> index
   core --> sync
+  crypto --> sync
+  crypto --> app
   index --> app
   sync --> app
   run --> app
@@ -53,6 +56,8 @@ Dependencies go in one direction only. Each crate knows as little as possible:
 
 - `kknow-core` knows nothing about text parsing.
 - `kknow-index` knows nothing about the disk.
+- `kknow-crypto` does no input or output and depends on no other kknow crate.
+  Both sync and the locked notes of the vault use it.
 - `kknow-run` does not depend even on `core`. A module that runs external
   programs gets a target that is ready to use.
 - `kknow-app` knows nothing about how the window shows the data.
@@ -192,7 +197,7 @@ folder.
 
 `Encrypted<P>` is a `SyncProvider` on top of another one. The engine sees
 logical keys and plain bytes; the wrapper keeps encrypted names and bytes
-(`kknow_sync::crypto`):
+(`kknow-crypto`):
 
 - a random data key, wrapped in `.kknow/key.json` by Argon2id from the
   passphrase and by the recovery code;
@@ -202,8 +207,9 @@ logical keys and plain bytes; the wrapper keeps encrypted names and bytes
   `get` and `put` need no table. Base32 because a folder can be on a file
   system that does not see the case of letters.
 
-`SyncProvider::prepare` runs before each sync. A plain storage refuses a
-storage with a key file. The wrapper checks that its key matches `key.json`,
+`SyncProvider` knows nothing about encryption. The engine holds a plain or an
+encrypted storage and prepares it before each sync. A plain storage refuses a
+storage with a key file. The encrypted one checks that its key matches `key.json`,
 keeps a plain stub manifest of format 2 (an older build stops at it) and
 encrypts the plain `.md` files of other programs. The engine then takes the
 hash of each such file again, so a plain edit in place is a remote change.
@@ -211,7 +217,7 @@ hash of each such file again, so a plain edit in place is a remote change.
 ### Locked notes
 
 A locked note is encrypted in the vault itself, not only in the storage. The
-format is in `kknow_sync::locked`, next to the crypto of sync; the session is
+format is in `kknow_crypto::locked`, next to the crypto of sync; the session is
 in `kknow_app::lock`:
 
 - a random notes key, wrapped in `.kknow/lock.json` by Argon2id from the

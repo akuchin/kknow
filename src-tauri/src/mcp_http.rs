@@ -242,7 +242,9 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
     if path != "/mcp" {
         return Reply::refuse(404, "the server address is /mcp");
     }
-    if !ours(request.header("Host"), port, false) || !ours(request.header("Origin"), port, true) {
+    if !host_is_ours(request.header("Host"), port)
+        || !origin_is_ours(request.header("Origin"), port)
+    {
         return Reply::refuse(403, "the request is not from this computer");
     }
     if request.method != "POST" {
@@ -287,19 +289,21 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
     }
 }
 
-fn ours(value: Option<&str>, port: u16, origin: bool) -> bool {
-    let Some(value) = value else {
-        return origin;
-    };
-    let value = if origin {
-        match value.strip_prefix("http://") {
-            Some(rest) => rest,
-            None => return false,
-        }
-    } else {
-        value
-    };
-    value == format!("127.0.0.1:{port}") || value == format!("localhost:{port}")
+fn host_is_ours(value: Option<&str>, port: u16) -> bool {
+    value.is_some_and(|authority| authority_is_ours(authority, port))
+}
+
+fn origin_is_ours(value: Option<&str>, port: u16) -> bool {
+    match value {
+        None => true,
+        Some(origin) => origin
+            .strip_prefix("http://")
+            .is_some_and(|authority| authority_is_ours(authority, port)),
+    }
+}
+
+fn authority_is_ours(authority: &str, port: u16) -> bool {
+    authority == format!("127.0.0.1:{port}") || authority == format!("localhost:{port}")
 }
 
 struct WindowHost<'a, R: Runtime> {
@@ -431,6 +435,24 @@ mod tests {
     use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn a_missing_origin_is_accepted() {
+        assert!(origin_is_ours(None, 7377));
+    }
+
+    #[test]
+    fn a_missing_host_is_refused() {
+        assert!(!host_is_ours(None, 7377));
+    }
+
+    #[test]
+    fn an_origin_without_the_scheme_is_refused() {
+        assert!(!origin_is_ours(Some("localhost:7377"), 7377));
+        assert!(!origin_is_ours(Some("https://localhost:7377"), 7377));
+        assert!(origin_is_ours(Some("http://localhost:7377"), 7377));
+        assert!(host_is_ours(Some("127.0.0.1:7377"), 7377));
+    }
 
     fn app() -> (Vec<tempfile::TempDir>, tauri::App<MockRuntime>) {
         let work = tempfile::tempdir().unwrap();

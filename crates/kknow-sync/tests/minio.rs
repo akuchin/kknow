@@ -70,7 +70,7 @@ fn a_vault_travels_through_s3() {
     assert_eq!(keys, ["Index.md", "Projects/kknow.md"]);
     assert!(
         sender
-            .provider()
+            .storage()
             .get(kknow_sync::MANIFEST_KEY)
             .unwrap()
             .is_some()

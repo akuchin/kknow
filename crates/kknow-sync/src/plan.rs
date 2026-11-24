@@ -392,7 +392,13 @@ mod tests {
 
     #[test]
     fn a_locked_note_keeps_both_versions_whatever_the_policy() {
-        let sealed = |text: &str| format!("{}\n{text}\n{}\n", crate::locked::BEGIN, crate::locked::END);
+        let sealed = |text: &str| {
+            format!(
+                "{}\n{text}\n{}\n",
+                kknow_crypto::locked::BEGIN,
+                kknow_crypto::locked::END
+            )
+        };
         let local = manifest(&[("Diary", &sealed("mine"))]);
         let remote = manifest(&[("Diary", &sealed("theirs"))]);
         let base = manifest(&[("Diary", &sealed("old"))]);

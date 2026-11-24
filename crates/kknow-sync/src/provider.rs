@@ -104,13 +104,6 @@ pub trait SyncProvider {
     fn delete(&self, key: &str) -> Result<()>;
 
     fn list(&self, prefix: &str) -> Result<Vec<String>>;
-
-    fn prepare(&self) -> crate::Result<Vec<String>> {
-        if self.get(crate::crypto::KEY_FILE)?.is_some() {
-            return Err(crate::Error::Locked);
-        }
-        Ok(Vec::new())
-    }
 }
 
 impl<P: SyncProvider + ?Sized> SyncProvider for &P {
@@ -129,10 +122,6 @@ impl<P: SyncProvider + ?Sized> SyncProvider for &P {
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         (**self).list(prefix)
     }
-
-    fn prepare(&self) -> crate::Result<Vec<String>> {
-        (**self).prepare()
-    }
 }
 
 impl<P: SyncProvider + ?Sized> SyncProvider for Box<P> {
@@ -150,10 +139,6 @@ impl<P: SyncProvider + ?Sized> SyncProvider for Box<P> {
 
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         (**self).list(prefix)
-    }
-
-    fn prepare(&self) -> crate::Result<Vec<String>> {
-        (**self).prepare()
     }
 }
 

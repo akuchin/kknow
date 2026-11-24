@@ -1,4 +1,5 @@
-use kknow_sync::{DataKey, RemoteConfig, SyncEngine, SyncProvider};
+use kknow_crypto::DataKey;
+use kknow_sync::{RemoteConfig, SyncEngine, SyncProvider};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

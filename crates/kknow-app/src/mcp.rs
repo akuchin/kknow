@@ -1154,7 +1154,7 @@ mod tests {
         workspace
             .set_lock_password_with(
                 "correct horse",
-                kknow_sync::crypto::KdfParams {
+                kknow_crypto::KdfParams {
                     memory_kib: 64,
                     passes: 1,
                     lanes: 1,

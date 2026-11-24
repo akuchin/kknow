@@ -5,7 +5,32 @@ use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::{Error, Result};
+pub mod locked;
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("encryption: {0}")]
+    Cipher(String),
+
+    #[error("wrong passphrase or recovery code")]
+    WrongPassphrase,
+
+    #[error("the passphrase must have at least {0} characters")]
+    PassphraseTooShort(usize),
+
+    #[error(
+        "the object {0} does not open: it is damaged, or it was encrypted with a different key"
+    )]
+    Damaged(String),
+
+    #[error("the note was locked with another password: this vault has a different lock key")]
+    OtherNotesKey,
+
+    #[error("the path {0} is too long for an encrypted storage")]
+    KeyTooLong(String),
+}
 
 pub const KEY_FILE: &str = ".kknow/key.json";
 
@@ -52,12 +77,12 @@ impl DataKey {
     pub fn import(text: &str) -> Result<Self> {
         let bytes = Zeroizing::new(
             base32::decode(text.trim())
-                .ok_or_else(|| Error::Crypto("the key is damaged".into()))?,
+                .ok_or_else(|| Error::Cipher("the key is damaged".into()))?,
         );
         let array: [u8; 32] = bytes
             .as_slice()
             .try_into()
-            .map_err(|_| Error::Crypto("the key has a wrong length".into()))?;
+            .map_err(|_| Error::Cipher("the key has a wrong length".into()))?;
         Ok(DataKey(array))
     }
 }
@@ -134,12 +159,12 @@ impl Default for KdfParams {
 impl KdfParams {
     fn derive(&self, passphrase: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>> {
         let params = Params::new(self.memory_kib, self.passes, self.lanes, Some(32))
-            .map_err(|why| Error::Crypto(format!("Argon2 parameters: {why}")))?;
+            .map_err(|why| Error::Cipher(format!("Argon2 parameters: {why}")))?;
         let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
         let mut out = Zeroizing::new([0; 32]);
         argon
             .hash_password_into(passphrase.as_bytes(), salt, &mut out[..])
-            .map_err(|why| Error::Crypto(format!("Argon2: {why}")))?;
+            .map_err(|why| Error::Cipher(format!("Argon2: {why}")))?;
         Ok(out)
     }
 }
@@ -160,7 +185,7 @@ impl Slot {
         random(&mut nonce)?;
         let wrapped = XChaCha20Poly1305::new(wrapping.into())
             .encrypt(&XNonce::from(nonce), Payload { msg: &key.0, aad })
-            .map_err(|_| Error::Crypto("cannot wrap the key".into()))?;
+            .map_err(|_| Error::Cipher("cannot wrap the key".into()))?;
         Ok(Slot {
             salt,
             nonce: nonce.to_vec(),
@@ -253,9 +278,9 @@ impl KeyFile {
 
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
         let file: KeyFile = serde_json::from_slice(bytes)
-            .map_err(|why| Error::Crypto(format!("the key file is damaged: {why}")))?;
+            .map_err(|why| Error::Cipher(format!("the key file is damaged: {why}")))?;
         if file.format > KEY_FILE_FORMAT {
-            return Err(Error::Crypto(format!(
+            return Err(Error::Cipher(format!(
                 "the key file has format {}, and this build knows only {KEY_FILE_FORMAT}",
                 file.format
             )));
@@ -319,7 +344,7 @@ impl Cipher {
 
     pub fn seal(&self, key: &str, data: &[u8]) -> Result<Vec<u8>> {
         let length = u32::try_from(data.len())
-            .map_err(|_| Error::Crypto(format!("{key}: the object is larger than 4 GiB")))?;
+            .map_err(|_| Error::Cipher(format!("{key}: the object is larger than 4 GiB")))?;
         let mut plain = Zeroizing::new(Vec::with_capacity(padded(data.len())));
         plain.extend_from_slice(&length.to_le_bytes());
         plain.extend_from_slice(data);
@@ -336,7 +361,7 @@ impl Cipher {
                     aad: key.as_bytes(),
                 },
             )
-            .map_err(|_| Error::Crypto(format!("{key}: cannot encrypt")))?;
+            .map_err(|_| Error::Cipher(format!("{key}: cannot encrypt")))?;
 
         let mut out = Vec::with_capacity(MAGIC.len() + NONCE + sealed.len());
         out.extend_from_slice(MAGIC);
@@ -373,7 +398,7 @@ impl Cipher {
         let sealed = self
             .siv()
             .encrypt([NAME_HEADER], key.as_bytes())
-            .map_err(|_| Error::Crypto(format!("{key}: cannot encrypt the name")))?;
+            .map_err(|_| Error::Cipher(format!("{key}: cannot encrypt the name")))?;
         let text = base32::encode(&sealed);
         let segments: Vec<&str> = text
             .as_bytes()
@@ -424,7 +449,7 @@ fn salt() -> Result<Vec<u8>> {
 }
 
 fn random(buf: &mut [u8]) -> Result<()> {
-    getrandom::fill(buf).map_err(|why| Error::Crypto(format!("no random numbers: {why}")))
+    getrandom::fill(buf).map_err(|why| Error::Cipher(format!("no random numbers: {why}")))
 }
 
 pub(crate) mod base32 {

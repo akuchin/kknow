@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kknow_core::{NoteId, Vault};
 
+use crate::encrypted::{Encrypted, Storage};
 use crate::manifest::{Entry, Manifest, state_path};
 use crate::plan::{Action, ConflictPolicy, FileAction, Plan, diff, diff_files};
 use crate::provider::SyncProvider;
@@ -111,15 +112,23 @@ impl Report {
 }
 
 pub struct SyncEngine<P> {
-    provider: P,
+    storage: Storage<P>,
     policy: ConflictPolicy,
     merge: Option<Merge>,
 }
 
 impl<P: SyncProvider> SyncEngine<P> {
     pub fn new(provider: P) -> Self {
+        Self::over(Storage::Plain(provider))
+    }
+
+    pub fn encrypted(provider: Encrypted<P>) -> Self {
+        Self::over(Storage::Encrypted(provider))
+    }
+
+    pub fn over(storage: Storage<P>) -> Self {
         SyncEngine {
-            provider,
+            storage,
             policy: ConflictPolicy::default(),
             merge: None,
         }
@@ -135,8 +144,8 @@ impl<P: SyncProvider> SyncEngine<P> {
         self
     }
 
-    pub fn provider(&self) -> &P {
-        &self.provider
+    pub fn storage(&self) -> &Storage<P> {
+        &self.storage
     }
 
     pub fn plan(&self, vault: &Vault) -> Result<Plan> {
@@ -165,7 +174,7 @@ impl<P: SyncProvider> SyncEngine<P> {
     }
 
     pub fn stage(&self, vault: &Vault) -> Result<Staged> {
-        let changed = self.provider.prepare()?;
+        let changed = self.storage.prepare()?;
         let plan = self.plan_after(vault, &changed)?;
 
         let mut outgoing = BTreeMap::new();
@@ -237,7 +246,7 @@ impl<P: SyncProvider> SyncEngine<P> {
             match action {
                 Action::Upload(id) => {
                     let content = staged_text(&mut outgoing, id)?;
-                    self.provider.put(&note_key(id), content.as_bytes())?;
+                    self.storage.put(&note_key(id), content.as_bytes())?;
                     next.insert(id.clone(), Entry::of(&content));
                     fetched.report.uploaded.push(id.clone());
                 }
@@ -253,18 +262,18 @@ impl<P: SyncProvider> SyncEngine<P> {
                     fetched.report.removed_local.push(id.clone());
                 }
                 Action::RemoveRemote(id) => {
-                    self.provider.delete(&note_key(id))?;
+                    self.storage.delete(&note_key(id))?;
                     next.remove(id);
                     fetched.report.removed_remote.push(id.clone());
                 }
                 Action::KeepBoth { id, copy } => {
                     let mine = staged_text(&mut outgoing, id)?;
                     let theirs = self.download(id)?;
-                    self.provider.put(&note_key(copy), theirs.as_bytes())?;
+                    self.storage.put(&note_key(copy), theirs.as_bytes())?;
                     next.insert(copy.clone(), Entry::of(&theirs));
                     fetched.incoming.push((copy.clone(), theirs));
 
-                    self.provider.put(&note_key(id), mine.as_bytes())?;
+                    self.storage.put(&note_key(id), mine.as_bytes())?;
                     next.insert(id.clone(), Entry::of(&mine));
 
                     fetched.report.conflicts.push(Conflict {
@@ -330,13 +339,13 @@ impl<P: SyncProvider> SyncEngine<P> {
     }
 
     pub fn remote_keys(&self) -> Result<Vec<String>> {
-        let mut keys = self.provider.list("")?;
+        let mut keys = self.storage.list("")?;
         keys.retain(|key| note_of_key(key).is_some());
         Ok(keys)
     }
 
     fn reconcile(&self, remote: &mut Manifest) -> Result<()> {
-        let keys = self.provider.list("")?;
+        let keys = self.storage.list("")?;
         let present: BTreeSet<NoteId> = keys.iter().filter_map(|key| note_of_key(key)).collect();
 
         let gone: Vec<NoteId> = remote
@@ -369,7 +378,7 @@ impl<P: SyncProvider> SyncEngine<P> {
         }
         for key in present {
             if remote.file_hash(&key).is_none() {
-                if let Some(bytes) = self.provider.get(&key)? {
+                if let Some(bytes) = self.storage.get(&key)? {
                     remote.insert_file(key, Entry::of_bytes(&bytes));
                 }
             }
@@ -387,12 +396,12 @@ impl<P: SyncProvider> SyncEngine<P> {
         match action {
             FileAction::Upload(key) => {
                 let bytes = outgoing.get(key).cloned().unwrap_or_default();
-                self.provider.put(key, &bytes)?;
+                self.storage.put(key, &bytes)?;
                 next.insert_file(key.clone(), Entry::of_bytes(&bytes));
                 fetched.report.files_remote.push(key.clone());
             }
             FileAction::Download(key) => {
-                let bytes = self.provider.get(key)?.unwrap_or_default();
+                let bytes = self.storage.get(key)?.unwrap_or_default();
                 next.insert_file(key.clone(), Entry::of_bytes(&bytes));
                 fetched.incoming_files.push((key.clone(), bytes));
                 fetched.report.files_local.push(key.clone());
@@ -403,18 +412,18 @@ impl<P: SyncProvider> SyncEngine<P> {
                 fetched.report.files_local.push(key.clone());
             }
             FileAction::RemoveRemote(key) => {
-                self.provider.delete(key)?;
+                self.storage.delete(key)?;
                 next.remove_file(key);
                 fetched.report.files_remote.push(key.clone());
             }
             FileAction::Merge(key) => {
                 let mine = outgoing.get(key).cloned().unwrap_or_default();
-                let theirs = self.provider.get(key)?.unwrap_or_default();
+                let theirs = self.storage.get(key)?.unwrap_or_default();
                 let merged = self
                     .merge
                     .and_then(|merge| merge(key, &mine, &theirs))
                     .unwrap_or_else(|| mine.clone());
-                self.provider.put(key, &merged)?;
+                self.storage.put(key, &merged)?;
                 next.insert_file(key.clone(), Entry::of_bytes(&merged));
                 fetched.report.files_remote.push(key.clone());
                 if merged != mine {
@@ -427,7 +436,7 @@ impl<P: SyncProvider> SyncEngine<P> {
     }
 
     fn fetch_manifest(&self) -> Result<(Manifest, Option<String>)> {
-        match self.provider.get(MANIFEST_KEY)? {
+        match self.storage.get(MANIFEST_KEY)? {
             Some(bytes) => Ok((
                 Manifest::from_json(&bytes)?,
                 Some(crate::manifest::hash(&bytes)),
@@ -439,7 +448,7 @@ impl<P: SyncProvider> SyncEngine<P> {
     fn download(&self, id: &NoteId) -> Result<String> {
         let key = note_key(id);
         let bytes = self
-            .provider
+            .storage
             .get(&key)?
             .ok_or_else(|| Error::MissingRemote(id.clone()))?;
         String::from_utf8(bytes).map_err(|_| Error::NotUtf8(id.clone()))
@@ -451,7 +460,7 @@ impl<P: SyncProvider> SyncEngine<P> {
             return Err(Error::RemoteChanged);
         }
 
-        self.provider.put(MANIFEST_KEY, &manifest.to_json())?;
+        self.storage.put(MANIFEST_KEY, &manifest.to_json())?;
         Ok(())
     }
 }
@@ -506,5 +515,47 @@ mod tests {
 
         assert!(matches!(result, Err(Error::NotStaged(_))));
         assert!(provider.keys().is_empty());
+    }
+
+    #[test]
+    fn a_plain_engine_refuses_a_storage_with_a_key_file_and_writes_nothing() {
+        let provider = MemoryProvider::new();
+        provider.put(kknow_crypto::KEY_FILE, b"{}").unwrap();
+        let before = provider.keys();
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+
+        let result = SyncEngine::new(provider.clone()).stage(&vault);
+
+        assert!(matches!(
+            result,
+            Err(Error::Encryption(crate::encrypted::Error::Locked))
+        ));
+        assert_eq!(provider.keys(), before);
+    }
+
+    #[test]
+    fn a_provider_needs_only_four_methods() {
+        struct Empty;
+
+        impl SyncProvider for Empty {
+            fn get(&self, _: &str) -> crate::provider::Result<Option<Vec<u8>>> {
+                Ok(None)
+            }
+
+            fn put(&self, _: &str, _: &[u8]) -> crate::provider::Result<()> {
+                Ok(())
+            }
+
+            fn delete(&self, _: &str) -> crate::provider::Result<()> {
+                Ok(())
+            }
+
+            fn list(&self, _: &str) -> crate::provider::Result<Vec<String>> {
+                Ok(Vec::new())
+            }
+        }
+
+        assert!(Empty.get("a").unwrap().is_none());
     }
 }

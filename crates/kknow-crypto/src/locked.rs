@@ -1,5 +1,6 @@
-use crate::crypto::{self, Cipher, DataKey, KdfParams, KeyFile, RecoveryCode, base32};
-use crate::{Error, Result};
+use crate::{
+    self as crypto, Cipher, DataKey, Error, KdfParams, KeyFile, RecoveryCode, Result, base32,
+};
 
 pub const LOCK_FILE: &str = ".kknow/lock.json";
 

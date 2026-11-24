@@ -36,6 +36,7 @@ this design.
 crates/
   kknow-core   vault model: Vault, Note, NoteId
   kknow-index  markdown parsing, link graph, HTML rendering, tantivy search
+  kknow-crypto the cipher, the key file and locked notes
   kknow-sync   sync: manifest, conflicts, configuration, S3, folder and git
   kknow-run    custom commands: manifest, interpreters, running with a timeout
   kknow-app    open vaults, registry and settings, index, file watching, themes

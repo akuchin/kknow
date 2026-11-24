@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::{Error, Result};
 
-pub const SHARED_FILES: &[&str] = &[".kknow/bookmarks.json", crate::locked::LOCK_FILE];
+pub const SHARED_FILES: &[&str] = &[".kknow/bookmarks.json", kknow_crypto::locked::LOCK_FILE];
 
 pub const SHARED_DIRS: &[&str] = &[".kknow/proposals", ".kknow/threads"];
 

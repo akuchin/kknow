@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kknow_core::NoteId;
-use kknow_sync::{Git, GitAuth, GitSettings, GitStatus, Merged, Provider, RemoteConfig};
+use kknow_sync::{Git, GitAuth, GitSettings, GitStatus, Merged, Provider, RemoteConfig, Side};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::live::{self, VaultChanged};
@@ -188,7 +188,9 @@ pub fn git_discard<R: Runtime>(
 ) -> Result<GitStatus> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    slot.write(|workspace| Ok(workspace.git_discard(&git, &path, from.as_deref(), staged)?))?;
+    slot.write(|workspace| {
+        Ok(workspace.git_discard(&git, &path, from.as_deref(), Side::from_staged(staged))?)
+    })?;
     announce(
         &app,
         &slot,
@@ -208,7 +210,7 @@ pub fn git_diff<R: Runtime>(
 ) -> Result<String> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    Ok(git.diff(&path, from.as_deref(), staged)?)
+    Ok(git.diff(&path, from.as_deref(), Side::from_staged(staged))?)
 }
 
 #[tauri::command(async)]

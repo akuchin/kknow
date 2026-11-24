@@ -4,7 +4,28 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::plan::ConflictPolicy;
-use crate::{Error, Result};
+use crate::{Error as SyncError, Result};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("sync settings: no bucket is set")]
+    NoBucket,
+
+    #[error("sync settings: no folder is set")]
+    NoFolder,
+
+    #[error("this build has no S3 support")]
+    NoS3,
+
+    #[error("sync settings: no repository address is set")]
+    NoGitUrl,
+
+    #[error("git syncs the vault with its own command, not through the manifest")]
+    GitIsNotAProvider,
+
+    #[error("git storage cannot be encrypted")]
+    GitEncrypted,
+}
 
 pub const CONFIG_PATH: &str = ".kknow/remote.json";
 
@@ -164,7 +185,7 @@ impl RemoteConfig {
         match fs::read(path) {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(source) => Err(Error::io(path, source)),
+            Err(source) => Err(SyncError::io(path, source)),
         }
     }
 
@@ -172,23 +193,23 @@ impl RemoteConfig {
         self.check()?;
 
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
+            fs::create_dir_all(parent).map_err(|source| SyncError::io(parent, source))?;
         }
 
         let mut bytes = serde_json::to_vec_pretty(self).expect("the config serializes");
         bytes.push(b'\n');
 
         let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        fs::write(&temp, bytes).map_err(|source| SyncError::io(&temp, source))?;
+        fs::rename(&temp, path).map_err(|source| SyncError::io(path, source))
     }
 
     fn check(&self) -> Result<()> {
         match &self.provider {
-            Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket),
-            Provider::Folder { path } if path.as_os_str().is_empty() => Err(Error::NoFolder),
-            Provider::Git(git) if git.url.trim().is_empty() => Err(Error::NoGitUrl),
-            Provider::Git(_) if self.encrypted => Err(Error::GitEncrypted),
+            Provider::S3(s3) if s3.bucket.trim().is_empty() => Err(Error::NoBucket.into()),
+            Provider::Folder { path } if path.as_os_str().is_empty() => Err(Error::NoFolder.into()),
+            Provider::Git(git) if git.url.trim().is_empty() => Err(Error::NoGitUrl.into()),
+            Provider::Git(_) if self.encrypted => Err(Error::GitEncrypted.into()),
             _ => Ok(()),
         }
     }
@@ -197,7 +218,7 @@ impl RemoteConfig {
         match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(source) => Err(Error::io(path, source)),
+            Err(source) => Err(SyncError::io(path, source)),
         }
     }
 
