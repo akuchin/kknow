@@ -83,9 +83,17 @@ impl McpServer {
         }
     }
 
-    pub fn start<R: Runtime>(&self, app: AppHandle<R>) {
+    fn take_running(&self) -> Option<Running> {
         let mut inner = lock(&self.inner);
-        stop(&mut inner);
+        inner.error = None;
+        inner.running.take()
+    }
+
+    pub fn start<R: Runtime>(&self, app: AppHandle<R>) {
+        if let Some(old) = self.take_running() {
+            shut_down(old);
+        }
+        let mut inner = lock(&self.inner);
         if !inner.config.enabled {
             return;
         }
@@ -128,17 +136,14 @@ impl McpServer {
     }
 }
 
-fn stop(inner: &mut Inner) {
-    inner.error = None;
-    if let Some(mut running) = inner.running.take() {
-        running.server.unblock();
-        if let Some(thread) = running.thread.take() {
-            let _ = thread.join();
-        }
-        let port = running.port;
-        drop(running);
-        wait_until_free(port);
+fn shut_down(mut running: Running) {
+    running.server.unblock();
+    if let Some(thread) = running.thread.take() {
+        let _ = thread.join();
     }
+    let port = running.port;
+    drop(running);
+    wait_until_free(port);
 }
 
 fn wait_until_free(port: u16) {
@@ -664,5 +669,32 @@ mod tests {
             TcpStream::connect(("127.0.0.1", port)).is_err(),
             "порт закрыт"
         );
+    }
+
+    #[test]
+    fn moving_to_another_port_frees_the_old_one() {
+        let (_dirs, app) = app();
+        let server = McpServer::new(
+            None,
+            McpConfig {
+                enabled: true,
+                port: 0,
+                token: TOKEN.to_string(),
+            },
+        );
+        server.start(app.handle().clone());
+        let old = server.status().port;
+        let next = {
+            let probe = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            probe.local_addr().unwrap().port()
+        };
+
+        server.configure(app.handle().clone(), true, next).unwrap();
+
+        let status = server.status();
+        assert!(status.running, "{status:?}");
+        assert_eq!(status.port, next);
+        assert!(std::net::TcpListener::bind(("127.0.0.1", old)).is_ok());
+        server.configure(app.handle().clone(), false, next).unwrap();
     }
 }

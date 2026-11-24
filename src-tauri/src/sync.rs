@@ -290,6 +290,11 @@ pub fn auto_sync_minutes(slot: &VaultSlot) -> u32 {
 }
 
 pub fn exchange<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result<SyncReport> {
+    let _turn = slot.begin_sync().ok_or(Error::SyncBusy)?;
+    exchange_in_turn(app, slot)
+}
+
+fn exchange_in_turn<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>) -> Result<SyncReport> {
     let id = slot.entry.id.clone();
     let statuses = app.state::<SyncStatuses>();
 
@@ -900,5 +905,63 @@ mod tests {
         assert!(same.config.encrypted);
         let moved = save_sync_settings(app.state(), folder_form(other.path()), None, None).unwrap();
         assert!(!moved.config.encrypted);
+    }
+
+    #[test]
+    fn a_busy_vault_refuses_a_second_exchange_and_keeps_its_status() {
+        let dir = vault();
+        let cloud = tempfile::tempdir().unwrap();
+        let app = app(dir.path());
+        save_sync_settings(app.state(), folder_form(cloud.path()), None, None).unwrap();
+        let slot = app.state::<AppState>().slot(None).unwrap();
+        let before = app.state::<SyncStatuses>().get(&slot.entry.id);
+
+        let turn = slot.begin_sync().unwrap();
+        let refused = sync_now(app.handle().clone(), app.state(), None);
+
+        let Err(error) = refused else {
+            panic!("a busy vault must refuse");
+        };
+        assert!(matches!(error, Error::SyncBusy));
+        assert_eq!(crate::errors::ErrorView::from(&error).code, "syncBusy");
+        assert_eq!(app.state::<SyncStatuses>().get(&slot.entry.id), before);
+
+        drop(turn);
+        sync_now(app.handle().clone(), app.state(), None).unwrap();
+    }
+
+    #[test]
+    fn the_close_sync_waits_for_a_running_sync_and_does_not_start_another() {
+        let dir = vault();
+        let cloud = tempfile::tempdir().unwrap();
+        let app = app(dir.path());
+        save_sync_settings(app.state(), folder_form(cloud.path()), None, None).unwrap();
+        let config_file = RemoteConfig::path(dir.path());
+        let stored = fs::read_to_string(&config_file).unwrap();
+        fs::write(
+            &config_file,
+            stored.replacen("{", "{\"auto_sync_minutes\": 5,", 1),
+        )
+        .unwrap();
+        let slot = app.state::<AppState>().slot(None).unwrap();
+        let before = app.state::<SyncStatuses>().get(&slot.entry.id);
+
+        let turn = slot.begin_sync().unwrap();
+        let started = std::time::Instant::now();
+        let waited = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                drop(turn);
+            });
+            sync_status::sync_on_close(app.handle(), std::time::Duration::from_secs(5));
+            started.elapsed()
+        });
+
+        assert!(
+            waited >= std::time::Duration::from_millis(250),
+            "{waited:?}"
+        );
+        assert!(waited < std::time::Duration::from_secs(3), "{waited:?}");
+        assert_eq!(app.state::<SyncStatuses>().get(&slot.entry.id), before);
     }
 }

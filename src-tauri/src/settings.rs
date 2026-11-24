@@ -9,31 +9,38 @@ use crate::state::Result;
 pub const EVENT: &str = "settings-changed";
 
 #[derive(Default)]
+struct Stored {
+    file: Option<PathBuf>,
+    settings: AppSettings,
+}
+
+#[derive(Default)]
 pub struct SettingsState {
-    file: Mutex<Option<PathBuf>>,
-    settings: Mutex<AppSettings>,
+    stored: Mutex<Stored>,
 }
 
 impl SettingsState {
     pub fn use_file(&self, file: Option<PathBuf>, settings: AppSettings) {
-        *self.file.lock().expect("settings are poisoned") = file;
-        *self.settings.lock().expect("settings are poisoned") = settings;
+        *self.lock() = Stored { file, settings };
     }
 
     pub fn get(&self) -> AppSettings {
-        self.settings.lock().expect("settings are poisoned").clone()
+        self.lock().settings.clone()
     }
 
     fn put(&self, next: AppSettings) -> AppSettings {
-        *self.settings.lock().expect("settings are poisoned") = next.clone();
-
-        let file = self.file.lock().expect("settings are poisoned");
-        if let Some(path) = file.as_ref() {
+        let mut stored = self.lock();
+        stored.settings = next.clone();
+        if let Some(path) = stored.file.as_ref() {
             if let Err(error) = next.save(path) {
                 eprintln!("cannot write the settings: {error}");
             }
         }
         next
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Stored> {
+        self.stored.lock().expect("settings are poisoned")
     }
 }
 
@@ -106,5 +113,40 @@ mod tests {
         set_settings(app.handle().clone(), app.state(), next.clone()).unwrap();
 
         assert!(!get_settings(app.state()).line_numbers);
+    }
+
+    #[test]
+    fn parallel_saves_leave_the_last_value_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = AppSettings::path(dir.path());
+        let app = mock_builder()
+            .manage(SettingsState::default())
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        app.state::<SettingsState>()
+            .use_file(Some(path.clone()), AppSettings::default());
+
+        let workers: Vec<_> = (0..8)
+            .map(|worker| {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    for round in 0..25 {
+                        let next = AppSettings {
+                            theme: format!("theme-{worker}-{round}"),
+                            ..AppSettings::default()
+                        };
+                        set_settings(handle.clone(), handle.state(), next).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+
+        assert_eq!(
+            AppSettings::load(&path).unwrap().settings,
+            get_settings(app.state())
+        );
     }
 }

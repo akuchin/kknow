@@ -42,14 +42,14 @@ fn accept_file(state: &AppState, path: &std::path::Path) -> bool {
         Ok(opened) => {
             if let files::Opened::Note { vault, .. } = &opened {
                 if let Err(error) = state.set_active(vault) {
-                    eprintln!("не удалось сделать хранилище активным ({vault}): {error}");
+                    eprintln!("cannot make the vault active ({vault}): {error}");
                 }
             }
             state.set_pending(opened);
             true
         }
         Err(error) => {
-            eprintln!("файл не принят ({}): {error}", path.display());
+            eprintln!("file not accepted ({}): {error}", path.display());
             false
         }
     }
@@ -70,7 +70,7 @@ fn adopt(state: &AppState, path: &std::path::Path) -> Option<String> {
             match known {
                 Some(id) => id,
                 None => {
-                    eprintln!("каталог не принят ({}): {refusal}", path.display());
+                    eprintln!("folder not accepted ({}): {refusal}", path.display());
                     return None;
                 }
             }
@@ -78,7 +78,7 @@ fn adopt(state: &AppState, path: &std::path::Path) -> Option<String> {
     };
 
     if let Err(error) = state.set_active(&id) {
-        eprintln!("не удалось сделать хранилище активным ({id}): {error}");
+        eprintln!("cannot make the vault active ({id}): {error}");
         return None;
     }
     Some(id)
@@ -113,9 +113,13 @@ fn open_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>, urls: &[tauri::Url])
         return;
     }
 
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(commands::MAIN_WINDOW) {
         let _ = window.set_focus();
     }
+}
+
+fn runs_close_sync(label: &str) -> bool {
+    label == commands::MAIN_WINDOW
 }
 
 pub fn run() {
@@ -131,7 +135,7 @@ pub fn run() {
             }
             state.use_registry(Some(VaultRegistry::path(&config)), loaded.registry);
         }
-        Err(error) => eprintln!("не удалось прочитать список хранилищ: {error}"),
+        Err(error) => eprintln!("cannot read the vault list: {error}"),
     }
 
     match AppSettings::load(&AppSettings::path(&config)) {
@@ -141,7 +145,7 @@ pub fn run() {
             }
             settings.use_file(Some(AppSettings::path(&config)), loaded.settings);
         }
-        Err(error) => eprintln!("не удалось прочитать настройки: {error}"),
+        Err(error) => eprintln!("cannot read the settings: {error}"),
     }
     keymap.use_file(vaults::config_dir().map(Keymap::path));
 
@@ -153,12 +157,12 @@ pub fn run() {
             }
             if !loaded.forgotten.is_empty() {
                 if let Err(error) = loaded.files.save(&files_path) {
-                    eprintln!("не удалось записать список открытых файлов: {error}");
+                    eprintln!("cannot write the list of open files: {error}");
                 }
             }
             state.use_files(Some(files_path), loaded.files);
         }
-        Err(error) => eprintln!("не удалось прочитать список открытых файлов: {error}"),
+        Err(error) => eprintln!("cannot read the list of open files: {error}"),
     }
 
     state.use_commands(kknow_app::commands::config_path());
@@ -183,7 +187,7 @@ pub fn run() {
             let updates = event.id() == menu::UPDATES_ITEM;
             if event.id() == menu::SETTINGS_ITEM || updates {
                 if let Err(error) = commands::open_settings(app.clone(), app.state(), None) {
-                    eprintln!("не удалось открыть настройки: {error}");
+                    eprintln!("cannot open the settings: {error}");
                 }
             }
             if updates {
@@ -223,7 +227,7 @@ pub fn run() {
 
             if state.is_open() {
                 if let Err(error) = state.slot(None) {
-                    eprintln!("не удалось открыть активное хранилище: {error}");
+                    eprintln!("cannot open the active vault: {error}");
                 }
             }
 
@@ -339,13 +343,14 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. })
-                && sync_status::start_closing()
+                && runs_close_sync(window.label())
+                && sync_status::CLOSING.start()
             {
                 sync_status::sync_on_close(window.app_handle(), CLOSE_WAIT);
             }
         })
         .build(tauri::generate_context!())
-        .expect("не удалось запустить приложение")
+        .expect("cannot start the app")
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
@@ -459,7 +464,6 @@ mod tests {
     #[test]
     fn only_memory_getters_are_sync_commands() {
         const SYNC: &[&str] = &[
-            "list_vaults",
             "vault_by_hotkey",
             "take_opened_file",
             "get_settings",
@@ -495,5 +499,31 @@ mod tests {
             blocking.is_empty(),
             "these commands block the window, add (async): {blocking:?}"
         );
+    }
+
+    #[test]
+    fn only_the_main_window_runs_the_close_sync() {
+        assert!(runs_close_sync("main"));
+        assert!(!runs_close_sync("settings"));
+        assert!(!runs_close_sync(""));
+    }
+
+    #[test]
+    fn the_code_has_no_cyrillic_text_outside_tests() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found = Vec::new();
+        for file in fs::read_dir(dir).unwrap() {
+            let path = file.unwrap().path();
+            let source = fs::read_to_string(&path).unwrap();
+            for (number, line) in source.lines().enumerate() {
+                if line.starts_with("mod tests") {
+                    break;
+                }
+                if line.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)) {
+                    found.push(format!("{}:{}", path.display(), number + 1));
+                }
+            }
+        }
+        assert!(found.is_empty(), "Cyrillic text in code: {found:?}");
     }
 }

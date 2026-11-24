@@ -674,6 +674,7 @@
   "error.noVault": "no notes folder is open",
   "error.notFound": "note not found: {{value}}",
   "error.syncNotConfigured": "sync is not set up",
+  "error.syncBusy": "a sync of this vault is already running",
   "error.reveal": "could not show the file: {{detail}}",
   "error.open": "could not open the file: {{detail}}",
   "error.noConfig": "settings folder not found: there is no place for commands and shared themes",

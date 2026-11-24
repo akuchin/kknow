@@ -312,7 +312,7 @@ pub(crate) fn note_id(workspace: &Workspace, raw: &str) -> Result<NoteId> {
         .ok_or_else(|| Error::NotFound(raw.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_vaults(state: State<'_, AppState>) -> Vec<VaultView> {
     let active = state.active().map(|entry| entry.id);
     state
@@ -368,6 +368,8 @@ pub fn open_settings<R: Runtime>(
 
     Ok(())
 }
+
+pub const MAIN_WINDOW: &str = "main";
 
 pub const SETTINGS_WINDOW: &str = "settings";
 
@@ -540,13 +542,8 @@ pub fn load_note(
 #[serde(tag = "status", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub enum SaveOutcome {
-    Saved {
-        note: NoteView,
-    },
-    Conflict {
-        note: NoteView,
-        copy: String,
-    },
+    Saved { note: NoteView },
+    Conflict { note: NoteView, copy: String },
 }
 
 #[tauri::command(async)]
