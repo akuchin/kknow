@@ -206,7 +206,7 @@ pub fn reveal_commands(state: State<'_, AppState>) -> Result<()> {
     if !path.exists() {
         kknow_run::spec::defaults().save(&path)?;
     }
-    crate::commands::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
+    crate::commands::windows::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
 }
 
 #[cfg(test)]

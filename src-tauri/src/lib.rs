@@ -113,13 +113,13 @@ fn open_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>, urls: &[tauri::Url])
         return;
     }
 
-    if let Some(window) = app.get_webview_window(commands::MAIN_WINDOW) {
+    if let Some(window) = app.get_webview_window(commands::windows::MAIN_WINDOW) {
         let _ = window.set_focus();
     }
 }
 
 fn runs_close_sync(label: &str) -> bool {
-    label == commands::MAIN_WINDOW
+    label == commands::windows::MAIN_WINDOW
 }
 
 pub fn run() {
@@ -186,7 +186,8 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let updates = event.id() == menu::UPDATES_ITEM;
             if event.id() == menu::SETTINGS_ITEM || updates {
-                if let Err(error) = commands::open_settings(app.clone(), app.state(), None) {
+                if let Err(error) = commands::windows::open_settings(app.clone(), app.state(), None)
+                {
                     eprintln!("cannot open the settings: {error}");
                 }
             }
@@ -243,58 +244,58 @@ pub fn run() {
             lock::lock_all,
             lock::lock_note,
             lock::remove_lock,
-            commands::list_vaults,
-            commands::add_vault,
-            commands::remove_vault,
-            commands::activate_vault,
-            commands::vault_by_hotkey,
-            commands::rename_vault,
-            commands::set_vault_color,
-            commands::set_vault_labels,
-            commands::vault_stats,
-            commands::open_settings,
-            commands::current_vault,
-            commands::reload_vault,
-            commands::list_notes,
-            commands::load_note,
-            commands::save_note,
-            commands::preview,
-            commands::note_image,
-            commands::save_attachment,
-            commands::attach_file,
-            commands::create_note,
-            commands::link_target,
-            commands::note_backlinks,
-            commands::unlinked_mentions,
-            commands::link_mention,
-            commands::link_preview,
-            commands::delete_note,
-            commands::list_folders,
-            commands::create_folder,
-            commands::delete_folder,
-            commands::list_trash,
-            commands::restore_trash,
-            commands::trash_note,
-            commands::delete_trash_entry,
-            commands::empty_trash,
-            commands::reveal_note,
-            commands::reveal_folder,
-            commands::open_note,
-            commands::rename_note,
-            commands::set_bookmarks,
-            commands::list_bookmarks,
-            commands::list_tasks,
-            commands::set_task,
-            commands::review_proposal,
-            commands::dismiss_proposal,
-            commands::reply_thread,
-            commands::duplicate_note,
-            commands::rename_folder,
-            commands::search,
-            commands::search_all,
-            commands::list_themes,
-            commands::share_theme,
-            commands::reveal_themes,
+            commands::vaults::list_vaults,
+            commands::vaults::add_vault,
+            commands::vaults::remove_vault,
+            commands::vaults::activate_vault,
+            commands::vaults::vault_by_hotkey,
+            commands::vaults::rename_vault,
+            commands::vaults::set_vault_color,
+            commands::vaults::set_vault_labels,
+            commands::vaults::vault_stats,
+            commands::windows::open_settings,
+            commands::vaults::current_vault,
+            commands::vaults::reload_vault,
+            commands::notes::list_notes,
+            commands::notes::load_note,
+            commands::notes::save_note,
+            commands::notes::preview,
+            commands::attachments::note_image,
+            commands::attachments::save_attachment,
+            commands::attachments::attach_file,
+            commands::notes::create_note,
+            commands::links::link_target,
+            commands::links::note_backlinks,
+            commands::links::unlinked_mentions,
+            commands::links::link_mention,
+            commands::links::link_preview,
+            commands::notes::delete_note,
+            commands::trash::list_folders,
+            commands::trash::create_folder,
+            commands::trash::delete_folder,
+            commands::trash::list_trash,
+            commands::trash::restore_trash,
+            commands::trash::trash_note,
+            commands::trash::delete_trash_entry,
+            commands::trash::empty_trash,
+            commands::windows::reveal_note,
+            commands::windows::reveal_folder,
+            commands::windows::open_note,
+            commands::notes::rename_note,
+            commands::marks::set_bookmarks,
+            commands::marks::list_bookmarks,
+            commands::marks::list_tasks,
+            commands::marks::set_task,
+            commands::proposals::review_proposal,
+            commands::proposals::dismiss_proposal,
+            commands::proposals::reply_thread,
+            commands::notes::duplicate_note,
+            commands::trash::rename_folder,
+            commands::search::search,
+            commands::search::search_all,
+            commands::windows::list_themes,
+            commands::windows::share_theme,
+            commands::windows::reveal_themes,
             mcp_http::mcp_status,
             mcp_http::set_mcp,
             run::list_commands,
@@ -461,6 +462,19 @@ mod tests {
         assert_eq!(state.active().unwrap().id, known);
     }
 
+    fn rust_files(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut found = Vec::new();
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                found.extend(rust_files(&path));
+            } else {
+                found.push(path);
+            }
+        }
+        found
+    }
+
     #[test]
     fn only_memory_getters_are_sync_commands() {
         const SYNC: &[&str] = &[
@@ -474,8 +488,8 @@ mod tests {
         ];
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut blocking = Vec::new();
-        for file in fs::read_dir(dir).unwrap() {
-            let source = fs::read_to_string(file.unwrap().path()).unwrap();
+        for file in rust_files(&dir) {
+            let source = fs::read_to_string(file).unwrap();
             let mut lines = source.lines();
             while let Some(line) = lines.next() {
                 if line.trim() != "#[tauri::command]" {
@@ -512,8 +526,10 @@ mod tests {
     fn the_code_has_no_cyrillic_text_outside_tests() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut found = Vec::new();
-        for file in fs::read_dir(dir).unwrap() {
-            let path = file.unwrap().path();
+        for path in rust_files(&dir) {
+            if path.file_name().is_some_and(|name| name == "tests.rs") {
+                continue;
+            }
             let source = fs::read_to_string(&path).unwrap();
             for (number, line) in source.lines().enumerate() {
                 if line.starts_with("mod tests") {

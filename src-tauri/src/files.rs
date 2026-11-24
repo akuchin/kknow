@@ -5,8 +5,8 @@ use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Response;
 
-use crate::commands::LinkRef;
 use crate::state::{AppState, Error, Result};
+use kknow_app::view::LinkRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -176,7 +176,7 @@ pub fn forget_file(state: State<'_, AppState>, path: String) -> Vec<FileEntry> {
 #[tauri::command(async)]
 pub fn reveal_file(state: State<'_, AppState>, path: String) -> Result<()> {
     let path = state.known_file(&path)?;
-    crate::commands::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
+    crate::commands::windows::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
 }
 
 #[cfg(test)]

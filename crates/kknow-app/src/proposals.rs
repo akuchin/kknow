@@ -147,7 +147,44 @@ pub struct Review {
     pub feedback: Option<String>,
 }
 
-fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
+impl Review {
+    pub fn accept_only(proposal: &Proposal, numbers: &[usize], feedback: Option<String>) -> Self {
+        let waiting = proposal.pending_edits();
+        let (accept, reject) = if numbers.is_empty() {
+            (waiting, Vec::new())
+        } else {
+            waiting
+                .into_iter()
+                .partition(|index| numbers.contains(&(index + 1)))
+        };
+        Review {
+            accept,
+            reject,
+            feedback,
+        }
+    }
+
+    pub fn reject_all(proposal: &Proposal, feedback: Option<String>) -> Self {
+        Review {
+            accept: Vec::new(),
+            reject: proposal.pending_edits(),
+            feedback,
+        }
+    }
+}
+
+impl Proposal {
+    fn pending_edits(&self) -> Vec<usize> {
+        self.edits
+            .iter()
+            .enumerate()
+            .filter(|(_, edit)| edit.state == EditState::Pending)
+            .map(|(index, _)| index)
+            .collect()
+    }
+}
+
+fn locate(text: &str, old: &str) -> std::result::Result<usize, Located> {
     let comments: Vec<std::ops::Range<usize>> = kknow_index::parse::parse(text)
         .agent_comments
         .into_iter()
@@ -158,36 +195,60 @@ fn locate(text: &str, old: &str) -> std::result::Result<usize, &'static str> {
         .filter(|(at, _)| !comments.iter().any(|span| span.contains(at)));
     match (matches.next(), matches.next()) {
         (Some((at, _)), None) => Ok(at),
-        (None, _) => Err("the note does not have this text"),
-        (Some(_), Some(_)) => {
-            Err("this text occurs more than once in the note; take more words around it")
-        }
+        (None, _) => Err(Located::Missing),
+        (Some(_), Some(_)) => Err(Located::Repeated),
     }
 }
 
-fn check(text: &str, edits: &[(String, String)]) -> std::result::Result<(), String> {
+enum Located {
+    Missing,
+    Repeated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProposalProblem {
+    #[error("at least one edit is required")]
+    NoEdits,
+
+    #[error("edit {0}: old is empty")]
+    EmptyOld(usize),
+
+    #[error("edit {0}: old and new are the same")]
+    Unchanged(usize),
+
+    #[error("edit {0}: the note does not have this text")]
+    TextNotFound(usize),
+
+    #[error("edit {0}: this text occurs more than once in the note; take more words around it")]
+    TextRepeated(usize),
+
+    #[error("edits {0} and {1} change the same text: merge them")]
+    Overlap(usize, usize),
+}
+
+fn check(text: &str, edits: &[(String, String)]) -> std::result::Result<(), ProposalProblem> {
     if edits.is_empty() {
-        return Err("at least one edit is required".to_string());
+        return Err(ProposalProblem::NoEdits);
     }
     let mut spans = Vec::new();
     for (index, (old, new)) in edits.iter().enumerate() {
         let number = index + 1;
         if old.is_empty() {
-            return Err(format!("edit {number}: old is empty"));
+            return Err(ProposalProblem::EmptyOld(number));
         }
         if old == new {
-            return Err(format!("edit {number}: old and new are the same"));
+            return Err(ProposalProblem::Unchanged(number));
         }
-        let at = locate(text, old).map_err(|why| format!("edit {number}: {why}"))?;
+        let at = locate(text, old).map_err(|why| match why {
+            Located::Missing => ProposalProblem::TextNotFound(number),
+            Located::Repeated => ProposalProblem::TextRepeated(number),
+        })?;
         spans.push((at, at + old.len(), number));
     }
     spans.sort();
     for pair in spans.windows(2) {
         if pair[1].0 < pair[0].1 {
-            return Err(format!(
-                "edits {} and {} change the same text: merge them",
-                pair[0].2, pair[1].2
-            ));
+            return Err(ProposalProblem::Overlap(pair[0].2, pair[1].2));
         }
     }
     Ok(())
@@ -447,6 +508,84 @@ mod tests {
         assert_eq!(workspace.proposals().unwrap(), vec![proposal]);
     }
 
+    fn three_edits() -> (tempfile::TempDir, Workspace, Proposal) {
+        let (dir, mut workspace, id) = vault("one two three\n");
+        let proposal = workspace
+            .propose(
+                &id,
+                vec![pair("one", "1"), pair("two", "2"), pair("three", "3")],
+                "",
+                None,
+                None,
+            )
+            .unwrap();
+        (dir, workspace, proposal)
+    }
+
+    #[test]
+    fn accept_only_takes_the_numbers_and_rejects_the_other_pending_edits() {
+        let (_dir, _workspace, proposal) = three_edits();
+        let review = Review::accept_only(&proposal, &[1, 3], Some("fine".to_string()));
+        assert_eq!(review.accept, [0, 2]);
+        assert_eq!(review.reject, [1]);
+        assert_eq!(review.feedback.as_deref(), Some("fine"));
+    }
+
+    #[test]
+    fn accept_only_without_numbers_accepts_all_pending() {
+        let (_dir, _workspace, proposal) = three_edits();
+        let review = Review::accept_only(&proposal, &[], None);
+        assert_eq!(review.accept, [0, 1, 2]);
+        assert!(review.reject.is_empty());
+    }
+
+    #[test]
+    fn decided_edits_are_left_out_of_a_review() {
+        let (_dir, mut workspace, proposal) = three_edits();
+        let first = Review {
+            accept: vec![0],
+            ..Review::default()
+        };
+        let (decided, _) = workspace.review_proposal(&proposal.id, &first).unwrap();
+
+        let only = Review::accept_only(&decided, &[1, 2], None);
+        assert_eq!(only.accept, [1]);
+        assert_eq!(only.reject, [2]);
+
+        let window = Review {
+            reject: vec![1, 2],
+            ..Review::default()
+        };
+        assert_eq!(Review::reject_all(&decided, None), window);
+    }
+
+    #[test]
+    fn each_problem_has_its_text() {
+        let texts = [
+            (ProposalProblem::NoEdits, "at least one edit is required"),
+            (ProposalProblem::EmptyOld(2), "edit 2: old is empty"),
+            (
+                ProposalProblem::Unchanged(1),
+                "edit 1: old and new are the same",
+            ),
+            (
+                ProposalProblem::TextNotFound(3),
+                "edit 3: the note does not have this text",
+            ),
+            (
+                ProposalProblem::TextRepeated(1),
+                "edit 1: this text occurs more than once in the note; take more words around it",
+            ),
+            (
+                ProposalProblem::Overlap(1, 2),
+                "edits 1 and 2 change the same text: merge them",
+            ),
+        ];
+        for (problem, text) in texts {
+            assert_eq!(problem.to_string(), text);
+        }
+    }
+
     #[test]
     fn an_edit_must_have_exactly_one_place() {
         let (_dir, mut workspace, id) = vault("да и да\n");
@@ -454,8 +593,12 @@ mod tests {
         let twice = workspace.propose(&id, vec![pair("да", "нет")], "", None, None);
         let missing = workspace.propose(&id, vec![pair("может", "нет")], "", None, None);
 
-        assert!(matches!(twice, Err(Error::BadProposal(text)) if text.contains("more than once")));
-        assert!(matches!(missing, Err(Error::BadProposal(text)) if text.contains("does not have this text")));
+        assert!(
+            matches!(twice, Err(Error::BadProposal(problem)) if problem.to_string().contains("more than once"))
+        );
+        assert!(
+            matches!(missing, Err(Error::BadProposal(problem)) if problem.to_string().contains("does not have this text"))
+        );
         assert!(workspace.proposals().unwrap().is_empty());
     }
 
@@ -495,7 +638,9 @@ mod tests {
             None,
         );
 
-        assert!(matches!(result, Err(Error::BadProposal(text)) if text.contains("merge them")));
+        assert!(
+            matches!(result, Err(Error::BadProposal(problem)) if problem.to_string().contains("merge them"))
+        );
     }
 
     #[test]

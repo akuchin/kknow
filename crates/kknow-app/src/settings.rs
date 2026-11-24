@@ -1,3 +1,4 @@
+use crate::problem::{FileKind, LoadProblem};
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -86,7 +87,7 @@ impl Default for AppSettings {
 #[derive(Debug)]
 pub struct Loaded {
     pub settings: AppSettings,
-    pub problem: Option<String>,
+    pub problem: Option<LoadProblem>,
 }
 
 impl AppSettings {
@@ -120,10 +121,7 @@ impl AppSettings {
                 let _ = fs::rename(path, &broken);
                 Ok(Loaded {
                     settings: AppSettings::default(),
-                    problem: Some(format!(
-                        "cannot parse the settings ({error}); they are moved to {}",
-                        broken.display()
-                    )),
+                    problem: Some(LoadProblem::new(FileKind::Settings, broken, error)),
                 })
             }
         }

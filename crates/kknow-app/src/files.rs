@@ -1,3 +1,4 @@
+use crate::problem::{FileKind, LoadProblem};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -37,7 +38,7 @@ impl Default for OpenFiles {
 #[derive(Debug)]
 pub struct Loaded {
     pub files: OpenFiles,
-    pub problem: Option<String>,
+    pub problem: Option<LoadProblem>,
     pub forgotten: Vec<PathBuf>,
 }
 
@@ -74,10 +75,7 @@ impl OpenFiles {
                 let _ = fs::rename(path, &broken);
                 Ok(Loaded {
                     files: OpenFiles::default(),
-                    problem: Some(format!(
-                        "cannot parse the list of open files ({error}); it is moved to {}",
-                        broken.display()
-                    )),
+                    problem: Some(LoadProblem::new(FileKind::OpenFiles, broken, error)),
                     forgotten: Vec::new(),
                 })
             }
@@ -164,10 +162,7 @@ pub fn read(path: &Path) -> Result<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileSaved {
     Written,
-    Conflict {
-        copy: PathBuf,
-        disk: String,
-    },
+    Conflict { copy: PathBuf, disk: String },
 }
 
 pub fn save_if_unchanged(path: &Path, content: &str, base: &str) -> Result<FileSaved> {

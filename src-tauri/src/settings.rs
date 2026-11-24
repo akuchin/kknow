@@ -58,7 +58,7 @@ pub fn set_settings<R: Runtime>(
     let saved = state.put(settings);
     #[cfg(target_os = "macos")]
     crate::menu::relabel(&app, &saved.locale);
-    if let Some(window) = app.get_webview_window(crate::commands::SETTINGS_WINDOW) {
+    if let Some(window) = app.get_webview_window(crate::commands::windows::SETTINGS_WINDOW) {
         let _ = window.set_title(&crate::i18n::label(
             &saved.locale,
             crate::i18n::SETTINGS_TITLE,

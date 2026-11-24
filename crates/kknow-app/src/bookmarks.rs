@@ -1,3 +1,4 @@
+use crate::problem::{FileKind, LoadProblem};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -69,7 +70,7 @@ impl Default for Bookmarks {
 #[derive(Debug)]
 pub struct Loaded {
     pub bookmarks: Bookmarks,
-    pub problem: Option<String>,
+    pub problem: Option<LoadProblem>,
 }
 
 impl Bookmark {
@@ -118,10 +119,7 @@ impl Bookmarks {
                 let _ = fs::rename(path, &broken);
                 Ok(Loaded {
                     bookmarks: Bookmarks::default(),
-                    problem: Some(format!(
-                        "cannot parse the bookmarks ({error}); the file is moved to {}",
-                        broken.display()
-                    )),
+                    problem: Some(LoadProblem::new(FileKind::Bookmarks, broken, error)),
                 })
             }
         }

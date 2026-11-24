@@ -62,6 +62,20 @@ pub fn handle(host: &mut impl Host, message: &Value) -> Option<Value> {
     })
 }
 
+pub fn handle_message(host: &mut impl Host, message: &Value) -> Option<Value> {
+    let Value::Array(messages) = message else {
+        return handle(host, message);
+    };
+    if messages.is_empty() {
+        return Some(failure(Value::Null, INVALID_REQUEST, "an empty batch"));
+    }
+    let replies: Vec<Value> = messages
+        .iter()
+        .filter_map(|message| handle(host, message))
+        .collect();
+    (!replies.is_empty()).then_some(Value::Array(replies))
+}
+
 pub fn failure(id: Value, code: i64, text: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": text } })
 }
@@ -381,7 +395,10 @@ impl Args<'_> {
             .map(|index| vec![index])
             .ok_or_else(|| {
                 let names: Vec<&str> = vaults.iter().map(|vault| vault.name.as_str()).collect();
-                format!("vault is not found: {wanted}; available: {}", names.join(", "))
+                format!(
+                    "vault is not found: {wanted}; available: {}",
+                    names.join(", ")
+                )
             })
     }
 
@@ -535,10 +552,7 @@ fn backlinks(host: &impl Host, args: &Args) -> Outcome {
         .into_iter()
         .map(|text| row(host, index, text))
         .collect();
-    Ok(rows_or(
-        rows,
-        &format!("{id}: no notes link here"),
-    ))
+    Ok(rows_or(rows, &format!("{id}: no notes link here")))
 }
 
 fn links(host: &impl Host, args: &Args) -> Outcome {
@@ -576,26 +590,20 @@ fn tasks(host: &impl Host, args: &Args) -> Outcome {
     }
     Ok(rows_or(
         rows,
-        if all {
-            "no tasks"
-        } else {
-            "no open tasks"
-        },
+        if all { "no tasks" } else { "no open tasks" },
     ))
 }
 
 fn set_task(host: &mut impl Host, args: &Args) -> Outcome {
     let (index, id) = args.note(host)?;
     let line = args.uint("line")?;
-    let done = args.bool("done").ok_or("boolean argument done is required")?;
+    let done = args
+        .bool("done")
+        .ok_or("boolean argument done is required")?;
     host.write(index, |workspace| workspace.set_task(&id, line, done))?
         .map_err(text)?;
     host.changed(index, &id);
-    let state = if done {
-        "done"
-    } else {
-        "open"
-    };
+    let state = if done { "done" } else { "open" };
     Ok(row(host, index, format!("task {id}:{line} {state}")))
 }
 
@@ -718,11 +726,7 @@ fn reply_comment(host: &mut impl Host, args: &Args) -> Outcome {
     } else {
         "reply saved"
     };
-    Ok(row(
-        host,
-        index,
-        format!("comment {}: {tail}", thread.id),
-    ))
+    Ok(row(host, index, format!("comment {}: {tail}", thread.id)))
 }
 
 fn resolve_comment(host: &mut impl Host, args: &Args) -> Outcome {
@@ -802,7 +806,10 @@ fn propose_note(host: &mut impl Host, args: &Args) -> Outcome {
     let content = args.str("content")?;
     let reason = args.str("reason")?;
     let agent = agent_name(args);
-    let index = *args.vaults(host)?.first().ok_or("the server has no vaults")?;
+    let index = *args
+        .vaults(host)?
+        .first()
+        .ok_or("the server has no vaults")?;
     if host.vaults().len() > 1 && args.opt_str("vault").is_none() {
         return Err("there is more than one vault: set vault".to_string());
     }
@@ -1001,6 +1008,44 @@ mod tests {
         fn changed(&mut self, index: usize, note: &NoteId) {
             self.changed.push((index, note.clone()));
         }
+    }
+
+    #[test]
+    fn a_batch_answers_the_requests_and_skips_the_notifications() {
+        let mut host = host(&[("home", &[], &[])]);
+        let batch = json!([
+            { "jsonrpc": "2.0", "id": 1, "method": "ping" },
+            { "jsonrpc": "2.0", "method": "notifications/initialized" },
+            { "jsonrpc": "2.0", "id": "b", "method": "ping" },
+        ]);
+        let reply = handle_message(&mut host, &batch).unwrap();
+        let replies = reply.as_array().unwrap();
+        assert_eq!(replies.len(), 2);
+        assert_eq!(replies[0]["id"], 1);
+        assert_eq!(replies[1]["id"], "b");
+    }
+
+    #[test]
+    fn a_batch_of_notifications_has_no_reply() {
+        let mut host = host(&[("home", &[], &[])]);
+        let batch = json!([{ "jsonrpc": "2.0", "method": "notifications/initialized" }]);
+        assert_eq!(handle_message(&mut host, &batch), None);
+    }
+
+    #[test]
+    fn an_empty_batch_is_one_invalid_request() {
+        let mut host = host(&[("home", &[], &[])]);
+        let reply = handle_message(&mut host, &json!([])).unwrap();
+        assert_eq!(reply["error"]["code"], INVALID_REQUEST);
+        assert!(reply.is_object());
+    }
+
+    #[test]
+    fn a_single_message_is_answered_as_it_is() {
+        let mut host = host(&[("home", &[], &[])]);
+        let message = json!({ "jsonrpc": "2.0", "id": 3, "method": "ping" });
+        let reply = handle_message(&mut host, &message).unwrap();
+        assert_eq!(reply["id"], 3);
     }
 
     type TestVault<'a> = (&'a str, &'a [&'a str], &'a [(&'a str, &'a str)]);
@@ -1370,7 +1415,10 @@ mod tests {
         assert_eq!(tasks, "[Дом] План:1  купить");
 
         let (comments, _) = tool(&mut host, "agent_comments", json!({}));
-        assert_eq!(comments, "[Работа] План:1  (on the paragraph): проверить цифры");
+        assert_eq!(
+            comments,
+            "[Работа] План:1  (on the paragraph): проверить цифры"
+        );
     }
 
     #[test]

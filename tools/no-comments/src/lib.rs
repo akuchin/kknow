@@ -192,7 +192,9 @@ impl Lexer<'_> {
             .collect();
         self.source[quote + 1..]
             .find(&closing)
-            .map_or(self.bytes.len(), |offset| quote + 1 + offset + closing.len())
+            .map_or(self.bytes.len(), |offset| {
+                quote + 1 + offset + closing.len()
+            })
     }
 
     fn identifier_end(&self, from: usize) -> usize {
