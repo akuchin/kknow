@@ -63,6 +63,19 @@ Labels do two things:
 
 `#Work` and `work` are the same label.
 
+## Row density
+
+You can change the height of the rows in the sidebar tree. Open
+**Settings → Appearance** and pick **Sidebar density**:
+
+- **Compact**: rows about 24 px high.
+- **Normal**: the default.
+- **Comfortable**: taller rows.
+
+The change applies at once, with no restart. It is the same in all vaults and
+all themes. Themes cannot change it. The value is `sidebarDensity` in the
+global `settings.json`.
+
 ## Unavailable vaults
 
 If you move a vault folder or unmount a disk, the vault stays in the list with

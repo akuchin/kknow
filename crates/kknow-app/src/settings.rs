@@ -51,6 +51,26 @@ fn lenient_label<'de, D: Deserializer<'de>>(raw: D) -> std::result::Result<NoteL
     })
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub enum SidebarDensity {
+    Compact,
+    #[default]
+    Normal,
+    Comfortable,
+}
+
+fn lenient_density<'de, D: Deserializer<'de>>(
+    raw: D,
+) -> std::result::Result<SidebarDensity, D::Error> {
+    Ok(match String::deserialize(raw)?.as_str() {
+        "compact" => SidebarDensity::Compact,
+        "comfortable" => SidebarDensity::Comfortable,
+        _ => SidebarDensity::Normal,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -59,6 +79,8 @@ pub struct AppSettings {
     pub theme: String,
     #[serde(deserialize_with = "lenient_label")]
     pub note_label: NoteLabel,
+    #[serde(deserialize_with = "lenient_density")]
+    pub sidebar_density: SidebarDensity,
     #[serde(deserialize_with = "lenient_mode")]
     pub view_mode: ViewMode,
     pub open_last_note: bool,
@@ -75,6 +97,7 @@ impl Default for AppSettings {
             locale: DEFAULT_LOCALE.to_string(),
             theme: DEFAULT_THEME.to_string(),
             note_label: NoteLabel::Title,
+            sidebar_density: SidebarDensity::Normal,
             view_mode: ViewMode::Split,
             open_last_note: true,
             line_numbers: true,
@@ -181,6 +204,7 @@ mod tests {
         assert_eq!(settings.locale, "ru");
         assert_eq!(settings.theme, "light");
         assert_eq!(settings.note_label, NoteLabel::Title);
+        assert_eq!(settings.sidebar_density, SidebarDensity::Normal);
         assert_eq!(settings.view_mode, ViewMode::Split);
         assert!(settings.open_last_note);
         assert!(settings.line_numbers);
@@ -196,6 +220,7 @@ mod tests {
             locale: "en".to_string(),
             theme: "night".to_string(),
             note_label: NoteLabel::File,
+            sidebar_density: SidebarDensity::Compact,
             view_mode: ViewMode::Read,
             open_last_note: false,
             line_numbers: false,
@@ -213,6 +238,7 @@ mod tests {
 
         let written = fs::read_to_string(&path).unwrap();
         assert!(written.contains(r#""viewMode": "read""#), "{written}");
+        assert!(written.contains(r#""sidebarDensity": "compact""#), "{written}");
         assert!(written.contains(r#""lineNumbers": false"#), "{written}");
         assert!(written.contains(r#""autoUpdate": false"#), "{written}");
         assert!(written.contains(r#""noteScale": 130"#), "{written}");
@@ -323,6 +349,33 @@ mod tests {
         assert!(loaded.problem.is_none());
         assert_eq!(loaded.settings.locale, "en", "остальное прочитано");
         assert_eq!(loaded.settings.note_label, NoteLabel::Title);
+    }
+
+    #[test]
+    fn an_unknown_sidebar_density_falls_back_to_normal() {
+        let home = dir();
+        let path = AppSettings::path(home.path());
+        fs::write(&path, r#"{"locale":"en","sidebarDensity":"tiny"}"#).unwrap();
+
+        let loaded = AppSettings::load(&path).unwrap();
+
+        assert!(loaded.problem.is_none());
+        assert_eq!(loaded.settings.locale, "en");
+        assert_eq!(loaded.settings.sidebar_density, SidebarDensity::Normal);
+    }
+
+    #[test]
+    fn known_sidebar_densities_load() {
+        let home = dir();
+        let path = AppSettings::path(home.path());
+        for (raw, wanted) in [
+            ("compact", SidebarDensity::Compact),
+            ("comfortable", SidebarDensity::Comfortable),
+        ] {
+            fs::write(&path, format!(r#"{{"sidebarDensity":"{raw}"}}"#)).unwrap();
+            let loaded = AppSettings::load(&path).unwrap();
+            assert_eq!(loaded.settings.sidebar_density, wanted);
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { menuItem, openWindow, t } from "./window";
+import { menuItem, noteRow, openRowMenu, openWindow, t } from "./window";
 
 const SECTIONS: [string, string][] = [
   ["general", "settings.section.general"],
@@ -216,4 +216,43 @@ test("a failed action in the settings shows a translated error that closes", asy
 
   await alert.getByRole("button", { name: t("settings.error.close") }).click();
   await expect(alert).toBeHidden();
+});
+
+test("the sidebar density follows the settings and keeps the rename height", async ({ page, context }) => {
+  await openWindow(page);
+  const root = page.locator("html");
+  const row = noteRow(page, "Index");
+  await expect(root).toHaveAttribute("data-density", "normal");
+  await expect(row).toHaveCSS("padding-top", "7px");
+  const normal = (await row.boundingBox())!.height;
+  expect(normal).toBeGreaterThan(30);
+  expect(normal).toBeLessThan(32);
+
+  const settings = await context.newPage();
+  await settings.goto("/settings.html#appearance");
+  const density = settings
+    .locator(".settings-row", { hasText: t("settings.appearance.density") })
+    .locator("select");
+
+  await density.selectOption("compact");
+  await expect(root).toHaveAttribute("data-density", "compact");
+  const compact = (await row.boundingBox())!.height;
+  expect(compact).toBeGreaterThanOrEqual(22);
+  expect(compact).toBeLessThanOrEqual(26);
+
+  const vault = page.locator(".vault-row").first();
+  const before = (await vault.boundingBox())!.height;
+  await openRowMenu(page, page.locator(".vault-row button.vault").first());
+  await menuItem(page, t("sidebar.vault.rename")).click();
+  await expect(page.locator("#note-list input.tree-rename")).toBeVisible();
+  const during = (await vault.boundingBox())!.height;
+  expect(Math.abs(during - before)).toBeLessThanOrEqual(1);
+  await page.keyboard.press("Escape");
+
+  await density.selectOption("comfortable");
+  await expect(root).toHaveAttribute("data-density", "comfortable");
+  expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(35);
+
+  await page.reload();
+  await expect(root).toHaveAttribute("data-density", "comfortable");
 });

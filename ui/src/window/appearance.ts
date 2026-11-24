@@ -126,12 +126,18 @@ function showLineNumbers(on: boolean): void {
   status.setLineNumbers(on);
 }
 
+function applyDensity(value: string): void {
+  document.documentElement.dataset.density = value;
+}
+
 export function applySettings(incoming: AppSettings): void {
   const localeChanged = incoming.locale !== locale;
   const defaultChanged = incoming.viewMode !== state.settings?.viewMode;
   const scaleChanged = incoming.noteScale !== state.settings?.noteScale;
   const labelChanged = incoming.noteLabel !== state.settings?.noteLabel;
+  const densityChanged = incoming.sidebarDensity !== state.settings?.sidebarDensity;
   state.setSettings(incoming);
+  if (densityChanged) applyDensity(incoming.sidebarDensity);
   if (labelChanged) renderTree();
   showLineNumbers(incoming.lineNumbers);
   if (scaleChanged) {
@@ -160,6 +166,7 @@ export async function loadSettings(): Promise<boolean> {
   }
 
   if (state.settings) {
+    applyDensity(state.settings.sidebarDensity);
     showLineNumbers(state.settings.lineNumbers);
     setDefaultScale(state.settings.noteScale);
     if (state.settings.locale !== locale) {

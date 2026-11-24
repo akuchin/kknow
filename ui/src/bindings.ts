@@ -1,6 +1,6 @@
 import type { Channel } from "@tauri-apps/api/core";
 
-export type AppSettings = { locale: string, theme: string, noteLabel: NoteLabel, viewMode: ViewMode, openLastNote: boolean, lineNumbers: boolean, noteScale: number, autoUpdate: boolean, gitPath?: string | null, };
+export type AppSettings = { locale: string, theme: string, noteLabel: NoteLabel, sidebarDensity: SidebarDensity, viewMode: ViewMode, openLastNote: boolean, lineNumbers: boolean, noteScale: number, autoUpdate: boolean, gitPath?: string | null, };
 
 export type BacklinkLineView = { id: string, title: string, line: number, before: string, text: string, after: string, };
 
@@ -105,6 +105,8 @@ export type S3Settings = { bucket: string, endpoint?: string | null, region?: st
 export type SaveOutcome = { "status": "saved", note: NoteView, } | { "status": "conflict", note: NoteView, copy: string, };
 
 export type SearchResult = { id: string, title: string, folder: string | null, snippet: string, };
+
+export type SidebarDensity = "compact" | "normal" | "comfortable";
 
 export type SyncConflict = { id: string, copy: string, };
 
