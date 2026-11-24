@@ -38,24 +38,24 @@ fn generate() -> String {
         names: BTreeMap::new(),
     };
 
-    collect.visit::<crate::commands::VaultInfo>();
-    collect.visit::<crate::commands::VaultView>();
+    collect.visit::<crate::commands::vaults::VaultInfo>();
+    collect.visit::<crate::commands::vaults::VaultView>();
     collect.visit::<crate::mcp_http::McpStatus>();
-    collect.visit::<crate::commands::VaultStatsView>();
-    collect.visit::<crate::commands::GlobalResult>();
-    collect.visit::<crate::commands::SearchResult>();
-    collect.visit::<crate::commands::NoteSummary>();
-    collect.visit::<crate::commands::NoteView>();
+    collect.visit::<crate::commands::vaults::VaultStatsView>();
+    collect.visit::<crate::commands::search::GlobalResult>();
+    collect.visit::<crate::commands::search::SearchResult>();
+    collect.visit::<crate::commands::notes::NoteSummary>();
+    collect.visit::<kknow_app::view::NoteView>();
     collect.visit::<kknow_app::proposals::Review>();
-    collect.visit::<crate::commands::BookmarkView>();
-    collect.visit::<crate::commands::TaskView>();
-    collect.visit::<crate::commands::LinkTargetView>();
-    collect.visit::<crate::commands::BacklinkLineView>();
-    collect.visit::<crate::commands::MentionView>();
-    collect.visit::<crate::commands::LinkPreview>();
-    collect.visit::<crate::commands::TrashEntryView>();
-    collect.visit::<crate::commands::RenamedNote>();
-    collect.visit::<crate::commands::SaveOutcome>();
+    collect.visit::<crate::commands::marks::BookmarkView>();
+    collect.visit::<crate::commands::marks::TaskView>();
+    collect.visit::<crate::commands::links::LinkTargetView>();
+    collect.visit::<crate::commands::links::BacklinkLineView>();
+    collect.visit::<crate::commands::links::MentionView>();
+    collect.visit::<kknow_app::view::LinkPreview>();
+    collect.visit::<crate::commands::trash::TrashEntryView>();
+    collect.visit::<crate::commands::notes::RenamedNote>();
+    collect.visit::<crate::commands::notes::SaveOutcome>();
     collect.visit::<crate::sync::SyncSettings>();
     collect.visit::<crate::sync::SyncReport>();
     collect.visit::<crate::sync::EncryptionOn>();
@@ -119,8 +119,10 @@ fn command_map(names: &Names) -> Result<String, String> {
     let handlers = handler_paths(&read(&src.join("lib.rs")));
     let mut commands = Vec::new();
     for (module, name) in handlers {
-        let file = syn::parse_file(&read(&src.join(format!("{module}.rs"))))
-            .map_err(|error| format!("{module}.rs does not parse: {error}"))?;
+        let path = module_file(&src, &module)
+            .ok_or_else(|| format!("the module {module} of command {name} has no file"))?;
+        let file = syn::parse_file(&read(&path))
+            .map_err(|error| format!("{} does not parse: {error}", path.display()))?;
         let function = file
             .items
             .iter()
@@ -130,7 +132,7 @@ fn command_map(names: &Names) -> Result<String, String> {
                 }
                 _ => None,
             })
-            .ok_or_else(|| format!("command {name} is not a tauri command in {module}.rs"))?;
+            .ok_or_else(|| format!("command {name} is not a tauri command in {module}"))?;
         commands.push(convert_command(function, names)?);
     }
     commands.sort_by(|a, b| a.name.cmp(&b.name));
@@ -143,6 +145,13 @@ fn command_map(names: &Names) -> Result<String, String> {
     }
     out.push_str("};\n");
     Ok(out)
+}
+
+fn module_file(src: &Path, module: &str) -> Option<std::path::PathBuf> {
+    let relative: std::path::PathBuf = module.split("::").collect();
+    let plain = src.join(&relative).with_extension("rs");
+    let nested = src.join(&relative).join("mod.rs");
+    [plain, nested].into_iter().find(|path| path.is_file())
 }
 
 fn read(path: &Path) -> String {
@@ -158,7 +167,7 @@ fn handler_paths(lib: &str) -> Vec<(String, String)> {
         .map(str::trim)
         .filter(|path| !path.is_empty())
         .map(|path| {
-            let (module, name) = path.split_once("::").expect("module::command path");
+            let (module, name) = path.rsplit_once("::").expect("module::command path");
             (module.to_string(), name.to_string())
         })
         .collect()
@@ -358,6 +367,43 @@ fn bindings_match_the_rust_types() {
 
 fn lines(text: &str) -> Vec<&str> {
     text.lines().collect()
+}
+
+#[cfg(test)]
+mod modules {
+    use super::*;
+
+    #[test]
+    fn a_nested_path_resolves_to_a_file_or_a_mod_file() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        assert_eq!(
+            module_file(&src, "commands::notes"),
+            Some(src.join("commands/notes.rs"))
+        );
+        assert_eq!(
+            module_file(&src, "commands"),
+            Some(src.join("commands/mod.rs"))
+        );
+        assert_eq!(module_file(&src, "lock"), Some(src.join("lock.rs")));
+        assert_eq!(module_file(&src, "commands::nowhere"), None);
+    }
+
+    #[test]
+    fn a_listed_command_that_is_not_found_fails() {
+        let missing = "export {}; generate_handler![commands::notes::no_such_command]";
+        let paths = handler_paths(missing);
+        assert_eq!(
+            paths,
+            [("commands::notes".to_string(), "no_such_command".to_string())]
+        );
+        let file = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/notes.rs"));
+        let parsed = syn::parse_file(&file).unwrap();
+        let found = parsed.items.iter().any(|item| {
+            matches!(item, syn::Item::Fn(function)
+                if function.sig.ident == "no_such_command" && is_command(function))
+        });
+        assert!(!found);
+    }
 }
 
 #[cfg(test)]

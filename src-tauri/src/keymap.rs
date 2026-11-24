@@ -95,7 +95,7 @@ pub fn reveal_keymap(state: State<'_, KeymapState>) -> Result<()> {
     if !path.exists() {
         Keymap::default().save(&path)?;
     }
-    crate::commands::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
+    crate::commands::windows::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
 }
 
 #[cfg(test)]

@@ -16,7 +16,11 @@ fn the_repository_has_no_comments() {
         let source = std::fs::read_to_string(&path).expect("a checked file is readable");
         for comment in find_comments(&source, syntax) {
             let relative = path.strip_prefix(&root).unwrap_or(&path);
-            offenders.push(format!("{}:{}", relative.display(), line_of(&source, comment.start)));
+            offenders.push(format!(
+                "{}:{}",
+                relative.display(),
+                line_of(&source, comment.start)
+            ));
         }
     }
     assert!(
@@ -29,10 +33,16 @@ fn the_repository_has_no_comments() {
 
 #[test]
 fn finds_line_block_and_doc_comments() {
-    let source = "//! crate\n/// item\nfn a() {} // tail\n/* block /* nested */ still */ fn b() {}\n";
+    let source =
+        "//! crate\n/// item\nfn a() {} // tail\n/* block /* nested */ still */ fn b() {}\n";
     assert_eq!(
         comments(source),
-        ["//! crate", "/// item", "// tail", "/* block /* nested */ still */"]
+        [
+            "//! crate",
+            "/// item",
+            "// tail",
+            "/* block /* nested */ still */"
+        ]
     );
 }
 

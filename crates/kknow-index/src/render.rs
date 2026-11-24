@@ -32,7 +32,12 @@ pub fn to_html_with_embeds(
     resolver: &Resolver,
     embeds: &dyn EmbedSource,
 ) -> String {
-    render(source, from, &mut Context::new(resolver, Some(embeds), from), false)
+    render(
+        source,
+        from,
+        &mut Context::new(resolver, Some(embeds), from),
+        false,
+    )
 }
 
 pub const MAX_EMBED_DEPTH: usize = 3;
@@ -78,7 +83,12 @@ pub fn fragment_to_html_with_embeds(
     resolver: &Resolver,
     embeds: &dyn EmbedSource,
 ) -> String {
-    render(source, from, &mut Context::new(resolver, Some(embeds), from), true)
+    render(
+        source,
+        from,
+        &mut Context::new(resolver, Some(embeds), from),
+        true,
+    )
 }
 
 struct Piece {
@@ -179,7 +189,10 @@ fn rewrite(
 }
 
 fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Option<String> {
-    if link.kind != WikiKind::Embed || link.is_internal() || kknow_core::image::is_image(&link.target) {
+    if link.kind != WikiKind::Embed
+        || link.is_internal()
+        || kknow_core::image::is_image(&link.target)
+    {
         return None;
     }
     let source = context.embeds?;
@@ -190,13 +203,14 @@ fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Opti
     });
 
     let note = escape_html(id.as_str());
-    let sub_attr = sub
-        .as_deref()
-        .map_or(String::new(), |sub| format!(" data-sub=\"{}\"", escape_html(sub)));
+    let sub_attr = sub.as_deref().map_or(String::new(), |sub| {
+        format!(" data-sub=\"{}\"", escape_html(sub))
+    });
     let href = format!(
         "{SCHEME}note/{}{}",
         encode(id.as_str()),
-        sub.as_deref().map_or(String::new(), |sub| format!("#{}", encode(sub)))
+        sub.as_deref()
+            .map_or(String::new(), |sub| format!("#{}", encode(sub)))
     );
     let title = escape_html(link.display_text());
     let head = format!("<a href=\"{href}\">{title}</a>");
@@ -843,10 +857,17 @@ mod tests {
     fn a_fragment_has_no_line_marks_and_its_images_name_the_note() {
         let from = NoteId::parse("Docs/Plan").unwrap();
         let resolver = Resolver::new([&from]);
-        let html = fragment_to_html("## Goals\n\n![shot](img/a.png) and [[Plan]]\n", &from, &resolver);
+        let html = fragment_to_html(
+            "## Goals\n\n![shot](img/a.png) and [[Plan]]\n",
+            &from,
+            &resolver,
+        );
 
         assert!(!html.contains("data-line"), "{html}");
-        assert!(html.contains(r#"data-src="img/a.png" data-note="Docs/Plan""#), "{html}");
+        assert!(
+            html.contains(r#"data-src="img/a.png" data-note="Docs/Plan""#),
+            "{html}"
+        );
         assert!(html.contains("kknow://note/Docs/Plan"), "{html}");
     }
 
@@ -854,7 +875,10 @@ mod tests {
     fn a_link_keeps_its_heading_or_block_after_the_id() {
         let html = render("[[Rust#Ownership rules]] and [[Rust#^key]]", &["Rust"]);
 
-        assert!(html.contains(r#"href="kknow://note/Rust#Ownership%20rules""#), "{html}");
+        assert!(
+            html.contains(r#"href="kknow://note/Rust#Ownership%20rules""#),
+            "{html}"
+        );
         assert!(html.contains(r#"href="kknow://note/Rust#^key""#), "{html}");
     }
 
@@ -872,7 +896,12 @@ mod tests {
     fn embed(source: &str, notes: Notes) -> String {
         let mut names: Vec<&str> = notes.0.iter().map(|(id, _, _)| *id).collect();
         names.push("Current");
-        to_html_with_embeds(source, &NoteId::parse("Current").unwrap(), &resolver(&names), &notes)
+        to_html_with_embeds(
+            source,
+            &NoteId::parse("Current").unwrap(),
+            &resolver(&names),
+            &notes,
+        )
     }
 
     #[test]
@@ -882,8 +911,14 @@ mod tests {
             Notes(vec![("Plan", Some("Goals"), "## Goals\n\nShip **it**.\n")]),
         );
 
-        assert!(html.contains(r#"<div class="embed" data-note="Plan" data-sub="Goals">"#), "{html}");
-        assert!(html.contains(r#"<a href="kknow://note/Plan#Goals">Plan</a>"#), "{html}");
+        assert!(
+            html.contains(r#"<div class="embed" data-note="Plan" data-sub="Goals">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<a href="kknow://note/Plan#Goals">Plan</a>"#),
+            "{html}"
+        );
         assert!(html.contains("<strong>it</strong>"), "{html}");
         let body = &html[html.find("embed-body").unwrap()..html.find("</div></div>").unwrap()];
         assert!(!body.contains("data-line"), "{html}");
@@ -892,7 +927,10 @@ mod tests {
 
     #[test]
     fn an_embed_inside_a_paragraph_splits_it() {
-        let html = embed("See ![[Plan]] here", Notes(vec![("Plan", None, "Plan text")]));
+        let html = embed(
+            "See ![[Plan]] here",
+            Notes(vec![("Plan", None, "Plan text")]),
+        );
 
         let embed_at = html.find("<div class=\"embed\"").unwrap();
         assert!(html[..embed_at].ends_with("</p>"), "{html}");
@@ -904,7 +942,10 @@ mod tests {
     fn a_loop_stops_and_stays_a_link() {
         let html = embed(
             "![[A]]",
-            Notes(vec![("A", None, "in A ![[B]]"), ("B", None, "in B ![[A]] ![[Current]]")]),
+            Notes(vec![
+                ("A", None, "in A ![[B]]"),
+                ("B", None, "in B ![[A]] ![[Current]]"),
+            ]),
         );
 
         assert!(html.contains("in A"), "{html}");
@@ -926,7 +967,10 @@ mod tests {
 
         assert!(html.contains("c "), "{html}");
         assert!(!html.contains(">d<"), "{html}");
-        assert!(html.contains(r#"data-reason="depth" data-note="D""#), "{html}");
+        assert!(
+            html.contains(r#"data-reason="depth" data-note="D""#),
+            "{html}"
+        );
     }
 
     #[test]

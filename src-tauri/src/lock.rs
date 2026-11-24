@@ -2,8 +2,9 @@ use kknow_app::lock::Unlocked;
 use serde::Serialize;
 use tauri::State;
 
-use crate::commands::{NoteView, note_id, open_view};
+use crate::commands::note_id;
 use crate::state::{AppState, Result};
+use kknow_app::view::NoteView;
 
 #[derive(Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -85,7 +86,7 @@ pub fn lock_note(
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
         workspace.lock_note(&id)?;
-        open_view(workspace, &id)
+        Ok(workspace.open_view(&id)?)
     })
 }
 
@@ -98,6 +99,6 @@ pub fn remove_lock(
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
         workspace.remove_lock(&id)?;
-        open_view(workspace, &id)
+        Ok(workspace.open_view(&id)?)
     })
 }

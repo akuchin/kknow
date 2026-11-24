@@ -61,6 +61,10 @@ Dependencies go in one direction only. Each crate knows as little as possible:
 - `kknow-run` does not depend even on `core`. A module that runs external
   programs gets a target that is ready to use.
 - `kknow-app` knows nothing about how the window shows the data.
+- The window and the CLI call `kknow-app` for the shared logic: the note view
+  and the agent answers on open, the link preview, the vault scope, the git
+  client setup, the proposal review and the JSON-RPC batch. A fix in one place
+  reaches both frontends.
 
 Thus search and file watching came to the CLI and to the window at the same
 time.
@@ -268,6 +272,9 @@ The protocol is in `kknow-app::mcp`, without a transport. It takes one JSON-RPC
 - **the app**: HTTP on `127.0.0.1` with a bearer token, on `tiny_http`. It uses
   the same open vaults and indexes as the window;
 - **the CLI**: `kknow mcp` on stdin and stdout.
+
+Both transports accept a batch (a JSON array of messages) and answer with an
+array of the replies, as the JSON-RPC 2.0 standard says.
 
 The protocol is written by hand on `serde_json`. It needs only four methods,
 and an SDK would bring an async runtime into the window.

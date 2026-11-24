@@ -2798,12 +2798,14 @@ dependencies = [
  "clap",
  "kknow-app",
  "kknow-core",
+ "kknow-crypto",
  "kknow-index",
  "kknow-run",
  "kknow-sync",
  "rpassword",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

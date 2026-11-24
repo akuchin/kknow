@@ -56,6 +56,10 @@ crates/
   kknow-app     Workspace, vault registry, app settings, themes, watcher
   kknow-cli     the kknow binary — the same thing in the terminal
 src-tauri/      commands on top of kknow-app, background watchers, keychain
+                commands/ has one module per domain (vaults, notes, links, search,
+                attachments, marks, proposals, trash, windows) and `mod.rs` for the
+                shared helpers. `generate_handler!` lists the full paths, such as
+                `commands::notes::load_note`, and the bindings test reads them
 tools/no-comments  the check that the code has no comments (a dev tool, not a part of the app)
 ui/             the interface: TypeScript, Vite, CodeMirror 6; two windows — main and settings
 testdata/vault  a small vault for manual checks
@@ -2314,6 +2318,10 @@ Commands:
 
 - `list`, `stats`, `links`, `backlinks`, `tags`, `broken`, `orphans`;
 - `show`, `render`, `new`, `search`, `watch`, `themes`, `sync`;
+  - `show` builds its output from the shared `NoteView` (`Workspace::load_note`):
+    it adopts the agent answers of the note, as the window open does. A locked
+    note prints `locked: yes` and no outline, links or tags. `render` of a
+    locked note fails with "the note X is locked";
 - `vaults` / `vaults add` / `vaults rm` / `vaults use`;
 - `commands`, `run`, `bookmarks`, `bookmark <note> <line> [--name <name>]`;
 - `trash` / `trash restore <entry>` / `trash empty`.
@@ -2325,6 +2333,25 @@ Commands:
   prints done tasks, with `[x]` or `[ ]` before the text.
 - `mcp` is an MCP server on stdin and stdout (`crates/kknow-cli/src/mcp.rs`).
   See "MCP server" below.
+- The code is one module per command group: `cli.rs` (the clap types),
+  `vaults`, `notes`, `marks` (bookmarks and tasks), `proposals`, `lock`,
+  `syncing`, `secret`, `trash`, `commands`, `observe` (watch and themes) and
+  `mcp`. `main.rs` only parses the arguments and dispatches.
+- Errors are the typed `CliError` (`error.rs`), with `From` for the app, core,
+  sync, run and IO errors. `main` prints `error: {error}` and exits with
+  failure. The texts did not change.
+- The logic that the window and the CLI both need lives once in `kknow-app`,
+  so a fix reaches both: the note view (`view`: `note_view`, `open_view`,
+  `load_note`, `link_preview`), the vault scope (`vaults::Scope` and
+  `select`), the git client setup (`git_client::git_client`), the proposal
+  review (`Review::accept_only`, `Review::reject_all`) and the JSON-RPC batch
+  (`mcp::handle_message`). `Workspace` is split into modules by domain under
+  `crates/kknow-app/src/workspace/`; `lib.rs` keeps `Error`, the struct and
+  open, reload and watch.
+- `Error::BadProposal` holds a `ProposalProblem`, and the loaders of the
+  vault list, the settings, the open files and the bookmarks give a
+  `LoadProblem` (`kknow-app::problem`). Both print the text that the strings
+  had before.
 
 - `sync` takes `--dry-run`, `--on-conflict both|local|remote`, and
   `--bucket …` or `--folder …`.
@@ -2399,7 +2426,10 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
 ### MCP server
 
 - The protocol is in `kknow-app::mcp`, without a transport: `handle` takes one
-  JSON-RPC 2.0 message and gives the reply. The tools see the vaults through
+  JSON-RPC 2.0 message and gives the reply. `handle_message` also takes a batch
+  (an array) and gives an array of the non-empty replies, or nothing when all
+  are notifications; an empty array is one "invalid request" error. Both
+  transports call it, so a batch works over HTTP and over stdin. The tools see the vaults through
   the `Host` trait. Two transports carry it:
   - the app: HTTP on `127.0.0.1` (`src-tauri/src/mcp_http.rs`);
   - the CLI: `kknow mcp` on stdin and stdout (`crates/kknow-cli/src/mcp.rs`).

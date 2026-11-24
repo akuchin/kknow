@@ -16,8 +16,10 @@ kknow-index.workspace = true
 kknow-sync = { workspace = true, features = ["s3"] }
 kknow-run.workspace = true
 clap.workspace = true
+thiserror.workspace = true
 serde_json.workspace = true
 rpassword.workspace = true
 
 [dev-dependencies]
+kknow-crypto.workspace = true
 tempfile.workspace = true

@@ -91,24 +91,11 @@ pub struct Theme {
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThemeWarning"))]
 pub enum Warning {
-    UnknownVariable {
-        variable: String,
-    },
-    EmptyValue {
-        variable: String,
-    },
-    TooLong {
-        variable: String,
-        max: u32,
-    },
-    BadCharacter {
-        variable: String,
-        character: String,
-    },
-    Function {
-        variable: String,
-        function: String,
-    },
+    UnknownVariable { variable: String },
+    EmptyValue { variable: String },
+    TooLong { variable: String, max: u32 },
+    BadCharacter { variable: String, character: String },
+    Function { variable: String, function: String },
 }
 
 impl std::fmt::Display for Warning {
@@ -119,14 +106,20 @@ impl std::fmt::Display for Warning {
             }
             Warning::EmptyValue { variable } => write!(f, "{variable}: the value is empty"),
             Warning::TooLong { variable, max } => {
-                write!(f, "{variable}: longer than {max} bytes, this is not a color")
+                write!(
+                    f,
+                    "{variable}: longer than {max} bytes, this is not a color"
+                )
             }
             Warning::BadCharacter {
                 variable,
                 character,
             } => write!(f, "{variable}: character {character} is not allowed"),
             Warning::Function { variable, function } => {
-                write!(f, "{variable}: function {function}(…) is not allowed in a theme")
+                write!(
+                    f,
+                    "{variable}: function {function}(…) is not allowed in a theme"
+                )
             }
         }
     }

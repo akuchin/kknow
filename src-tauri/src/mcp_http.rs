@@ -5,7 +5,7 @@ use std::thread::JoinHandle;
 
 use kknow_app::Workspace;
 use kknow_app::mcp::{self, Host, McpConfig, PARSE_ERROR, VaultRef};
-use kknow_app::vaults::{VaultEntry, clean_labels};
+use kknow_app::vaults::{Scope, VaultEntry, select};
 use kknow_core::NoteId;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
@@ -275,17 +275,9 @@ pub fn route<R: Runtime>(app: &AppHandle<R>, port: u16, token: &str, request: &R
         Err(text) => return Reply::refuse(404, &text),
     };
 
-    let replies: Vec<Value> = match &message {
-        Value::Array(messages) => messages
-            .iter()
-            .filter_map(|message| mcp::handle(&mut host, message))
-            .collect(),
-        single => mcp::handle(&mut host, single).into_iter().collect(),
-    };
-    match (message.is_array(), replies.len()) {
-        (_, 0) => Reply::empty(202),
-        (false, _) => Reply::json(200, replies.into_iter().next().expect("one reply")),
-        (true, _) => Reply::json(200, Value::Array(replies)),
+    match mcp::handle_message(&mut host, &message) {
+        Some(reply) => Reply::json(200, reply),
+        None => Reply::empty(202),
     }
 }
 
@@ -337,7 +329,7 @@ impl<'a, R: Runtime> WindowHost<'a, R> {
     }
 }
 
-fn scope(entries: Vec<VaultEntry>, query: &str) -> std::result::Result<Vec<VaultEntry>, String> {
+fn parse_scope(query: &str) -> Scope {
     let mut vault = None;
     let mut labels = Vec::new();
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
@@ -351,23 +343,12 @@ fn scope(entries: Vec<VaultEntry>, query: &str) -> std::result::Result<Vec<Vault
             _ => {}
         }
     }
+    Scope::of(vault.as_deref(), &labels)
+}
 
-    if let Some(wanted) = vault {
-        let lower = wanted.to_lowercase();
-        return entries
-            .into_iter()
-            .find(|entry| entry.id == wanted || entry.name.to_lowercase() == lower)
-            .map(|entry| vec![entry])
-            .ok_or_else(|| format!("vault is not found: {wanted}"));
-    }
-    if labels.is_empty() {
-        return Ok(entries);
-    }
-    let wanted = clean_labels(labels.iter().map(String::as_str));
-    Ok(entries
-        .into_iter()
-        .filter(|entry| entry.labels.iter().any(|label| wanted.contains(label)))
-        .collect())
+fn scope(entries: Vec<VaultEntry>, query: &str) -> std::result::Result<Vec<VaultEntry>, String> {
+    let found = select(&entries, &parse_scope(query)).map_err(|error| error.to_string())?;
+    Ok(found.into_iter().cloned().collect())
 }
 
 impl<R: Runtime> Host for WindowHost<'_, R> {
@@ -549,6 +530,39 @@ mod tests {
             &post("/mcp?vault=%D0%9D%D0%B5%D1%82", call("tasks", json!({}))),
         );
         assert_eq!(reply.status, 404);
+    }
+
+    #[test]
+    fn the_query_and_the_flags_make_the_same_scope() {
+        let flags = vec!["#Work".to_string(), "a b".to_string()];
+        assert_eq!(
+            parse_scope("label=%23Work&label=a+b&other=1"),
+            Scope::of(None, &flags)
+        );
+        assert_eq!(
+            parse_scope("vault=%D0%94&label=x"),
+            Scope::of(Some("Д"), &flags)
+        );
+        assert_eq!(parse_scope(""), Scope::of(None, &[]));
+    }
+
+    #[test]
+    fn a_batch_gets_an_array_and_notifications_get_202() {
+        let (_dirs, app) = app();
+        let batch = json!([
+            { "jsonrpc": "2.0", "id": 1, "method": "ping" },
+            { "jsonrpc": "2.0", "method": "notifications/initialized" },
+            { "jsonrpc": "2.0", "id": 2, "method": "ping" },
+        ]);
+        let reply = route(app.handle(), 7377, TOKEN, &post("/mcp", batch));
+        assert_eq!(reply.status, 200);
+        let body = reply.body.unwrap();
+        let ids: Vec<&Value> = body.as_array().unwrap().iter().map(|r| &r["id"]).collect();
+        assert_eq!(ids, [&json!(1), &json!(2)]);
+
+        let silent = json!([{ "jsonrpc": "2.0", "method": "notifications/initialized" }]);
+        let reply = route(app.handle(), 7377, TOKEN, &post("/mcp", silent));
+        assert_eq!(reply.status, 202);
     }
 
     #[test]

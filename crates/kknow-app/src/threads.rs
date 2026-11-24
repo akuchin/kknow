@@ -65,8 +65,14 @@ pub struct Message {
 #[serde(tag = "code", rename_all = "camelCase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "ThreadEvent"))]
 pub enum Event {
-    Proposed { proposal: String, reason: String },
-    Rejected { proposal: String, feedback: String },
+    Proposed {
+        proposal: String,
+        reason: String,
+    },
+    Rejected {
+        proposal: String,
+        feedback: String,
+    },
     Accepted {
         proposal: String,
         partly: bool,

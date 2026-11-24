@@ -260,18 +260,6 @@ pub fn forget_sync_settings(state: State<'_, AppState>, vault: Option<String>) -
     slot.read(|workspace| Ok(RemoteConfig::forget(&RemoteConfig::path(workspace.root()))?))
 }
 
-#[allow(dead_code)]
-pub fn sync_preview(state: State<'_, AppState>, vault: Option<String>) -> Result<Vec<String>> {
-    let slot = state.slot(vault.as_deref())?;
-    let config = slot.read(config_of)?.ok_or(Error::NotConfigured)?;
-    let engine = engine(&config)?;
-
-    slot.read(|workspace| {
-        let plan = workspace.sync_plan(&engine)?;
-        Ok(plan.actions().iter().map(ToString::to_string).collect())
-    })
-}
-
 #[tauri::command(async)]
 pub fn sync_now<R: Runtime>(
     app: AppHandle<R>,
@@ -830,10 +818,6 @@ mod tests {
         assert!(sync_settings(app.state(), None).unwrap().is_none());
         assert!(matches!(
             sync_now(app.handle().clone(), app.state(), None),
-            Err(Error::NotConfigured)
-        ));
-        assert!(matches!(
-            sync_preview(app.state(), None),
             Err(Error::NotConfigured)
         ));
     }

@@ -1,3 +1,4 @@
+use crate::problem::{FileKind, LoadProblem};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -92,7 +93,7 @@ impl Default for VaultRegistry {
 #[derive(Debug)]
 pub struct Loaded {
     pub registry: VaultRegistry,
-    pub problem: Option<String>,
+    pub problem: Option<LoadProblem>,
 }
 
 impl VaultRegistry {
@@ -125,10 +126,7 @@ impl VaultRegistry {
                 let _ = fs::rename(path, &broken);
                 Ok(Loaded {
                     registry: VaultRegistry::default(),
-                    problem: Some(format!(
-                        "cannot parse the vault registry ({error}); it is moved to {}",
-                        broken.display()
-                    )),
+                    problem: Some(LoadProblem::new(FileKind::Vaults, broken, error)),
                 })
             }
         }
@@ -194,21 +192,7 @@ impl VaultRegistry {
     }
 
     pub fn find(&self, needle: &str) -> Option<&VaultEntry> {
-        if let Some(entry) = self.get(needle) {
-            return Some(entry);
-        }
-
-        let lower = needle.to_lowercase();
-        if let Some(entry) = self
-            .vaults
-            .iter()
-            .find(|entry| entry.name.to_lowercase() == lower)
-        {
-            return Some(entry);
-        }
-
-        let path = Path::new(needle).canonicalize().ok()?;
-        self.vaults.iter().find(|entry| entry.path == path)
+        find_entry(&self.vaults, needle)
     }
 
     pub fn locate(&self, path: &Path) -> Option<(&VaultEntry, NoteId)> {
@@ -307,11 +291,7 @@ impl VaultRegistry {
     }
 
     pub fn with_labels<'a>(&self, labels: impl IntoIterator<Item = &'a str>) -> Vec<&VaultEntry> {
-        let wanted = clean_labels(labels);
-        self.vaults
-            .iter()
-            .filter(|entry| entry.labels.iter().any(|label| wanted.contains(label)))
-            .collect()
+        select_labels(&self.vaults, &clean_labels(labels))
     }
 
     fn entry_mut(&mut self, id: &str) -> Result<&mut VaultEntry> {
@@ -338,6 +318,60 @@ impl VaultRegistry {
             .find(|color| self.vaults.iter().all(|entry| entry.color != *color))
             .unwrap_or(LabelColor::ALL[self.vaults.len() % LabelColor::ALL.len()])
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Scope {
+    All,
+    Vault(String),
+    Labels(Vec<String>),
+}
+
+impl Scope {
+    pub fn of(vault: Option<&str>, labels: &[String]) -> Self {
+        match vault {
+            Some(wanted) => Scope::Vault(wanted.to_string()),
+            None if labels.is_empty() => Scope::All,
+            None => Scope::Labels(labels.to_vec()),
+        }
+    }
+}
+
+pub fn select<'a>(entries: &'a [VaultEntry], scope: &Scope) -> Result<Vec<&'a VaultEntry>> {
+    match scope {
+        Scope::All => Ok(entries.iter().collect()),
+        Scope::Vault(wanted) => find_entry(entries, wanted)
+            .map(|entry| vec![entry])
+            .ok_or_else(|| Error::UnknownVault(wanted.clone())),
+        Scope::Labels(labels) => Ok(select_labels(
+            entries,
+            &clean_labels(labels.iter().map(String::as_str)),
+        )),
+    }
+}
+
+fn find_entry<'a>(entries: &'a [VaultEntry], needle: &str) -> Option<&'a VaultEntry> {
+    if let Some(entry) = entries.iter().find(|entry| entry.id == needle) {
+        return Some(entry);
+    }
+
+    let lower = needle.to_lowercase();
+    if let Some(entry) = entries
+        .iter()
+        .find(|entry| entry.name.to_lowercase() == lower)
+    {
+        return Some(entry);
+    }
+
+    let path = Path::new(needle).canonicalize().ok()?;
+    entries.iter().find(|entry| entry.path == path)
+}
+
+fn select_labels<'a>(entries: &'a [VaultEntry], wanted: &[String]) -> Vec<&'a VaultEntry> {
+    entries
+        .iter()
+        .filter(|entry| entry.labels.iter().any(|label| wanted.contains(label)))
+        .collect()
 }
 
 pub fn clean_labels<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
@@ -444,6 +478,55 @@ mod tests {
         assert_eq!(entry.id, "заметки");
         assert_eq!(entry.color, LabelColor::Blue);
         assert_eq!(registry.active().unwrap().id, "заметки");
+    }
+
+    fn scoped_registry(home: &Path) -> VaultRegistry {
+        let mut registry = VaultRegistry::default();
+        for name in ["Work", "Home"] {
+            registry.add(folder(home, name), None).unwrap();
+        }
+        registry.set_labels("work", ["Team"]).unwrap();
+        registry
+    }
+
+    fn names(found: Result<Vec<&VaultEntry>>) -> Vec<String> {
+        found
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_scope_finds_a_vault_by_id_name_or_path() {
+        let home = dir();
+        let registry = scoped_registry(home.path());
+        let entries = registry.entries();
+        let path = home.path().join("Home").display().to_string();
+
+        for wanted in ["home", "HOME", path.as_str()] {
+            let scope = Scope::Vault(wanted.to_string());
+            assert_eq!(names(select(entries, &scope)), ["Home"], "{wanted}");
+        }
+        assert_eq!(names(select(entries, &Scope::All)), ["Work", "Home"]);
+    }
+
+    #[test]
+    fn a_scope_of_labels_ignores_hash_and_case() {
+        let home = dir();
+        let registry = scoped_registry(home.path());
+        let scope = Scope::Labels(vec!["#TEAM".to_string()]);
+        assert_eq!(names(select(registry.entries(), &scope)), ["Work"]);
+        let none = Scope::Labels(vec!["other".to_string()]);
+        assert!(select(registry.entries(), &none).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unknown_vault_in_a_scope_is_an_error() {
+        let home = dir();
+        let registry = scoped_registry(home.path());
+        let error = select(registry.entries(), &Scope::Vault("nope".to_string())).unwrap_err();
+        assert_eq!(error.to_string(), "vault is not found: nope");
     }
 
     #[test]

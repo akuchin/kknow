@@ -53,7 +53,11 @@ fn section_text(
             .find(|next| next.line > start && next.level <= heading.level)
             .map_or(lines.len(), |next| next.line - 1),
         None => {
-            let blank = |line: usize| lines.get(line - 1).is_none_or(|text| text.trim().is_empty());
+            let blank = |line: usize| {
+                lines
+                    .get(line - 1)
+                    .is_none_or(|text| text.trim().is_empty())
+            };
             let heading = |line: usize| parsed.headings.iter().any(|h| h.line == line);
             let mut first = start;
             while first > 1 && !blank(first - 1) && !heading(first - 1) {
@@ -80,7 +84,11 @@ mod tests {
     fn workspace() -> (tempfile::TempDir, Workspace) {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("Plan.md"), PLAN).unwrap();
-        fs::write(dir.path().join("Setext.md"), "Title\n=====\n\ntext\n\nPart\n----\n\nmore\n").unwrap();
+        fs::write(
+            dir.path().join("Setext.md"),
+            "Title\n=====\n\ntext\n\nPart\n----\n\nmore\n",
+        )
+        .unwrap();
         let workspace = Workspace::open(dir.path()).unwrap();
         (dir, workspace)
     }
@@ -143,11 +151,19 @@ mod tests {
     fn the_preview_shows_embeds_and_a_section_preview_too() {
         let (dir, mut workspace) = workspace();
         fs::write(dir.path().join("Home.md"), "# Home\n\n![[Plan#Risks]]\n").unwrap();
-        workspace.save(&NoteId::parse("Home").unwrap(), "# Home\n\n![[Plan#Risks]]\n").unwrap();
+        workspace
+            .save(
+                &NoteId::parse("Home").unwrap(),
+                "# Home\n\n![[Plan#Risks]]\n",
+            )
+            .unwrap();
         let home = NoteId::parse("Home").unwrap();
 
         let html = workspace.render(&home, "# Home\n\n![[Plan#Risks]]\n");
-        assert!(html.contains(r#"class="embed" data-note="Plan" data-sub="Risks""#), "{html}");
+        assert!(
+            html.contains(r#"class="embed" data-note="Plan" data-sub="Risks""#),
+            "{html}"
+        );
         assert!(html.contains("Still late."), "{html}");
         assert!(!html.contains("Ship it."), "{html}");
 

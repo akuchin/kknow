@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use kknow_app::git_client::{git_client, git_token};
 use kknow_core::NoteId;
 use kknow_sync::{Git, GitAuth, GitSettings, GitStatus, Merged, Provider, RemoteConfig, Side};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -19,22 +20,30 @@ fn program(settings: &SettingsState) -> Result<PathBuf> {
         .ok_or(Error::GitPathNotSet)
 }
 
+fn stored_token(
+    settings: &GitSettings,
+    url: Option<&str>,
+    typed: Option<String>,
+) -> Result<Option<String>> {
+    match (settings.auth, typed) {
+        (GitAuth::Token, Some(typed)) => Ok(Some(typed)),
+        (GitAuth::Token, None) => match url {
+            Some(url) => Ok(secrets::load(url)?),
+            None => Ok(None),
+        },
+        _ => Ok(None),
+    }
+}
+
 fn token(
     settings: &GitSettings,
     url: Option<&str>,
     typed: Option<String>,
 ) -> Result<Option<String>> {
-    let stored = match (settings.auth, typed) {
-        (GitAuth::Token, Some(typed)) => Some(typed),
-        (GitAuth::Token, None) => match url {
-            Some(url) => secrets::load(url)?,
-            None => None,
-        },
-        _ => None,
-    };
+    let stored = stored_token(settings, url, typed)?;
     match settings.auth {
         GitAuth::System => Ok(None),
-        GitAuth::Token | GitAuth::Env => kknow_app::git_token(settings, stored)
+        GitAuth::Token | GitAuth::Env => git_token(settings, stored)
             .map(Some)
             .ok_or(Error::NoGitToken),
     }
@@ -45,10 +54,8 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, root: &Path, config: &RemoteConfig) 
         return Err(Error::NotConfigured);
     };
     let program = program(&app.state::<SettingsState>())?;
-    let token = token(settings, Some(&settings.url), None)?;
-    Ok(Git::new(program, root)
-        .with_token(token)
-        .with_merge(kknow_app::merge::merge_shared))
+    let stored = stored_token(settings, Some(&settings.url), None)?;
+    git_client(program, root, settings, stored).map_err(|_| Error::NoGitToken)
 }
 
 fn git_of<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot) -> Result<Git> {

@@ -38,6 +38,10 @@ Without `--vault`, kknow uses the current directory.
 | `watch` | print the changes in the vault |
 | `themes` | themes of the vault and their problems |
 
+`show` adopts the agent answers of a note into its comment threads, as the
+window does when it opens the note. For a locked note, `show` prints
+`locked: yes` and no outline, links or tags.
+
 `lock` and `unlock` read the password or the recovery code from
 `KKNOW_LOCK_PASSPHRASE`, or ask for it. A locked note is "locked" for `show`,
 `render` and the other commands that read the text. See
@@ -126,7 +130,9 @@ kknow mcp --vault Personal              # one vault
 kknow mcp --label work --label study    # all vaults with one of the labels
 ```
 
-The server uses stdin and stdout. An agent starts it as a child process. See
+The server uses stdin and stdout. An agent starts it as a child process. It
+accepts a batch: a line with a JSON array of messages gets one line with an
+array of the replies. See
 [Agents](/features/agents).
 
 ## Output language

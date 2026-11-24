@@ -170,7 +170,9 @@ impl std::fmt::Display for Problem {
         match self {
             Problem::File { path, detail } => write!(f, "{path}: {detail}"),
             Problem::NoId => write!(f, "a command without id is skipped"),
-            Problem::DuplicateId { id } => write!(f, "{id}: this id is already used, the entry is skipped"),
+            Problem::DuplicateId { id } => {
+                write!(f, "{id}: this id is already used, the entry is skipped")
+            }
             Problem::NoName { id } => write!(f, "{id}: no name"),
             Problem::EmptyScript { id } => write!(f, "{id}: the script is empty"),
             Problem::UnknownKind { id, kind, known } => {
