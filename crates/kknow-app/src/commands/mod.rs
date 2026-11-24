@@ -1,8 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use kknow_run::{CommandSet, Target, TargetKind};
+use kknow_run::{CommandSet, Manifest, Target, TargetKind, VaultRef};
 
 use crate::{Error, Result, Workspace};
+
+mod defaults;
+
+pub use defaults::{AGENT_VAR, MODE_VAR, defaults};
 
 pub fn config_path() -> Option<PathBuf> {
     crate::vaults::config_dir().map(CommandSet::path)
@@ -12,7 +16,16 @@ pub fn load() -> Result<CommandSet> {
     let Some(path) = config_path() else {
         return Ok(CommandSet::default());
     };
-    Ok(CommandSet::load(&path)?)
+    Ok(CommandSet::load(&path, defaults())?)
+}
+
+pub fn save_manifest(path: &Path, manifest: &Manifest) -> Result<()> {
+    let mut bytes = serde_json::to_vec_pretty(manifest).expect("the manifest serializes");
+    bytes.push(b'\n');
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
+    }
+    kknow_core::fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
 }
 
 pub fn vault_target(workspace: &Workspace, id: &str, name: &str) -> Target {
@@ -36,8 +49,10 @@ pub fn note_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> Re
         relative: format!("{note}.md"),
         note: Some(note.as_str().to_string()),
         fields,
-        vault_id: id.to_string(),
-        vault_name: name.to_string(),
+        vault: Some(VaultRef {
+            id: id.to_string(),
+            name: name.to_string(),
+        }),
         vault_root: workspace.root().to_path_buf(),
     })
 }
@@ -56,8 +71,10 @@ pub fn folder_target(workspace: &Workspace, id: &str, name: &str, raw: &str) -> 
         relative,
         note: None,
         fields: Default::default(),
-        vault_id: id.to_string(),
-        vault_name: name.to_string(),
+        vault: Some(VaultRef {
+            id: id.to_string(),
+            name: name.to_string(),
+        }),
         vault_root: workspace.root().to_path_buf(),
     })
 }
@@ -242,5 +259,33 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn the_saved_commands_come_back_in_pretty_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = CommandSet::path(dir.path());
+
+        save_manifest(&path, &defaults()).unwrap();
+        let loaded = CommandSet::load(&path, Manifest::default()).unwrap();
+
+        assert_eq!(loaded, CommandSet::from(&defaults()));
+        assert!(loaded.get("confluence").is_some());
+        assert!(!dir.path().join("commands.json.tmp").exists());
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"version\": 1"));
+        assert!(text.ends_with("}\n"));
+    }
+
+    #[test]
+    fn a_missing_file_gives_the_shipped_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = CommandSet::path(dir.path());
+
+        let set = CommandSet::load(&path, defaults()).unwrap();
+
+        let ids: Vec<&str> = set.commands.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["confluence", "agent"]);
+        assert!(!path.exists());
     }
 }

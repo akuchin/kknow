@@ -104,8 +104,8 @@ impl SyncProvider for FolderProvider {
         }
 
         let temp = path.with_extension("kknow-tmp");
-        fs::write(&temp, bytes).map_err(|source| self.failure(Operation::Put, key, source))?;
-        fs::rename(&temp, &path).map_err(|source| self.failure(Operation::Put, key, source))
+        kknow_core::fsx::write_atomic_via(&path, &temp, bytes)
+            .map_err(|source| self.failure(Operation::Put, key, source))
     }
 
     fn delete(&self, key: &str) -> Result<()> {

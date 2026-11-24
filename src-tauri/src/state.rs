@@ -216,7 +216,7 @@ impl AppState {
         let Some(path) = self.commands_file.get().and_then(Option::as_ref) else {
             return Ok(CommandSet::default());
         };
-        Ok(CommandSet::load(path)?)
+        Ok(CommandSet::load(path, kknow_app::commands::defaults())?)
     }
 
     pub fn on_open(&self, hook: impl Fn(Arc<VaultSlot>) + Send + Sync + 'static) {

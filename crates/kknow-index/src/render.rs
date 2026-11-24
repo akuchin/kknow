@@ -23,7 +23,12 @@ pub const LINE_MARK_CLASS: &str = "line-mark";
 const LINE_SENTINEL: &str = "\0kknow-line:";
 
 pub fn to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
-    render(source, from, &mut Context::new(resolver, None, from), false)
+    render(
+        source,
+        from,
+        &mut Context::new(resolver, None, from),
+        HtmlShape::Document,
+    )
 }
 
 pub fn to_html_with_embeds(
@@ -36,7 +41,7 @@ pub fn to_html_with_embeds(
         source,
         from,
         &mut Context::new(resolver, Some(embeds), from),
-        false,
+        HtmlShape::Document,
     )
 }
 
@@ -66,15 +71,31 @@ impl<'a> Context<'a> {
     }
 }
 
-fn render(source: &str, from: &NoteId, context: &mut Context<'_>, fragment: bool) -> String {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HtmlShape {
+    Document,
+    Fragment,
+}
+
+fn render(source: &str, from: &NoteId, context: &mut Context<'_>, shape: HtmlShape) -> String {
     let parsed = parse(source);
     let mut embedded = Vec::new();
     let (prepared, lines) = rewrite(source, &parsed, from, context, &mut embedded);
-    markdown_to_html(&prepared, &lines, fragment.then_some(from), &embedded)
+    markdown_to_html(
+        &prepared,
+        &lines,
+        (shape == HtmlShape::Fragment).then_some(from),
+        &embedded,
+    )
 }
 
 pub fn fragment_to_html(source: &str, from: &NoteId, resolver: &Resolver) -> String {
-    render(source, from, &mut Context::new(resolver, None, from), true)
+    render(
+        source,
+        from,
+        &mut Context::new(resolver, None, from),
+        HtmlShape::Fragment,
+    )
 }
 
 pub fn fragment_to_html_with_embeds(
@@ -87,7 +108,7 @@ pub fn fragment_to_html_with_embeds(
         source,
         from,
         &mut Context::new(resolver, Some(embeds), from),
-        true,
+        HtmlShape::Fragment,
     )
 }
 
@@ -231,7 +252,7 @@ fn embed_html(link: &WikiLink, from: &NoteId, context: &mut Context<'_>) -> Opti
 
     context.depth += 1;
     context.open.push(part);
-    let body = render(&text, &id, context, true);
+    let body = render(&text, &id, context, HtmlShape::Fragment);
     context.open.pop();
     context.depth -= 1;
 

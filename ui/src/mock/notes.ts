@@ -1,3 +1,4 @@
+import { ATTACHMENT_NAME_HEADER } from "../bindings";
 import type {
   BookmarkMark,
   BookmarkView,
@@ -165,7 +166,7 @@ export const notesHandlers = {
   },
 
   save_attachment: (body, options) => {
-    const name = decodeURIComponent(options?.headers?.["kknow-name"] ?? "");
+    const name = decodeURIComponent(options?.headers?.[ATTACHMENT_NAME_HEADER] ?? "");
     const bytes = body.slice().buffer;
     return mockAttachment(name, bytes);
   },

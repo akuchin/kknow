@@ -58,6 +58,7 @@ let live: { run: string; command: CommandView; started: number; timer: number } 
 let runs = 0;
 
 const OPEN_LIVE_AFTER_MS = 1000;
+const LIVE_TICK_MS = 1000;
 
 export async function runCommand(command: CommandView, target: CommandTarget): Promise<void> {
   if (command.confirm && !window.confirm(t("commands.confirm", { name: command.name }))) {
@@ -89,7 +90,7 @@ function startLive(run: string, command: CommandView): void {
     const seconds = ((Date.now() - started) / 1000).toFixed(0);
     el.runSummary.textContent = t("panel.run.running", { seconds });
   };
-  live = { run, command, started, timer: window.setInterval(tick, 1000) };
+  live = { run, command, started, timer: window.setInterval(tick, LIVE_TICK_MS) };
   window.setTimeout(() => {
     if (live?.run === run) showRunOutput(true);
   }, OPEN_LIVE_AFTER_MS);
@@ -122,10 +123,10 @@ function appendLine(line: RunLine): void {
 
 function showRunOutcome(command: CommandView, outcome: RunOutcome, current: boolean): void {
   const seconds = (outcome.millis / 1000).toFixed(1);
-  const failed = outcome.timedOut || outcome.stopped || outcome.code !== 0;
-  const summary = outcome.stopped
+  const failed = outcome.end !== "exited" || outcome.code !== 0;
+  const summary = outcome.end === "stopped"
     ? t("panel.run.stopped", { seconds })
-    : outcome.timedOut
+    : outcome.end === "timedOut"
       ? t("panel.run.timedOut", { seconds })
       : outcome.code === null
         ? t("panel.run.killed", { seconds })
@@ -149,7 +150,7 @@ function showRunOutcome(command: CommandView, outcome: RunOutcome, current: bool
   }
 
   status.setRun(command.name, failed ? "error" : "ok", t("statusbar.run.title", { summary }));
-  if (failed && !outcome.stopped) showRunOutput(true);
+  if (failed && outcome.end !== "stopped") showRunOutput(true);
 }
 
 export function showRunOutput(show: boolean): void {

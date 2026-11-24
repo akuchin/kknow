@@ -124,7 +124,7 @@ pub fn create_note(
 ) -> Result<NoteView> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = workspace.create(&name)?;
-        let content = workspace.read(&id)?;
+        let content = workspace.read_plain(&id)?;
         Ok(workspace.note_view(&id, content))
     })
 }

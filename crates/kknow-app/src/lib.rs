@@ -1,3 +1,4 @@
+pub mod attachments;
 pub mod bookmarks;
 pub mod commands;
 pub mod files;
@@ -20,6 +21,8 @@ pub mod vaults;
 pub mod view;
 pub mod watch;
 mod workspace;
+
+pub const DEFAULT_SEARCH_LIMIT: usize = 10;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -415,7 +418,7 @@ mod tests {
         let plan = NoteId::parse("План").unwrap();
         workspace.save(&plan, "# План\n\n- [ ] начать\n").unwrap();
 
-        let content = workspace.set_task(&plan, 3, true).unwrap();
+        let content = workspace.set_task_plain(&plan, 3, true).unwrap();
         assert_eq!(content, "# План\n\n- [x] начать\n");
         assert_eq!(
             fs::read_to_string(dir.path().join("План.md")).unwrap(),
@@ -431,7 +434,7 @@ mod tests {
             "# План\n\nвступление\n- [x] начать\n",
         )
         .unwrap();
-        let error = workspace.set_task(&plan, 3, false).unwrap_err();
+        let error = workspace.set_task_plain(&plan, 3, false).unwrap_err();
         assert!(matches!(error, Error::NotATask(_, 3)), "{error}");
         assert_eq!(
             fs::read_to_string(dir.path().join("План.md")).unwrap(),
@@ -566,7 +569,7 @@ mod tests {
     fn careful_save_writes_when_the_file_is_as_the_editor_saw_it() {
         let (dir, mut workspace) = workspace();
         let id = NoteId::parse("Index").unwrap();
-        let base = workspace.read(&id).unwrap();
+        let base = workspace.read_plain(&id).unwrap();
 
         let saved = workspace
             .save_if_unchanged(&id, "# Новое\n", &base)
@@ -583,7 +586,7 @@ mod tests {
     fn careful_save_keeps_an_outside_edit_and_puts_ours_aside() {
         let (dir, mut workspace) = workspace();
         let id = NoteId::parse("Index").unwrap();
-        let base = workspace.read(&id).unwrap();
+        let base = workspace.read_plain(&id).unwrap();
         fs::write(dir.path().join("Index.md"), "# Правка снаружи\n").unwrap();
 
         let saved = workspace
@@ -599,7 +602,7 @@ mod tests {
             disk
         );
         assert!(kknow_sync::is_conflict_copy(&copy));
-        assert_eq!(workspace.read(&copy).unwrap(), "# Моя правка\n");
+        assert_eq!(workspace.read_plain(&copy).unwrap(), "# Моя правка\n");
     }
 
     #[test]
@@ -619,7 +622,7 @@ mod tests {
     fn careful_save_brings_back_a_note_deleted_outside() {
         let (dir, mut workspace) = workspace();
         let id = NoteId::parse("Index").unwrap();
-        let base = workspace.read(&id).unwrap();
+        let base = workspace.read_plain(&id).unwrap();
         fs::remove_file(dir.path().join("Index.md")).unwrap();
 
         let saved = workspace
@@ -656,7 +659,7 @@ mod tests {
 
         let id = workspace.create("Daily/2026-07-26").unwrap();
 
-        assert_eq!(workspace.read(&id).unwrap(), "# 2026-07-26\n\n");
+        assert_eq!(workspace.read_plain(&id).unwrap(), "# 2026-07-26\n\n");
         assert!(workspace.contains(&id));
     }
 
@@ -714,7 +717,9 @@ mod tests {
         assert_eq!(found(&workspace, "синхронизацию"), ["Архив/kknow"]);
         assert!(workspace.graph().broken().is_empty());
         assert_eq!(
-            workspace.read(&NoteId::parse("Index").unwrap()).unwrap(),
+            workspace
+                .read_plain(&NoteId::parse("Index").unwrap())
+                .unwrap(),
             "# Оглавление\n\n[[Архив/kknow]]"
         );
     }
@@ -733,7 +738,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(relinked, Relinked::default());
-        assert_eq!(workspace.read(&index).unwrap(), "# Оглавление\n\n[[kknow]]");
+        assert_eq!(
+            workspace.read_plain(&index).unwrap(),
+            "# Оглавление\n\n[[kknow]]"
+        );
         assert!(workspace.graph().broken().is_empty());
         assert_eq!(
             workspace
@@ -768,7 +776,7 @@ mod tests {
 
         assert_eq!(relinked, Relinked { notes: 2, links: 5 });
         assert_eq!(
-            workspace.read(&note).unwrap(),
+            workspace.read_plain(&note).unwrap(),
             concat!(
                 "[[Архив/Старый проект|проект]] и ![[Архив/Старый проект#Схема]]\n\n",
                 "[подробно](Архив/Старый%20проект.md) и [[Архив/Старый проект#^a1b2]]\n\n",
@@ -793,7 +801,7 @@ mod tests {
 
         assert_eq!(relinked, Relinked { notes: 1, links: 1 });
         assert_eq!(
-            workspace.read(&index).unwrap(),
+            workspace.read_plain(&index).unwrap(),
             "# Оглавление\n\n[[Архив/kknow]]"
         );
         assert!(workspace.graph().broken().is_empty());
@@ -823,8 +831,8 @@ mod tests {
         assert_eq!(first.as_str(), "Projects/kknow copy");
         assert_eq!(second.as_str(), "Projects/kknow copy 2");
         assert_eq!(
-            workspace.read(&first).unwrap(),
-            workspace.read(&id).unwrap()
+            workspace.read_plain(&first).unwrap(),
+            workspace.read_plain(&id).unwrap()
         );
         let mut hits = found(&workspace, "синхронизацию");
         hits.sort();

@@ -54,13 +54,18 @@ flowchart TB
 
 Dependencies go in one direction only. Each crate knows as little as possible:
 
-- `kknow-core` knows nothing about text parsing.
+- `kknow-core` knows nothing about text parsing. It owns `fsx`, the one place
+  that writes a file safely: a temp file, a flush to disk, then a rename. It
+  also renames a broken settings file to `.broken`. Every crate uses it.
 - `kknow-index` knows nothing about the disk.
 - `kknow-crypto` does no input or output and depends on no other kknow crate.
   Both sync and the locked notes of the vault use it.
 - `kknow-run` does not depend even on `core`. A module that runs external
-  programs gets a target that is ready to use.
-- `kknow-app` knows nothing about how the window shows the data.
+  programs gets a target that is ready to use. It has no default commands and
+  writes no file. A run ends in one of three ways: exited, timed out or
+  stopped.
+- `kknow-app` knows nothing about how the window shows the data. It owns the
+  default commands and the save of `commands.json`.
 - The window and the CLI call `kknow-app` for the shared logic: the note view
   and the agent answers on open, the link preview, the vault scope, the git
   client setup, the proposal review and the JSON-RPC batch. A fix in one place
@@ -81,7 +86,7 @@ sequenceDiagram
   participant D as Disk
   UI->>T: save_note(text, base)
   T->>W: save_if_unchanged
-  W->>D: atomic write (temp file + rename)
+  W->>D: atomic write (temp file, flush, rename)
   W->>W: parse, update graph and search index
   W-->>UI: new HTML and backlinks
 ```
@@ -306,7 +311,8 @@ flowchart LR
 `kknow-run` reads `commands.json`, selects the commands for a target and runs
 them through a `Runner` trait for each interpreter. The target path goes to the
 script as an environment variable, never in the script text. kknow stops the
-command and all its child processes after the timeout.
+command and all its child processes after the timeout. `kknow-app` gives the
+default commands and saves `commands.json`; `kknow-run` only reads it.
 
 ## The window
 

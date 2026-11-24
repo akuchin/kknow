@@ -29,8 +29,8 @@ pub fn open_settings<R: Runtime>(
             &settings.get().locale,
             crate::i18n::SETTINGS_TITLE,
         ))
-        .inner_size(880.0, 580.0)
-        .min_inner_size(720.0, 480.0)
+        .inner_size(SETTINGS_SIZE.0, SETTINGS_SIZE.1)
+        .min_inner_size(SETTINGS_MIN_SIZE.0, SETTINGS_MIN_SIZE.1)
         .build()
         .map_err(|error| Error::Window(error.to_string()))?;
 
@@ -40,6 +40,9 @@ pub fn open_settings<R: Runtime>(
 pub const MAIN_WINDOW: &str = "main";
 
 pub const SETTINGS_WINDOW: &str = "settings";
+
+const SETTINGS_SIZE: (f64, f64) = (880.0, 580.0);
+const SETTINGS_MIN_SIZE: (f64, f64) = (720.0, 480.0);
 
 #[tauri::command(async)]
 pub fn list_themes(state: State<'_, AppState>, vault: Option<String>) -> Result<ThemeSet> {

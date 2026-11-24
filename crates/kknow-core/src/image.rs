@@ -94,8 +94,7 @@ pub fn save(dir: &Path, name: &str, bytes: &[u8]) -> Result<String> {
     let free = free_name(&folder, &name);
     let target = folder.join(&free);
     let temp = folder.join(format!(".{free}.kknow-tmp"));
-    fs::write(&temp, bytes).map_err(|err| Error::io(&temp, err))?;
-    fs::rename(&temp, &target).map_err(|err| Error::io(&target, err))?;
+    crate::fsx::write_atomic_via(&target, &temp, bytes).map_err(|err| Error::io(&target, err))?;
     Ok(format!("{ATTACHMENTS}/{free}"))
 }
 

@@ -179,8 +179,7 @@ export const runsHandlers = {
       code: stopped ? null : command.output.code,
       stdout: text("stdout"),
       stderr: text("stderr"),
-      timedOut: !stopped && command.output.code === null,
-      stopped,
+      end: stopped ? "stopped" : command.output.code === null ? "timedOut" : "exited",
       truncated: false,
       millis: Date.now() - started,
     };

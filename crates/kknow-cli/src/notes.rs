@@ -286,7 +286,7 @@ mod tests {
         assert!(shown.contains("#idea"), "{shown}");
         assert!(!shown.contains("locked"), "{shown}");
         let id = NoteId::parse("Demo").unwrap();
-        assert!(!workspace.read(&id).unwrap().contains("@agent-note"));
+        assert!(!workspace.read_plain(&id).unwrap().contains("@agent-note"));
         assert_eq!(workspace.note_threads(&id).unwrap().len(), 1);
     }
 

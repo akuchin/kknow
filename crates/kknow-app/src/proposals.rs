@@ -279,7 +279,7 @@ impl Workspace {
         author: Option<&str>,
         comment: Option<&str>,
     ) -> Result<Proposal> {
-        let content = self.read(id)?;
+        let content = self.read_plain(id)?;
         check(&content, &edits).map_err(Error::BadProposal)?;
         let edits = edits
             .into_iter()
@@ -357,7 +357,7 @@ impl Workspace {
     }
 
     pub fn proposal_view(&self, proposal: Proposal) -> ProposalView {
-        let content = proposal.note_id().and_then(|id| self.read(&id).ok());
+        let content = proposal.note_id().and_then(|id| self.read_plain(&id).ok());
         let stale = proposal
             .edits
             .iter()
@@ -421,7 +421,7 @@ impl Workspace {
                 self.save(&id, &content)?;
                 written = Some(content);
             } else {
-                let content = self.read(&id)?;
+                let content = self.read_plain(&id)?;
                 let mut order = accept.clone();
                 order.sort_unstable();
                 let changed = apply(
@@ -503,7 +503,10 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(workspace.read(&id).unwrap(), "Проект занял 14 недель.\n");
+        assert_eq!(
+            workspace.read_plain(&id).unwrap(),
+            "Проект занял 14 недель.\n"
+        );
         assert_eq!(proposal.status(), Status::Pending);
         assert_eq!(workspace.proposals().unwrap(), vec![proposal]);
     }
@@ -621,7 +624,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            workspace.read(&id).unwrap(),
+            workspace.read_plain(&id).unwrap(),
             "Занял 12 недель<!-- @agent «14 недель»: проверь -->.\n"
         );
     }
@@ -671,7 +674,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(written.as_deref(), Some("Занял 12 недель в октябре.\n"));
-        assert_eq!(workspace.read(&id).unwrap(), "Занял 12 недель в октябре.\n");
+        assert_eq!(
+            workspace.read_plain(&id).unwrap(),
+            "Занял 12 недель в октябре.\n"
+        );
         assert_eq!(after.status(), Status::Partial);
         assert_eq!(after.feedback.as_deref(), Some("месяц верный"));
         assert_eq!(workspace.proposal(&proposal.id).unwrap(), after);
@@ -705,7 +711,10 @@ mod tests {
 
         assert_eq!(view.stale, vec![false, true]);
         assert!(matches!(result, Err(Error::StaleEdit(_, 2))));
-        assert_eq!(workspace.read(&id).unwrap(), "Занял 14 недель осенью.\n");
+        assert_eq!(
+            workspace.read_plain(&id).unwrap(),
+            "Занял 14 недель осенью.\n"
+        );
         assert_eq!(
             workspace.proposal(&proposal.id).unwrap().status(),
             Status::Pending
@@ -730,7 +739,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(workspace.read(&id).unwrap(), "# Новая\n\nтекст\n");
+        assert_eq!(workspace.read_plain(&id).unwrap(), "# Новая\n\nтекст\n");
     }
 
     #[test]

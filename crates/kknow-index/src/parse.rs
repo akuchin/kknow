@@ -198,162 +198,235 @@ pub(crate) fn options() -> Options {
         | Options::ENABLE_MATH
 }
 
+struct OpenHeading {
+    level: u8,
+    line: usize,
+    span: Range<usize>,
+    text: String,
+}
+
+struct OpenLink {
+    target: String,
+    span: Range<usize>,
+    label: String,
+}
+
+struct Walk<'a> {
+    skip: Vec<Range<usize>>,
+    headings: Vec<Heading>,
+    markdown_links: Vec<MarkdownLink>,
+    text: String,
+    raw_html: String,
+    heading: Option<OpenHeading>,
+    link: Option<OpenLink>,
+    tasks: Vec<Task>,
+    agent_comments: Vec<AgentComment>,
+    task: Option<Task>,
+    lines: LineCounter<'a>,
+}
+
+impl<'a> Walk<'a> {
+    fn new(source: &'a str, skip: Vec<Range<usize>>) -> Self {
+        Walk {
+            skip,
+            headings: Vec::new(),
+            markdown_links: Vec::new(),
+            text: String::new(),
+            raw_html: String::new(),
+            heading: None,
+            link: None,
+            tasks: Vec::new(),
+            agent_comments: Vec::new(),
+            task: None,
+            lines: LineCounter::new(source),
+        }
+    }
+
+    fn event(&mut self, event: Event<'_>, range: Range<usize>) {
+        match event {
+            Event::Start(MdTag::Heading { level, .. }) => self.start_heading(level as u8, range),
+            Event::End(TagEnd::Heading(_)) => self.end_heading(),
+            Event::Start(MdTag::Link { dest_url, .. }) => self.start_link(&dest_url, range),
+            Event::End(TagEnd::Link) => self.end_link(),
+            Event::Start(MdTag::CodeBlock(_)) => self.skip.push(range),
+            Event::Code(code) => self.code(&code, range),
+            Event::InlineMath(_) | Event::DisplayMath(_) => self.skip.push(range),
+            Event::Html(html) | Event::InlineHtml(html) => self.html(&html, range),
+            Event::TaskListMarker(done) => self.start_task(done, range),
+            Event::Start(MdTag::List(_)) => self.finish_task(),
+            Event::End(TagEnd::Paragraph | TagEnd::Item) => {
+                self.finish_task();
+                self.text.push('\n');
+            }
+            Event::Text(chunk) => self.chunk(&chunk),
+            Event::SoftBreak | Event::HardBreak => self.line_break(),
+            _ => {}
+        }
+    }
+
+    fn start_heading(&mut self, level: u8, range: Range<usize>) {
+        self.heading = Some(OpenHeading {
+            level,
+            line: self.lines.line_at(range.start),
+            span: range,
+            text: String::new(),
+        });
+    }
+
+    fn end_heading(&mut self) {
+        if let Some(open) = self.heading.take() {
+            self.headings.push(Heading {
+                level: open.level,
+                text: open.text.trim().to_string(),
+                line: open.line,
+                span: open.span,
+            });
+        }
+        self.text.push('\n');
+    }
+
+    fn start_link(&mut self, target: &str, range: Range<usize>) {
+        self.link = Some(OpenLink {
+            target: target.to_string(),
+            span: range,
+            label: String::new(),
+        });
+    }
+
+    fn end_link(&mut self) {
+        if let Some(open) = self.link.take()
+            && !is_external(&open.target)
+        {
+            self.markdown_links.push(MarkdownLink {
+                target: decode_target(&open.target),
+                label: open.label.trim().to_string(),
+                span: open.span,
+            });
+        }
+    }
+
+    fn code(&mut self, code: &str, range: Range<usize>) {
+        self.skip.push(range);
+        if let Some(task) = self.task.as_mut() {
+            task.text.push_str(code);
+        }
+        self.text.push_str(code);
+    }
+
+    fn html(&mut self, html: &str, range: Range<usize>) {
+        if let Some(note) = agent_note::parse(html) {
+            let start = range.start + (html.len() - html.trim_start().len());
+            self.agent_comments.push(AgentComment {
+                id: note.id.map(String::from),
+                anchor: note.anchor.to_string(),
+                text: note.text.to_string(),
+                line: self.lines.line_at(start),
+                span: start..start + html.trim().len(),
+            });
+        }
+        self.raw_html.push_str(html);
+        self.skip.push(range);
+    }
+
+    fn start_task(&mut self, done: bool, range: Range<usize>) {
+        self.task = Some(Task {
+            text: String::new(),
+            done,
+            line: self.lines.line_at(range.start),
+            span: range,
+        });
+    }
+
+    fn finish_task(&mut self) {
+        if let Some(mut found) = self.task.take() {
+            found.text = unwrap_wiki_links(found.text.trim());
+            self.tasks.push(found);
+        }
+    }
+
+    fn chunk(&mut self, chunk: &str) {
+        if let Some(task) = self.task.as_mut() {
+            task.text.push_str(chunk);
+        }
+        if let Some(open) = self.heading.as_mut() {
+            open.text.push_str(chunk);
+        }
+        if let Some(open) = self.link.as_mut() {
+            open.label.push_str(chunk);
+        }
+        self.text.push_str(chunk);
+    }
+
+    fn line_break(&mut self) {
+        if let Some(task) = self.task.as_mut() {
+            task.text.push(' ');
+        }
+        self.text.push('\n');
+    }
+}
+
+fn walk(source: &str, body_start: usize, skip: Vec<Range<usize>>) -> Walk<'_> {
+    let mut walk = Walk::new(source, skip);
+    for (event, range) in Parser::new_ext(&source[body_start..], options()).into_offset_iter() {
+        walk.event(event, range.start + body_start..range.end + body_start);
+    }
+    walk
+}
+
+fn aliases_of(frontmatter: Option<&Frontmatter>) -> Vec<String> {
+    let Some(frontmatter) = frontmatter else {
+        return Vec::new();
+    };
+    let aliases = frontmatter.list("aliases");
+    if aliases.is_empty() {
+        frontmatter.list("alias")
+    } else {
+        aliases
+    }
+}
+
+fn tag_skips(
+    skip: &[Range<usize>],
+    wiki_links: &[WikiLink],
+    markdown_links: &[MarkdownLink],
+) -> Vec<Range<usize>> {
+    let mut tag_skip = skip.to_vec();
+    tag_skip.extend(wiki_links.iter().map(|link| link.span.clone()));
+    tag_skip.extend(markdown_links.iter().map(|link| link.span.clone()));
+    tag_skip
+}
+
 pub fn parse(source: &str) -> ParsedNote {
     let (frontmatter, body_start) = split_frontmatter(source);
 
-    let mut skip: Vec<Range<usize>> = Vec::new();
-    if let Some(frontmatter) = &frontmatter {
-        skip.push(frontmatter.span.clone());
-    }
-
+    let skip: Vec<Range<usize>> = frontmatter
+        .iter()
+        .map(|frontmatter| frontmatter.span.clone())
+        .collect();
     let mut fields = frontmatter
         .as_ref()
         .map(Frontmatter::fields)
         .unwrap_or_default();
 
-    let mut headings = Vec::new();
-    let mut markdown_links = Vec::new();
-    let mut text = String::new();
-    let mut raw_html = String::new();
+    let walked = walk(source, body_start, skip);
+    take_comment_fields(&walked.raw_html, &mut fields);
 
-    let mut heading: Option<(u8, usize, Range<usize>, String)> = None;
-    let mut link: Option<(String, Range<usize>, String)> = None;
-    let mut tasks = Vec::new();
-    let mut agent_comments = Vec::new();
-    let mut task: Option<Task> = None;
-    let mut lines = LineCounter::new(source);
-
-    for (event, range) in Parser::new_ext(&source[body_start..], options()).into_offset_iter() {
-        let range = range.start + body_start..range.end + body_start;
-
-        match event {
-            Event::Start(MdTag::Heading { level, .. }) => {
-                heading = Some((
-                    level as u8,
-                    lines.line_at(range.start),
-                    range,
-                    String::new(),
-                ));
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                if let Some((level, line, span, heading_text)) = heading.take() {
-                    headings.push(Heading {
-                        level,
-                        text: heading_text.trim().to_string(),
-                        line,
-                        span,
-                    });
-                }
-                text.push('\n');
-            }
-            Event::Start(MdTag::Link { dest_url, .. }) => {
-                link = Some((dest_url.to_string(), range, String::new()));
-            }
-            Event::End(TagEnd::Link) => {
-                if let Some((target, span, label)) = link.take()
-                    && !is_external(&target)
-                {
-                    markdown_links.push(MarkdownLink {
-                        target: decode_target(&target),
-                        label: label.trim().to_string(),
-                        span,
-                    });
-                }
-            }
-            Event::Start(MdTag::CodeBlock(_)) => skip.push(range),
-            Event::Code(code) => {
-                skip.push(range);
-                if let Some(task) = task.as_mut() {
-                    task.text.push_str(&code);
-                }
-                text.push_str(&code);
-            }
-            Event::InlineMath(_) | Event::DisplayMath(_) => skip.push(range),
-            Event::Html(html) | Event::InlineHtml(html) => {
-                if let Some(note) = agent_note::parse(&html) {
-                    let start = range.start + (html.len() - html.trim_start().len());
-                    agent_comments.push(AgentComment {
-                        id: note.id.map(String::from),
-                        anchor: note.anchor.to_string(),
-                        text: note.text.to_string(),
-                        line: lines.line_at(start),
-                        span: start..start + html.trim().len(),
-                    });
-                }
-                raw_html.push_str(&html);
-                skip.push(range);
-            }
-            Event::TaskListMarker(done) => {
-                task = Some(Task {
-                    text: String::new(),
-                    done,
-                    line: lines.line_at(range.start),
-                    span: range,
-                });
-            }
-            Event::Start(MdTag::List(_)) | Event::End(TagEnd::Paragraph | TagEnd::Item) => {
-                if let Some(mut found) = task.take() {
-                    found.text = unwrap_wiki_links(found.text.trim());
-                    tasks.push(found);
-                }
-                if matches!(event, Event::End(_)) {
-                    text.push('\n');
-                }
-            }
-            Event::Text(chunk) => {
-                if let Some(task) = task.as_mut() {
-                    task.text.push_str(&chunk);
-                }
-                if let Some((_, _, _, buffer)) = heading.as_mut() {
-                    buffer.push_str(&chunk);
-                }
-                if let Some((_, _, label)) = link.as_mut() {
-                    label.push_str(&chunk);
-                }
-                text.push_str(&chunk);
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some(task) = task.as_mut() {
-                    task.text.push(' ');
-                }
-                text.push('\n');
-            }
-            _ => {}
-        }
-    }
-
-    take_comment_fields(&raw_html, &mut fields);
-
-    let aliases = frontmatter
-        .as_ref()
-        .map(|frontmatter| {
-            let mut aliases = frontmatter.list("aliases");
-            if aliases.is_empty() {
-                aliases = frontmatter.list("alias");
-            }
-            aliases
-        })
-        .unwrap_or_default();
-
-    let wiki_links = wikilink::scan(source, &skip);
-    let blocks = scan_blocks(source, &skip);
-
-    let mut tag_skip = skip;
-    tag_skip.extend(wiki_links.iter().map(|link| link.span.clone()));
-    tag_skip.extend(markdown_links.iter().map(|link| link.span.clone()));
+    let wiki_links = wikilink::scan(source, &walked.skip);
+    let blocks = scan_blocks(source, &walked.skip);
+    let tag_skip = tag_skips(&walked.skip, &wiki_links, &walked.markdown_links);
 
     ParsedNote {
+        aliases: aliases_of(frontmatter.as_ref()),
         frontmatter,
-        headings,
+        headings: walked.headings,
         blocks,
         wiki_links,
-        markdown_links,
         tags: tag::scan(source, &tag_skip),
-        tasks,
-        agent_comments,
+        markdown_links: walked.markdown_links,
+        tasks: walked.tasks,
+        agent_comments: walked.agent_comments,
         fields,
-        aliases,
-        text: unwrap_wiki_links(&text),
+        text: unwrap_wiki_links(&walked.text),
     }
 }
 

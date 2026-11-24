@@ -1,5 +1,5 @@
 use kknow_app::proposals::Review;
-use kknow_app::threads::{CommentRef, ME};
+use kknow_app::threads::{CommentRef, USER_AUTHOR};
 use kknow_app::view::NoteView;
 
 use tauri::State;
@@ -17,7 +17,7 @@ pub fn review_proposal(
     state.slot(vault.as_deref())?.write(|workspace| {
         let (reviewed, _) = workspace.review_proposal(&proposal, &review)?;
         let id = note_id(workspace, &reviewed.note)?;
-        let content = workspace.read(&id)?;
+        let content = workspace.read_plain(&id)?;
         Ok(workspace.note_view(&id, content))
     })
 }
@@ -55,8 +55,8 @@ pub fn reply_thread(
             },
             _ => return Err(Error::NotFound(note.clone())),
         };
-        workspace.reply_comment(&target, ME, &message, false)?;
-        let content = workspace.read(&id)?;
+        workspace.reply_comment(&target, USER_AUTHOR, &message, false)?;
+        let content = workspace.read_plain(&id)?;
         Ok(workspace.note_view(&id, content))
     })
 }

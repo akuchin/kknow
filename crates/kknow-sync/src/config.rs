@@ -199,9 +199,7 @@ impl RemoteConfig {
         let mut bytes = serde_json::to_vec_pretty(self).expect("the config serializes");
         bytes.push(b'\n');
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| SyncError::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| SyncError::io(path, source))
+        kknow_core::fsx::write_atomic(path, &bytes).map_err(|source| SyncError::io(path, source))
     }
 
     fn check(&self) -> Result<()> {

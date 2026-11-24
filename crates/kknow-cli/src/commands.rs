@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use kknow_run::{CommandSet, CommandSpec, Outcome, Target, TargetKind};
+use kknow_run::{CommandSet, CommandSpec, Outcome, RunEnd, Target, TargetKind};
 
 use crate::error::{CliError, Result};
 
@@ -11,11 +11,11 @@ pub(crate) fn commands(target: Option<Target>, example: bool) -> Result<()> {
         if path.exists() {
             return Err(CliError::FileExists(path));
         }
-        kknow_run::spec::defaults().save(&path)?;
+        kknow_app::commands::save_manifest(&path, &kknow_app::commands::defaults())?;
         println!("default commands written: {}", path.display());
     }
 
-    let set = CommandSet::load(&path)?;
+    let set = CommandSet::load(&path, kknow_app::commands::defaults())?;
 
     let picked: Vec<&CommandSpec> = if let Some(target) = &target {
         let kind = if target.standalone() {
@@ -94,7 +94,7 @@ pub(crate) fn report(outcome: &Outcome) -> Result<ExitCode> {
     if outcome.truncated {
         eprintln!("(output is cut: only the start is shown)");
     }
-    if outcome.timed_out {
+    if outcome.end == RunEnd::TimedOut {
         eprintln!("the command ran out of time and was stopped");
         return Ok(ExitCode::from(124));
     }

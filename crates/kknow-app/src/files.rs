@@ -1,4 +1,5 @@
 use crate::problem::{FileKind, LoadProblem};
+use kknow_core::fsx::{self, Loaded as Read};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -48,38 +49,33 @@ impl OpenFiles {
     }
 
     pub fn load(path: &Path) -> Result<Loaded> {
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Loaded {
-                    files: OpenFiles::default(),
-                    problem: None,
-                    forgotten: Vec::new(),
-                });
-            }
-            Err(source) => return Err(Error::io(path, source)),
-        };
-
-        match serde_json::from_slice::<OpenFiles>(&bytes) {
-            Ok(mut files) => {
+        let read = fsx::load_or_set_aside(path, |bytes| {
+            serde_json::from_slice::<OpenFiles>(bytes).map(|mut files| {
                 files.dedup();
+                files
+            })
+        })
+        .map_err(|source| Error::io(path, source))?;
+        Ok(match read {
+            Read::Missing => Loaded {
+                files: OpenFiles::default(),
+                problem: None,
+                forgotten: Vec::new(),
+            },
+            Read::Parsed(mut files) => {
                 let forgotten = files.prune();
-                Ok(Loaded {
+                Loaded {
                     files,
                     problem: None,
                     forgotten,
-                })
+                }
             }
-            Err(error) => {
-                let broken = path.with_extension("json.broken");
-                let _ = fs::rename(path, &broken);
-                Ok(Loaded {
-                    files: OpenFiles::default(),
-                    problem: Some(LoadProblem::new(FileKind::OpenFiles, broken, error)),
-                    forgotten: Vec::new(),
-                })
-            }
-        }
+            Read::SetAside { broken, error } => Loaded {
+                files: OpenFiles::default(),
+                problem: Some(LoadProblem::new(FileKind::OpenFiles, broken, error)),
+                forgotten: Vec::new(),
+            },
+        })
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -90,9 +86,7 @@ impl OpenFiles {
         let mut bytes = serde_json::to_vec_pretty(self).expect("the list serializes");
         bytes.push(b'\n');
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
     }
 
     pub fn entries(&self) -> &[PathBuf] {
@@ -188,13 +182,8 @@ pub fn save_if_unchanged(path: &Path, content: &str, base: &str) -> Result<FileS
 pub fn write(path: &Path, content: &str) -> Result<()> {
     let mut temp = path.as_os_str().to_owned();
     temp.push(".kknow-tmp");
-    let temp = PathBuf::from(temp);
-
-    fs::write(&temp, content).map_err(|source| Error::io(&temp, source))?;
-    if let Ok(metadata) = fs::metadata(path) {
-        let _ = fs::set_permissions(&temp, metadata.permissions());
-    }
-    fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+    fsx::write_atomic_via(path, &PathBuf::from(temp), content.as_bytes())
+        .map_err(|source| Error::io(path, source))
 }
 
 fn conflict_copy(path: &Path, content: &str) -> PathBuf {

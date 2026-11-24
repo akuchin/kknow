@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn shipped_commands_have_their_names_in_the_locales() {
-        for spec in kknow_run::spec::defaults().commands {
+        for spec in kknow_app::commands::defaults().commands {
             let key = format!("command.shipped.{}", spec.id);
             assert_eq!(lookup("en", &key), Some(spec.name.clone()), "{key}");
             assert!(lookup("ru", &key).is_some(), "{key}");

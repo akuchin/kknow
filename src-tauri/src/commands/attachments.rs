@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use kknow_app::attachments::{ATTACHMENT_FILE_HEADER, ATTACHMENT_NAME_HEADER};
 use percent_encoding::percent_decode_str;
 use tauri::State;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -30,8 +31,8 @@ pub fn save_attachment(state: State<'_, AppState>, request: Request<'_>) -> Resu
         let value = request.headers().get(key)?.to_str().ok()?;
         Some(percent_decode_str(value).decode_utf8_lossy().into_owned())
     };
-    let dir = attachment_dir(&state, header("kknow-file").as_deref())?;
-    let name = header("kknow-name").unwrap_or_default();
+    let dir = attachment_dir(&state, header(ATTACHMENT_FILE_HEADER).as_deref())?;
+    let name = header(ATTACHMENT_NAME_HEADER).unwrap_or_default();
     let saved = match request.body() {
         InvokeBody::Raw(bytes) => kknow_core::image::save(&dir, &name, bytes),
         InvokeBody::Json(value) => {

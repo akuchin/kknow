@@ -56,6 +56,8 @@ import {
   useVault,
 } from "./window/vaults";
 
+const REMOTE_REFRESH_MS = 60_000;
+
 async function boot(): Promise<void> {
   document.documentElement.lang = locale;
 
@@ -130,7 +132,7 @@ async function boot(): Promise<void> {
   void onVaultOpened((id) => void switchVault(id));
   void onFileOpened(() => void takeOpened());
   void onDragDrop(takeDrop);
-  window.setInterval(describeRemote, 60000);
+  window.setInterval(describeRemote, REMOTE_REFRESH_MS);
 
   const lastFile = localStorage.getItem(LAST_FILE);
   try {

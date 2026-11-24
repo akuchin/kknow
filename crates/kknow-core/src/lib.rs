@@ -1,4 +1,5 @@
 mod error;
+pub mod fsx;
 pub mod image;
 mod note;
 pub mod trash;

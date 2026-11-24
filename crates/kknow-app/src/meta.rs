@@ -56,11 +56,9 @@ impl RecordDir {
     pub fn put<T: Serialize>(&self, id: &str, record: &T) -> Result<()> {
         fs::create_dir_all(&self.dir).map_err(|source| Error::io(&self.dir, source))?;
         let path = self.file(id);
-        let temp = path.with_extension("json.tmp");
         let mut bytes = serde_json::to_vec_pretty(record).expect("the record serializes");
         bytes.push(b'\n');
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, &path).map_err(|source| Error::io(&path, source))
+        kknow_core::fsx::write_atomic(&path, &bytes).map_err(|source| Error::io(&path, source))
     }
 
     pub fn remove(&self, id: &str) -> Result<()> {
