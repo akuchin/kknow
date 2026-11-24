@@ -106,7 +106,6 @@ const LONG_FILES: Record<string, string> = {
   "bindings.ts": "generated from the Rust types; nobody edits it",
   "table-widget.ts": "one widget: the drawn table and its cell editor",
   "live-preview.ts": "one CodeMirror extension: the decorations of live preview",
-  "mock/core.ts": "the stubs of all Tauri commands for `pnpm ui:mock`",
 };
 
 function lines(text: string): number {
@@ -161,4 +160,37 @@ test("each setter of the store has one owner", () => {
 test("the entry points of both windows stay small", () => {
   assert.ok(lines(read("main.ts")) < 200, "main.ts only starts the zones of window/");
   assert.ok(lines(read("settings/main.ts")) < 300, "a section belongs in its own module");
+});
+
+const BARE_NOTE_CHECK =
+  /\bstate\.note\??\.id\s*[!=]==(?!=)|[!=]==\s*state\.note\??\.id\b(?!\.)/;
+
+test("a bare note ID check is rejected by the guard pattern", () => {
+  assert.ok(BARE_NOTE_CHECK.test("if (state.note?.id !== id) return;"));
+  assert.ok(BARE_NOTE_CHECK.test("if (state.note.id === id) return;"));
+  assert.ok(BARE_NOTE_CHECK.test("if (id !== state.note?.id) return;"));
+  assert.ok(!BARE_NOTE_CHECK.test("if (!ticket.isCurrent()) return;"));
+});
+
+test("the open note is compared through the ticket of window/state.ts", () => {
+  const found = sources()
+    .filter((path) => path !== "window/state.ts")
+    .filter((path) => BARE_NOTE_CHECK.test(read(path)))
+    .map((path) => `${path}: use state.noteTicket() or state.isOpen()`);
+  assert.deepEqual(found, []);
+});
+
+test("only command.ts and the mock import invoke", () => {
+  const found = sources()
+    .filter((path) => path !== "command.ts" && !path.startsWith("mock/"))
+    .filter((path) => /\binvoke\b[^\n]*from\s+["']@tauri-apps\/api\/core["']/.test(read(path)))
+    .map((path) => `${path}: call commands through call() of command.ts`);
+  assert.deepEqual(found, []);
+});
+
+test("the settings window shows its errors and never only logs them", () => {
+  const found = sources()
+    .filter((path) => path.startsWith("settings/") && /console\.error/.test(read(path)))
+    .map((path) => `${path}: use showError() of settings/errors.ts`);
+  assert.deepEqual(found, []);
 });

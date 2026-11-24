@@ -307,7 +307,7 @@ async function renameNote(
   vaultId: string,
   done: "status.renamed" | "status.moved",
 ): Promise<void> {
-  const isCurrent = vaultId === state.vault?.id && state.note?.id === id;
+  const isCurrent = state.isOpen(vaultId, id);
   if (isCurrent) await flushPendingSave();
 
   try {
@@ -421,7 +421,7 @@ async function createFolder(name: string): Promise<void> {
 async function removeNote(id: string, vaultId: string): Promise<void> {
   if (!window.confirm(t("confirm.deleteNote", { name: id }))) return;
 
-  const isCurrent = vaultId === state.vault?.id && state.note?.id === id;
+  const isCurrent = state.isOpen(vaultId, id);
   if (isCurrent) cancelPendingSave();
 
   try {

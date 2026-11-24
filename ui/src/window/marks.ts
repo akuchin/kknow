@@ -54,8 +54,9 @@ export async function saveBookmarks(marks: BookmarkMark[], change: BookmarkChang
 }
 
 export async function openBookmark(id: string, line: number): Promise<void> {
-  if (state.note?.id !== id || state.note.file) await openNote(id);
-  if (state.note?.id !== id) return;
+  const vaultId = state.vault?.id;
+  if (!state.isOpen(vaultId, id) || state.note?.file) await openNote(id);
+  if (!state.isOpen(vaultId, id)) return;
   if (state.mode === "read") setMode("split", { remember: false });
   const nearest = editor
     .getBookmarks()
@@ -75,8 +76,9 @@ export function goToAdjacentBookmark(direction: 1 | -1): void {
 }
 
 export async function openTask(id: string, line: number): Promise<void> {
-  if (state.note?.id !== id || state.note.file) await openNote(id);
-  if (state.note?.id !== id) return;
+  const vaultId = state.vault?.id;
+  if (!state.isOpen(vaultId, id) || state.note?.file) await openNote(id);
+  if (!state.isOpen(vaultId, id)) return;
   if (state.mode === "read") setMode("split", { remember: false });
   editor.goToLine(line);
 }

@@ -68,6 +68,7 @@
   "statusbar.update.title": "Версия {{version}} скачана. kknow сохранит заметку и перезапустится",
   "statusbar.run.title": "Последняя команда: {{summary}}. Нажмите, чтобы увидеть вывод",
   "settings.windowTitle": "Настройки — kknow",
+  "settings.error.close": "Закрыть сообщение об ошибке",
   "settings.section.general": "Общие",
   "settings.section.appearance": "Внешний вид",
   "settings.section.vaults": "Хранилища",

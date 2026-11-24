@@ -716,3 +716,37 @@
   width: 90px;
   font-size: 12px;
 }
+
+.settings-error {
+  position: fixed;
+  top: 10px;
+  left: 198px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--danger, #b3261e);
+  background: var(--bg-raised);
+  border: 1px solid var(--danger, #b3261e);
+  border-radius: 6px;
+}
+
+.settings-error[hidden] {
+  display: none;
+}
+
+.settings-error-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-error-close {
+  padding: 0 4px;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}

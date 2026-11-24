@@ -1,18 +1,15 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 import ru from "../../locales/ru.json" with { type: "json" };
+import { fill, lookup, type Dict, type Params } from "../src/translate";
 
-const strings: Record<string, string> = ru;
+const dictionaries = [ru as Dict];
 const plurals = new Intl.PluralRules("ru");
 
-export function t(key: string, params: Record<string, string | number> = {}): string {
-  const count = params.count;
-  const text =
-    (typeof count === "number" ? strings[`${key}_${plurals.select(count)}`] : undefined) ??
-    strings[`${key}_other`] ??
-    strings[key];
+export function t(key: string, params: Params = {}): string {
+  const text = lookup(dictionaries, plurals, key, params);
   if (text === undefined) throw new Error(`no string ${key} in ru.json`);
-  return text.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(params[name] ?? ""));
+  return fill(text, params);
 }
 
 export async function openWindow(page: Page): Promise<void> {

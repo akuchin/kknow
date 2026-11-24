@@ -115,6 +115,7 @@ function isDirty(): boolean {
 async function saveNow(text: string): Promise<void> {
   const note = state.note;
   if (!note || note.closed) return;
+  const ticket = state.noteTicket();
   if (text === note.content) {
     setStatus(t("status.saved"));
     return;
@@ -123,7 +124,7 @@ async function saveNow(text: string): Promise<void> {
     const outcome = note.file
       ? await api.saveFile(note.id, text, note.content)
       : await api.saveNote(note.id, text, note.content, editor.getBookmarkMarks());
-    if (state.note?.id !== note.id) return;
+    if (!ticket.isCurrent()) return;
 
     if (outcome.status === "saved") {
       applyNote(outcome.note, { keepEditor: true });
@@ -152,10 +153,11 @@ export async function syncWithDisk(): Promise<void> {
   await flushPendingSave();
   if (!state.note || isDirty()) return;
   const id = state.note.id;
+  const ticket = state.noteTicket();
   const file = state.note.file === true;
   try {
     const view = file ? await api.loadFile(id) : await api.loadNote(id);
-    if (state.note?.id !== id || isDirty() || view.content === state.note.content) return;
+    if (!ticket.isCurrent() || isDirty() || view.content === state.note?.content) return;
     applyNote(view, { reload: true });
     setStatus(t("status.reloaded"));
   } catch (error) {
@@ -167,7 +169,7 @@ export async function syncWithDisk(): Promise<void> {
 export async function fileGone(path: string): Promise<boolean> {
   await hooks.refreshFiles();
   if (state.files.some((entry) => entry.path === path)) return false;
-  if (state.note?.id === path) closeNote();
+  if (state.isOpen(state.vault?.id, path)) closeNote();
   localStorage.removeItem(LAST_FILE);
   setStatus(t("status.fileGone", { name: leafOf(path) }), "error");
   return true;
@@ -367,11 +369,12 @@ export function redrawPreview(): void {
 async function setTask(line: number, done: boolean): Promise<void> {
   if (!state.note || state.note.file) return;
   const id = state.note.id;
+  const ticket = state.noteTicket();
   await flushPendingSave();
-  if (state.note?.id !== id) return;
+  if (!ticket.isCurrent()) return;
   try {
     const view = await api.setTask(id, line, done);
-    if (state.note?.id !== id) return;
+    if (!ticket.isCurrent()) return;
     applyNote(view, { keepEditor: true });
     editor.setTask(line, done);
     setStatus(t(done ? "status.taskDone" : "status.taskOpen"));

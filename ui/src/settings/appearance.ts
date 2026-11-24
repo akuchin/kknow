@@ -3,6 +3,7 @@ import { themeName, themeProblemText } from "../core-text";
 import { describeError, t } from "../i18n";
 import { heading, row, select } from "./controls";
 import { patch, state, view } from "./state";
+import { showError } from "./errors";
 
 export async function renderAppearance(): Promise<void> {
   const page = document.createElement("div");
@@ -106,7 +107,7 @@ function themeRow(theme: Theme): HTMLElement {
     } catch (error) {
       share.disabled = false;
       share.title = describeError(error);
-      console.error(error);
+      showError(error);
     }
   };
 

@@ -196,3 +196,24 @@ test("git asks for the program first and then connects the vault", async ({ page
   await expect(form.getByPlaceholder(t("dialog.git.url.placeholder"))).toHaveAttribute("readonly", "");
   await expect(page.locator(".settings-row", { hasText: t("dialog.sync.policy") })).toHaveCount(0);
 });
+
+test("a failed action in the settings shows a translated error that closes", async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      "kknow:mock:fail",
+      JSON.stringify({ command: "set_settings", code: "noVault" }),
+    );
+  });
+  await page.goto("/settings.html#appearance");
+  const alert = page.getByRole("alert");
+  await expect(alert).toBeHidden();
+
+  await page
+    .locator(".settings-row", { hasText: t("settings.appearance.theme") })
+    .locator("select")
+    .selectOption("dark");
+  await expect(alert).toContainText(t("error.noVault"));
+
+  await alert.getByRole("button", { name: t("settings.error.close") }).click();
+  await expect(alert).toBeHidden();
+});

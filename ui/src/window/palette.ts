@@ -145,8 +145,9 @@ function followAnchor(anchor: HTMLAnchorElement): boolean {
 }
 
 async function openPreview(preview: LinkPreview): Promise<void> {
-  if (preview.id !== state.note?.id) await openNote(preview.id);
-  if (!preview.line || state.note?.id !== preview.id) return;
+  const vaultId = state.vault?.id;
+  if (!state.isOpen(vaultId, preview.id)) await openNote(preview.id);
+  if (!preview.line || !state.isOpen(vaultId, preview.id)) return;
   editor.goToLine(preview.line, "start");
   if (state.mode !== "edit") scrollToLine(el.preview, preview.line);
 }
@@ -239,8 +240,9 @@ async function follow(target: string): Promise<void> {
       if (name) await createNote(name);
       return;
     }
-    if (found.id !== state.note?.id) await openNote(found.id);
-    if (found.line && state.note?.id === found.id) {
+    const vaultId = state.vault?.id;
+    if (!state.isOpen(vaultId, found.id)) await openNote(found.id);
+    if (found.line && state.isOpen(vaultId, found.id)) {
       editor.goToLine(found.line);
       if (state.mode !== "edit") scrollToLine(el.preview, found.line);
     }

@@ -124,7 +124,7 @@ export async function openFileMenu(anchor: HTMLElement, entry: FileEntry): Promi
 }
 
 async function forgetFile(entry: FileEntry): Promise<void> {
-  if (state.note?.id === entry.path) {
+  if (state.isOpen(state.vault?.id, entry.path)) {
     await flushPendingSave();
     closeNote();
     localStorage.removeItem(LAST_FILE);

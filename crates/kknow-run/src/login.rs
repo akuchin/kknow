@@ -43,15 +43,28 @@ fn user_shell() -> Option<PathBuf> {
     None
 }
 
+fn spawn_login_shell(shell: &Path, script: &str) -> Option<std::process::Child> {
+    for _ in 0..20 {
+        let spawned = Command::new(shell)
+            .args(["-l", "-c", script])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        match spawned {
+            Ok(child) => return Some(child),
+            Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 fn from_shell(shell: &Path, name: &str) -> Option<String> {
     let script = format!(r#"printf '%s' '{MARK}' "${name}" '{MARK}'"#);
-    let mut child = Command::new(shell)
-        .args(["-l", "-c", &script])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+    let mut child = spawn_login_shell(shell, &script)?;
 
     let mut stdout = child.stdout.take()?;
     let reader = std::thread::spawn(move || {

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { fill, lookup } from "../src/translate.ts";
+
 const DIR = new URL("../../locales/", import.meta.url);
 const REFERENCE = "ru";
 const CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
@@ -84,3 +86,35 @@ for (const [name, dict] of Object.entries(locales)) {
     }
   });
 }
+
+const russian = new Intl.PluralRules("ru");
+const sample = {
+  title: "Title",
+  "files_one": "{{count}} file",
+  "files_few": "{{count}} files (few)",
+  "files_other": "{{count}} files",
+  greeting: "Hello, {{ name }}",
+};
+
+test("lookup finds an exact key", () => {
+  assert.equal(lookup([sample], russian, "title", {}), "Title");
+});
+
+test("lookup selects the plural form", () => {
+  assert.equal(lookup([sample], russian, "files", { count: 1 }), "{{count}} file");
+  assert.equal(lookup([sample], russian, "files", { count: 3 }), "{{count}} files (few)");
+  assert.equal(lookup([sample], russian, "files", { count: 5 }), "{{count}} files");
+});
+
+test("lookup falls back to the next dictionary", () => {
+  assert.equal(lookup([{}, sample], russian, "title", {}), "Title");
+  assert.equal(lookup([{ title: "Own" }, sample], russian, "title", {}), "Own");
+});
+
+test("lookup returns undefined for a missing key", () => {
+  assert.equal(lookup([sample], russian, "absent", {}), undefined);
+});
+
+test("fill replaces the known placeholders and keeps the unknown ones", () => {
+  assert.equal(fill("Hello, {{ name }} {{other}}", { name: "Ann" }), "Hello, Ann {{other}}");
+});

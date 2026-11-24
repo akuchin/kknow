@@ -95,3 +95,40 @@ test("stores from createState do not share values", () => {
   one.setVaults([{ id: "a" } as never]);
   assert.equal(two.vaults.length, 0);
 });
+
+test("a ticket is not current after the same note ID opens in another vault", () => {
+  const state = createState();
+  state.setVault(vault("a"));
+  state.setNote(note("Index"));
+  const ticket = state.noteTicket();
+  state.setVault(vault("b"));
+  state.setNote(note("Index"));
+  assert.equal(ticket.isCurrent(), false);
+});
+
+test("a ticket stays current while the same vault and note are open", () => {
+  const state = createState();
+  state.setVault(vault("a"));
+  state.setNote(note("Index"));
+  const ticket = state.noteTicket();
+  state.setNote(note("Index"));
+  assert.equal(ticket.isCurrent(), true);
+});
+
+test("a ticket is not current after another note opens in the same vault", () => {
+  const state = createState();
+  state.setVault(vault("a"));
+  state.setNote(note("Index"));
+  const ticket = state.noteTicket();
+  state.setNote(note("Other"));
+  assert.equal(ticket.isCurrent(), false);
+});
+
+test("isOpen compares the vault and the note", () => {
+  const state = createState();
+  state.setVault(vault("a"));
+  state.setNote(note("Index"));
+  assert.equal(state.isOpen("a", "Index"), true);
+  assert.equal(state.isOpen("b", "Index"), false);
+  assert.equal(state.isOpen("a", "Other"), false);
+});

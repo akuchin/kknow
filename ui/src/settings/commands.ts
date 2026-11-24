@@ -4,6 +4,7 @@ import { describeError, t, type Key } from "../i18n";
 import { iconMarkup } from "../icons";
 import { chips, field, heading, row, select, toggle } from "./controls";
 import { state, view } from "./state";
+import { showError } from "./errors";
 
 const TARGETS: { kind: TargetKind; label: Key }[] = [
   { kind: "note", label: "settings.commands.target.note" },
@@ -345,7 +346,7 @@ function commandsFile(): HTMLElement {
   const finder = document.createElement("button");
   finder.className = "ghost";
   finder.textContent = t("settings.vaults.finder");
-  finder.onclick = () => void api.revealCommands().catch(console.error);
+  finder.onclick = () => void api.revealCommands().catch(showError);
 
   const line = document.createElement("div");
   line.className = "settings-vault-head";
@@ -491,7 +492,7 @@ async function saveCommands(rebuild = false): Promise<void> {
   try {
     manifest.problems = (await api.saveCommands(manifest.commands, manifest.env)).problems;
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 
   const list = view.body.querySelector<HTMLElement>(".settings-command-list");

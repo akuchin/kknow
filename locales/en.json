@@ -64,6 +64,7 @@
   "statusbar.update.title": "Version {{version}} is downloaded. kknow saves the note and restarts",
   "statusbar.run.title": "The last command: {{summary}}. Click to see its output",
   "settings.windowTitle": "Settings — kknow",
+  "settings.error.close": "Dismiss the error",
   "settings.section.general": "General",
   "settings.section.appearance": "Appearance",
   "settings.section.vaults": "Vaults",

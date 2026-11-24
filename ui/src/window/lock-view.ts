@@ -223,14 +223,14 @@ async function submit(): Promise<void> {
 }
 
 async function reopen(vault: string, id: string): Promise<void> {
-  if (state.vault?.id !== vault || state.note?.id !== id) return;
+  if (!state.isOpen(vault, id)) return;
   applyNote(await api.loadNote(id), { reload: true });
 }
 
 async function showTarget(id: string, vault: string): Promise<boolean> {
-  if (state.note?.id === id && state.vault?.id === vault && !state.note.file) return true;
+  if (state.isOpen(vault, id) && !state.note?.file) return true;
   await openFound(id, vault);
-  return state.note?.id === id && state.vault?.id === vault;
+  return state.isOpen(vault, id);
 }
 
 export async function lockNote(id: string, vault: string): Promise<void> {
@@ -240,7 +240,7 @@ export async function lockNote(id: string, vault: string): Promise<void> {
     const lock = await refreshLock(vault);
     const run = async () => {
       const view = await api.lockNote(id, vault);
-      if (state.vault?.id === vault && state.note?.id === id) {
+      if (state.isOpen(vault, id)) {
         applyNote(view, { keepEditor: true });
       }
       await refreshTree(vault);
@@ -259,7 +259,7 @@ export async function removeLock(id: string, vault: string): Promise<void> {
   await flushPendingSave();
   const run = async () => {
     const view = await api.removeLock(id, vault);
-    if (state.vault?.id === vault && state.note?.id === id) {
+    if (state.isOpen(vault, id)) {
       applyNote(view, { reload: true });
     }
     await refreshTree(vault);
