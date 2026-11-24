@@ -20,6 +20,7 @@ kknow-sync.workspace = true
 # there, and target resolution by note ID lives here.
 kknow-run.workspace = true
 thiserror.workspace = true
+getrandom.workspace = true
 notify.workspace = true
 notify-debouncer-full.workspace = true
 # Only for theme manifests: no other app state is serialized.

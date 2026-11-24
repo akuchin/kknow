@@ -93,6 +93,9 @@ pub enum Error {
     #[error("comment {0} is busy: {word}", word = .1.word())]
     CommentBusy(String, threads::Status),
 
+    #[error("no random numbers for the MCP token: {0}")]
+    NoRandomNumbers(String),
+
     #[error("the message is empty")]
     EmptyMessage,
 
@@ -532,6 +535,10 @@ impl Workspace {
 
     pub fn contains(&self, id: &NoteId) -> bool {
         self.parsed.contains_key(id)
+    }
+
+    pub fn duplicates(&self) -> &[kknow_core::Duplicate] {
+        self.vault.duplicates()
     }
 
     pub fn path_for(&self, id: &NoteId) -> PathBuf {
@@ -1019,6 +1026,19 @@ mod tests {
             .into_iter()
             .map(|bookmark| (bookmark.note.clone(), bookmark.line))
             .collect()
+    }
+
+    #[test]
+    fn the_workspace_lists_duplicate_files() {
+        let (dir, _) = workspace();
+        fs::write(dir.path().join("Index.markdown"), "other").unwrap();
+
+        let workspace = Workspace::open(dir.path()).unwrap();
+
+        let duplicates = workspace.duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].id.as_str(), "Index");
+        assert!(duplicates[0].skipped.ends_with("Index.markdown"));
     }
 
     #[test]

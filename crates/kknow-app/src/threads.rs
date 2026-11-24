@@ -451,16 +451,25 @@ impl Workspace {
             partly,
             feedback: feedback.to_string(),
         };
-        if self
-            .resolve_with_event(&target, ME, Some(&text), Some(event.clone()))
-            .is_err()
-        {
-            thread.say_event(ME, &text, Some(event));
-            thread.status = Status::Done;
-            thread.proposal = None;
-            self.put_thread(&thread)?;
+        match self.resolve_with_event(&target, ME, Some(&text), Some(event.clone())) {
+            Ok(_) => Ok(()),
+            Err(Error::UnknownComment(_) | Error::NotAnAgentComment(..)) => {
+                self.close_thread_without_comment(thread, &text, event)
+            }
+            Err(other) => Err(other),
         }
-        Ok(())
+    }
+
+    fn close_thread_without_comment(
+        &self,
+        mut thread: Thread,
+        text: &str,
+        event: Event,
+    ) -> Result<()> {
+        thread.say_event(ME, text, Some(event));
+        thread.status = Status::Done;
+        thread.proposal = None;
+        self.put_thread(&thread)
     }
 
     pub(crate) fn move_threads(&self, moves: &[(NoteId, NoteId)]) -> Result<()> {
@@ -681,6 +690,32 @@ mod tests {
             workspace.thread(&thread.id).unwrap().unwrap().status,
             Status::Done
         );
+    }
+
+    #[test]
+    fn a_failed_save_after_an_accepted_proposal_keeps_the_thread_open() {
+        let (dir, mut workspace, note) = vault();
+        let thread = workspace.claim_comment(&place(&note), "claude").unwrap();
+        let mut proposal = workspace
+            .propose(
+                &note,
+                vec![("14 недель".to_string(), "12 недель".to_string())],
+                "",
+                Some("claude"),
+                Some(&thread.id),
+            )
+            .unwrap();
+        workspace
+            .thread_proposed(&CommentRef::Id(thread.id.clone()), "claude", &proposal)
+            .unwrap();
+        proposal.edits[0].state = crate::proposals::EditState::Accepted;
+        fs::remove_file(dir.path().join("Запуск.md")).unwrap();
+
+        let result = workspace.proposal_reviewed(&proposal);
+
+        assert!(result.is_err());
+        let stored = workspace.thread(&thread.id).unwrap().unwrap();
+        assert_ne!(stored.status, Status::Done);
     }
 
     #[test]

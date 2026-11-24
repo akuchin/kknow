@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use kknow_core::NoteId;
 use serde::{Deserialize, Serialize};
@@ -911,7 +910,7 @@ impl McpConfig {
             config.port = DEFAULT_PORT;
         }
         if config.token.is_empty() {
-            config.token = fresh_token();
+            config.token = fresh_token()?;
             config.save(path)?;
         }
         Ok(config)
@@ -929,21 +928,14 @@ impl McpConfig {
     }
 }
 
-fn fresh_token() -> String {
-    use std::hash::{BuildHasher, Hasher};
+fn token_from(bytes: [u8; 16]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    (0..2u8)
-        .map(|part| {
-            let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-            hasher.write_u128(now);
-            hasher.write_u8(part);
-            format!("{:016x}", hasher.finish())
-        })
-        .collect()
+fn fresh_token() -> AppResult<String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(|why| Error::NoRandomNumbers(why.to_string()))?;
+    Ok(token_from(bytes))
 }
 
 pub fn same_token(given: &str, expected: &str) -> bool {
@@ -958,6 +950,29 @@ pub fn same_token(given: &str, expected: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_is_the_lowercase_hex_of_the_bytes() {
+        let bytes = std::array::from_fn(|index| index as u8);
+
+        assert_eq!(token_from(bytes), "000102030405060708090a0b0c0d0e0f");
+    }
+
+    #[test]
+    fn fresh_tokens_differ_and_are_hex() {
+        let first = fresh_token().unwrap();
+        let second = fresh_token().unwrap();
+
+        assert_ne!(first, second);
+        for token in [first, second] {
+            assert_eq!(token.len(), 32);
+            assert!(
+                token
+                    .bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+            );
+        }
+    }
 
     struct TestHost {
         refs: Vec<VaultRef>,

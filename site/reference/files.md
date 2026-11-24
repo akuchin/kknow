@@ -6,7 +6,7 @@ kknow keeps data in two places: in each vault and in the app config directory.
 
 ```text
 <vault>/
-  *.md                  your notes
+  *.md                  your notes (also .markdown and .mdown)
   attachments/          pasted and dropped images
   .kknow/
     sync.json           the snapshot of the last sync
@@ -20,6 +20,13 @@ kknow keeps data in two places: in each vault and in the app config directory.
     themes/*.json       themes of this vault
     trash/<entry>/…     deleted notes and folders
 ```
+
+A note can be a `.md`, `.markdown` or `.mdown` file. kknow keeps the extension
+of each note: it saves, renames, copies and syncs the same file. A new note
+gets `.md`. If two files have the same name with different extensions, for
+example `a.md` and `a.markdown`, kknow uses `.md` first, then `.markdown`, then
+`.mdown`. It does not change or delete the other file. The command-line tool
+prints a warning for it.
 
 kknow skips all hidden folders, for example `.git` and `.obsidian`. S3 and
 folder sync copy only `bookmarks.json`, `lock.json`, `threads/` and
