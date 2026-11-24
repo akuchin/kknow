@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use kknow_app::Workspace;
 use kknow_app::files::OpenFiles;
@@ -24,6 +24,9 @@ pub enum Error {
 
     #[error("sync is not set up")]
     NotConfigured,
+
+    #[error("a sync of this vault is already running")]
+    SyncBusy,
 
     #[error("cannot show the file: {0}")]
     Reveal(String),
@@ -88,8 +91,19 @@ impl Serialize for Error {
 
 pub struct VaultSlot {
     pub entry: VaultEntry,
-    workspace: Mutex<Workspace>,
+    workspace: RwLock<Workspace>,
     closed: AtomicBool,
+    syncing: AtomicBool,
+}
+
+pub struct SyncTurn<'a> {
+    flag: &'a AtomicBool,
+}
+
+impl Drop for SyncTurn<'_> {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::SeqCst);
+    }
 }
 
 impl VaultSlot {
@@ -97,17 +111,18 @@ impl VaultSlot {
         let workspace = Workspace::open(&entry.path)?;
         Ok(VaultSlot {
             entry,
-            workspace: Mutex::new(workspace),
+            workspace: RwLock::new(workspace),
             closed: AtomicBool::new(false),
+            syncing: AtomicBool::new(false),
         })
     }
 
     pub fn read<R>(&self, action: impl FnOnce(&Workspace) -> Result<R>) -> Result<R> {
-        action(&self.lock())
+        action(&self.reader())
     }
 
     pub fn write<R>(&self, action: impl FnOnce(&mut Workspace) -> Result<R>) -> Result<R> {
-        action(&mut self.lock())
+        action(&mut self.writer())
     }
 
     pub fn close(&self) {
@@ -118,10 +133,25 @@ impl VaultSlot {
         self.closed.load(Ordering::SeqCst)
     }
 
-    fn lock(&self) -> MutexGuard<'_, Workspace> {
-        self.workspace
-            .lock()
-            .expect("the vault state is poisoned")
+    pub fn begin_sync(&self) -> Option<SyncTurn<'_>> {
+        self.syncing
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| SyncTurn {
+                flag: &self.syncing,
+            })
+    }
+
+    pub fn is_syncing(&self) -> bool {
+        self.syncing.load(Ordering::SeqCst)
+    }
+
+    fn reader(&self) -> RwLockReadGuard<'_, Workspace> {
+        self.workspace.read().expect("the vault state is poisoned")
+    }
+
+    fn writer(&self) -> RwLockWriteGuard<'_, Workspace> {
+        self.workspace.write().expect("the vault state is poisoned")
     }
 }
 
@@ -407,7 +437,9 @@ pub fn testing(roots: &[&std::path::Path]) -> AppState {
     let state = AppState::default();
     let mut registry = VaultRegistry::default();
     for root in roots {
-        registry.add(root, None).expect("каталог добавлен в реестр");
+        registry
+            .add(root, None)
+            .expect("the folder is added to the registry");
     }
     state.use_registry(None, registry);
     state
@@ -511,5 +543,59 @@ mod tests {
 
         assert!(!state.is_open());
         assert!(matches!(state.slot(None), Err(Error::NoVault)));
+    }
+
+    #[test]
+    fn only_one_sync_turn_lives_at_a_time() {
+        let dir = vault("Turn");
+        let state = testing(&[dir.path()]);
+        let slot = state.slot(None).unwrap();
+
+        let turn = slot.begin_sync().expect("the first turn starts");
+        assert!(slot.is_syncing());
+        assert!(slot.begin_sync().is_none());
+
+        drop(turn);
+        assert!(!slot.is_syncing());
+        assert!(slot.begin_sync().is_some());
+    }
+
+    #[test]
+    fn a_turn_ends_when_the_sync_panics() {
+        let dir = vault("Panic");
+        let state = testing(&[dir.path()]);
+        let slot = state.slot(None).unwrap();
+
+        let copy = slot.clone();
+        let result = std::thread::spawn(move || {
+            let _turn = copy.begin_sync().unwrap();
+            panic!("sync failed");
+        })
+        .join();
+
+        assert!(result.is_err());
+        assert!(!slot.is_syncing());
+    }
+
+    #[test]
+    fn readers_of_a_vault_run_in_parallel() {
+        fn assert_sync<T: Send + Sync>() {}
+        assert_sync::<Workspace>();
+
+        let dir = vault("Parallel");
+        let state = testing(&[dir.path()]);
+        let slot = state.slot(None).unwrap();
+        let (tell, hear) = std::sync::mpsc::channel::<()>();
+
+        let waiting = slot.clone();
+        let first = std::thread::spawn(move || {
+            waiting
+                .read(|_| Ok(hear.recv_timeout(Duration::from_secs(2)).is_ok()))
+                .unwrap()
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        tell.send(()).unwrap();
+
+        assert!(first.join().unwrap(), "the second reader got in");
     }
 }

@@ -109,8 +109,10 @@ device can be a mistake.
 - Each vault has its own interval.
 - After a failure, the pause doubles, to a maximum of eight times the interval.
 - A successful sync resets the pause.
-- Before the window closes, kknow does a last sync. It waits a maximum of 5
-  seconds.
+- Before the main window closes, kknow does a last sync. It waits a maximum of
+  5 seconds. Closing the Settings window does not start it.
+- One sync runs at a time in a vault. If you press **Sync** while a sync runs,
+  kknow says that a sync of this vault is already running.
 
 You can save notes during a sync. The network part runs without the vault
 lock.

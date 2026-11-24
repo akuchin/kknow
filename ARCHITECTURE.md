@@ -320,10 +320,16 @@ External edit:
   scheduler thread. The thread reads the interval again each second. It skips a
   tick during a sync.
 
+  Each vault allows one sync at a time (`VaultSlot::begin_sync`). A manual sync
+  of a busy vault returns the code `syncBusy`, and the status does not change.
+
   After a failure, it makes the pause two times longer, up
   to eight times the interval. The `Cadence` type holds this rule, and a test
   checks it without a wait. Before the window closes, kknow syncs one last time
-  each vault with auto-sync. It waits for a maximum of five seconds.
+  each vault with auto-sync. It waits for a maximum of five seconds. Only the
+  main window starts this last sync: closing Settings does not use it. If an
+  update install fails, the last sync is allowed again (`CloseLatch`). A vault
+  that already syncs is waited for, not synced twice.
 - The window keeps the secret key in the OS (operating system) keychain under
   the storage address. The terminal has no keychain. There the key comes from an
   environment variable (`KKNOW_S3_*`, `KKNOW_FOLDER`).
@@ -554,7 +560,9 @@ vault opens all its locked notes until the app closes.
   file that a person edited by hand: it drops repeated identifiers. If the
   active vault does not exist, kknow uses the first available vault.
 - `AppState` holds the registry and a map of open vaults. Each vault has its
-  own lock (`VaultSlot`). Thus a network sync in one vault does not delay a save
+  own lock (`VaultSlot`). The lock lets many readers in at once (search, agent
+  reads), and only a write is exclusive. Slow work (`git status`, `git diff`,
+  the stop of the agent server) runs outside the lock. Thus a network sync in one vault does not delay a save
   in a different vault. Vaults open lazily: on a switch, a search or a sync.
   After that, they stay open with their parse and index.
 - Each vault has one watcher. The `vault-changed` event has the vault
@@ -2613,6 +2621,12 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   inside each other. Here, `VaultRegistry::add` refuses them. The reason is not
   the interface. Each vault has its own watcher and its own sync. Two syncs of
   the same files would damage the notes.
+- **The vault lock is a read/write lock.** Search, agent reads and the sync
+  stage only read the vault. With one mutex, they would wait for each other and
+  for each save.
+- **A second sync of a vault does not wait.** Two syncs of the same files would
+  race. A manual sync gets "busy", the scheduler skips its tick, and the close
+  sync waits for the running one.
 - **There is one lock for each vault, not one for the app.** Sync writes notes,
   and it locks its vault while it runs. With a shared lock, it would delay
   edits in a different vault.

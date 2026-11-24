@@ -20,20 +20,12 @@ const PERIOD: Duration = Duration::from_secs(6 * 60 * 60);
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub enum UpdateStatus {
     Unavailable,
-    Managed {
-        manager: String,
-    },
+    Managed { manager: String },
     Idle,
     Checking,
-    Downloading {
-        version: String,
-    },
-    Ready {
-        version: String,
-    },
-    Failed {
-        message: String,
-    },
+    Downloading { version: String },
+    Ready { version: String },
+    Failed { message: String },
 }
 
 pub fn is_release(version: &str, debug: bool) -> bool {
@@ -220,19 +212,53 @@ pub fn restart_to_update<R: Runtime>(app: AppHandle<R>) -> Result<()> {
         return Err(Error::UpdateNotReady);
     };
 
-    if crate::sync_status::start_closing() {
+    if crate::sync_status::CLOSING.start() {
         crate::sync_status::sync_on_close(&app, crate::CLOSE_WAIT);
     }
-    if let Err(error) = ready.0.install(&ready.1) {
+    if let Err(error) =
+        install_or_reopen(&crate::sync_status::CLOSING, || ready.0.install(&ready.1))
+    {
         updates.put_back(ready);
         return Err(Error::Update(error.to_string()));
     }
     app.restart()
 }
 
+fn install_or_reopen<E>(
+    latch: &crate::sync_status::CloseLatch,
+    install: impl FnOnce() -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
+    let installed = install();
+    if installed.is_err() {
+        latch.reopen();
+    }
+    installed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync_status::CloseLatch;
+
+    #[test]
+    fn a_failed_install_opens_the_close_latch_again() {
+        let latch = CloseLatch::new();
+        assert!(latch.start());
+
+        let result = install_or_reopen(&latch, || Err("no disk"));
+
+        assert_eq!(result, Err("no disk"));
+        assert!(latch.start());
+    }
+
+    #[test]
+    fn a_successful_install_keeps_the_close_latch_closed() {
+        let latch = CloseLatch::new();
+        assert!(latch.start());
+
+        assert_eq!(install_or_reopen(&latch, || Ok::<(), ()>(())), Ok(()));
+        assert!(!latch.start());
+    }
 
     #[test]
     fn a_developer_build_does_not_check() {

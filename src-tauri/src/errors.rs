@@ -60,6 +60,7 @@ fn window(error: &Error) -> Coded {
         Error::NoVault => ("noVault", vec![]),
         Error::NotFound(id) => value("notFound", id),
         Error::NotConfigured => ("syncNotConfigured", vec![]),
+        Error::SyncBusy => ("syncBusy", vec![]),
         Error::Reveal(why) => detail("reveal", why),
         Error::Open(why) => detail("open", why),
         Error::NoConfig => ("noConfig", vec![]),

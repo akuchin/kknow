@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -11,6 +12,8 @@ use crate::state::{AppState, VaultSlot};
 pub const EVENT: &str = "sync-status";
 
 const TICK: Duration = Duration::from_secs(1);
+
+const IDLE_POLL: Duration = Duration::from_millis(50);
 
 const BACKOFF_LIMIT: u32 = 3;
 
@@ -99,7 +102,7 @@ impl SyncStatuses {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, SyncStatus>> {
-        self.inner.lock().expect("состояние обмена испорчено")
+        self.inner.lock().expect("the sync status is poisoned")
     }
 }
 
@@ -174,6 +177,7 @@ pub fn schedule<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
 
             match crate::sync::exchange(&app, &slot) {
                 Ok(_) => cadence.succeeded(Instant::now()),
+                Err(crate::state::Error::SyncBusy) => {}
                 Err(_) => cadence.failed(Instant::now()),
             }
         }
@@ -193,26 +197,75 @@ pub fn sync_on_close<R: Runtime>(app: &AppHandle<R>, wait: Duration) {
         return;
     }
 
-    let (done, wait_for) = std::sync::mpsc::channel();
+    let deadline = Instant::now() + wait;
+    let started = slots.len();
+    let (done, finished) = std::sync::mpsc::channel();
     for slot in slots {
         let app = app.clone();
         let done = done.clone();
         std::thread::spawn(move || {
-            let _ = crate::sync::exchange(&app, &slot);
+            sync_or_wait(&app, &slot, deadline);
             let _ = done.send(());
         });
     }
     drop(done);
 
-    let deadline = Instant::now() + wait;
-    while Instant::now() < deadline && wait_for.recv_timeout(TICK).is_ok() {}
+    wait_for_syncs(&finished, started, deadline);
 }
 
-pub static CLOSING: AtomicBool = AtomicBool::new(false);
-
-pub fn start_closing() -> bool {
-    !CLOSING.swap(true, Ordering::SeqCst)
+fn sync_or_wait<R: Runtime>(app: &AppHandle<R>, slot: &Arc<VaultSlot>, deadline: Instant) {
+    if slot.is_syncing() {
+        wait_until_idle(slot, deadline);
+        return;
+    }
+    if let Err(crate::state::Error::SyncBusy) = crate::sync::exchange(app, slot) {
+        wait_until_idle(slot, deadline);
+    }
 }
+
+fn wait_until_idle(slot: &VaultSlot, deadline: Instant) {
+    while slot.is_syncing() && Instant::now() < deadline {
+        std::thread::sleep(IDLE_POLL);
+    }
+}
+
+pub fn wait_for_syncs(finished: &Receiver<()>, started: usize, deadline: Instant) -> usize {
+    let mut count = 0;
+    while count < started {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        match finished.recv_timeout(left) {
+            Ok(()) => count += 1,
+            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    count
+}
+
+#[derive(Default)]
+pub struct CloseLatch {
+    flag: AtomicBool,
+}
+
+impl CloseLatch {
+    pub const fn new() -> Self {
+        CloseLatch {
+            flag: AtomicBool::new(false),
+        }
+    }
+
+    pub fn start(&self) -> bool {
+        !self.flag.swap(true, Ordering::SeqCst)
+    }
+
+    pub fn reopen(&self) {
+        self.flag.store(false, Ordering::SeqCst);
+    }
+}
+
+pub static CLOSING: CloseLatch = CloseLatch::new();
 
 #[cfg(test)]
 mod tests {
@@ -286,5 +339,56 @@ mod tests {
 
         cadence.succeeded(start);
         assert_eq!(cadence.delay(), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn the_close_latch_starts_once_until_it_is_reopened() {
+        let latch = CloseLatch::new();
+
+        assert!(latch.start());
+        assert!(!latch.start());
+        latch.reopen();
+        assert!(latch.start());
+    }
+
+    fn sender_after(delay: Duration, done: std::sync::mpsc::Sender<()>) {
+        std::thread::spawn(move || {
+            std::thread::sleep(delay);
+            let _ = done.send(());
+        });
+    }
+
+    #[test]
+    fn the_exit_wait_goes_past_one_tick() {
+        let (done, finished) = std::sync::mpsc::channel();
+        sender_after(Duration::from_millis(1500), done);
+        let deadline = Instant::now() + Duration::from_secs(3);
+
+        assert_eq!(wait_for_syncs(&finished, 1, deadline), 1);
+    }
+
+    #[test]
+    fn the_exit_wait_ends_when_all_syncs_are_done() {
+        let (done, finished) = std::sync::mpsc::channel();
+        sender_after(Duration::ZERO, done.clone());
+        sender_after(Duration::ZERO, done);
+        let started = Instant::now();
+
+        assert_eq!(
+            wait_for_syncs(&finished, 2, started + Duration::from_secs(5)),
+            2
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn the_exit_wait_stops_at_the_deadline() {
+        let (_done, finished) = std::sync::mpsc::channel::<()>();
+        let started = Instant::now();
+
+        let count = wait_for_syncs(&finished, 1, started + Duration::from_millis(300));
+
+        assert_eq!(count, 0);
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

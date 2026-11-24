@@ -52,9 +52,9 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, root: &Path, config: &RemoteConfig) 
 }
 
 fn git_of<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot) -> Result<Git> {
-    let root = slot.read(|workspace| Ok(workspace.root().to_path_buf()))?;
-    let config = RemoteConfig::load(&RemoteConfig::path(&root))?.ok_or(Error::NotConfigured)?;
-    open(app, &root, &config)
+    let root = &slot.entry.path;
+    let config = RemoteConfig::load(&RemoteConfig::path(root))?.ok_or(Error::NotConfigured)?;
+    open(app, root, &config)
 }
 
 pub fn announce<R: Runtime>(app: &AppHandle<R>, slot: &VaultSlot, paths: &[String]) {
@@ -148,7 +148,7 @@ pub fn git_status<R: Runtime>(
 ) -> Result<GitStatus> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    slot.read(|_| Ok(git.status()?))
+    Ok(git.status()?)
 }
 
 #[tauri::command(async)]
@@ -160,10 +160,8 @@ pub fn git_stage<R: Runtime>(
 ) -> Result<GitStatus> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    slot.read(|_| {
-        git.stage(&paths)?;
-        Ok(git.status()?)
-    })
+    slot.read(|_| Ok(git.stage(&paths)?))?;
+    Ok(git.status()?)
 }
 
 #[tauri::command(async)]
@@ -175,10 +173,8 @@ pub fn git_unstage<R: Runtime>(
 ) -> Result<GitStatus> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    slot.read(|_| {
-        git.unstage(&paths)?;
-        Ok(git.status()?)
-    })
+    slot.read(|_| Ok(git.unstage(&paths)?))?;
+    Ok(git.status()?)
 }
 
 #[tauri::command(async)]
@@ -198,7 +194,7 @@ pub fn git_discard<R: Runtime>(
         &slot,
         &[from, Some(path)].into_iter().flatten().collect::<Vec<_>>(),
     );
-    slot.read(|_| Ok(git.status()?))
+    Ok(git.status()?)
 }
 
 #[tauri::command(async)]
@@ -212,7 +208,7 @@ pub fn git_diff<R: Runtime>(
 ) -> Result<String> {
     let slot = state.slot(vault.as_deref())?;
     let git = git_of(&app, &slot)?;
-    slot.read(|_| Ok(git.diff(&path, from.as_deref(), staged)?))
+    Ok(git.diff(&path, from.as_deref(), staged)?)
 }
 
 #[tauri::command(async)]
@@ -383,6 +379,42 @@ mod tests {
             .read(|workspace| Ok(workspace.notes().len()))
             .unwrap();
         assert_eq!(opened, 1, "заметка из репозитория уже в индексе");
+    }
+
+    #[test]
+    fn git_status_does_not_wait_for_a_vault_write() {
+        let world = World::new();
+        let root = world.vault("laptop");
+        let app = world.app(&root);
+        world.connect(&app);
+        let slot = app.state::<AppState>().slot(None).unwrap();
+
+        let (held, release) = std::sync::mpsc::channel::<()>();
+        let (taken, wait_taken) = std::sync::mpsc::channel::<()>();
+        let writer = slot.clone();
+        let holder = std::thread::spawn(move || {
+            writer
+                .write(|_| {
+                    taken.send(()).unwrap();
+                    let _ = release.recv_timeout(std::time::Duration::from_secs(10));
+                    Ok(())
+                })
+                .unwrap();
+        });
+        wait_taken.recv().unwrap();
+
+        let handle = app.handle().clone();
+        let (answer, answered) = std::sync::mpsc::channel();
+        let asker = std::thread::spawn(move || {
+            let status = git_status(handle.clone(), handle.state(), None);
+            let _ = answer.send(status.is_ok());
+        });
+        let finished = answered.recv_timeout(std::time::Duration::from_secs(5));
+
+        held.send(()).unwrap();
+        holder.join().unwrap();
+        asker.join().unwrap();
+        assert_eq!(finished, Ok(true));
     }
 
     #[test]
