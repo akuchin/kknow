@@ -69,7 +69,7 @@ The window and the CLI share this directory.
 | File | Content |
 |---|---|
 | `vaults.json` | the vault list: names, paths, colors, labels |
-| `settings.json` | language, theme, editor settings, the path to git |
+| `settings.json` | language, theme, sidebar density, editor settings, the path to git |
 | `keybindings.json` | your changed shortcuts |
 | `commands.json` | custom commands |
 | `files.json` | standalone files |

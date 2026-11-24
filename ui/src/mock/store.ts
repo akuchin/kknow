@@ -449,6 +449,7 @@ export function readSettings(): AppSettings {
     locale: localStorage.getItem("kknow:locale") ?? "ru",
     theme: "light",
     noteLabel: "title",
+    sidebarDensity: "normal",
     viewMode: "split",
     openLastNote: true,
     lineNumbers: true,

@@ -1379,6 +1379,15 @@ Examples: publish a page to Confluence, run a linter, make an archive.
     first-level heading, else the file name) or `file` (the file name without
     `.md`). The tree sorts by file name in both cases. The palette and the
     links keep the title, and the header always shows the file name.
+    `sidebarDensity` is `compact`, `normal` or `comfortable`. The window sets
+    it as `data-density` on the root, and the style sheet takes the vertical
+    padding of the tree rows from `--tree-row-y`, `--tree-action-y` and
+    `--tree-rename-y`. It is a global user preference, not a theme variable
+    and not a vault setting: themes carry only colors and fonts, and the
+    density depends on the person and the screen, not on the vault or the
+    look. An unknown value is `normal`. The rename box has the row height in
+    each density: its padding is the row padding minus the 1 px border, and
+    both use the same fixed `line-height`.
   - Vaults.
   - Commands.
   - Keys — reference.

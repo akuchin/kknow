@@ -29,6 +29,21 @@
   --label-red: #cf4a35;
   --label-green: #3f8f4f;
   --label-teal: #1e8f8f;
+  --tree-row-y: 7px;
+  --tree-action-y: 6px;
+  --tree-rename-y: 6px;
+}
+
+:root[data-density="compact"] {
+  --tree-row-y: 3.5px;
+  --tree-action-y: 4px;
+  --tree-rename-y: 2.5px;
+}
+
+:root[data-density="comfortable"] {
+  --tree-row-y: 10px;
+  --tree-action-y: 9px;
+  --tree-rename-y: 9px;
 }
 
 :root[data-theme="dark"] {
@@ -951,7 +966,8 @@ kbd {
   background: transparent;
   border: none;
   border-radius: 7px;
-  padding: 7px 10px;
+  padding: var(--tree-row-y) 10px;
+  line-height: 17px;
   cursor: pointer;
 }
 
@@ -1075,7 +1091,7 @@ kbd {
 .note-list .row-git {
   flex: none;
   width: 26px;
-  padding: 6px 4px;
+  padding: var(--tree-action-y) 4px;
   color: var(--text-muted);
   background: transparent;
   border: none;
@@ -1109,7 +1125,8 @@ kbd {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  padding: 5px 8px;
+  line-height: 17px;
+  padding: var(--tree-rename-y) 8px;
   color: var(--text);
   background: var(--bg-raised);
   border: 1px solid var(--accent);

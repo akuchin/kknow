@@ -1,4 +1,4 @@
-import { api, type NoteLabel, type Theme } from "../api";
+import { api, type NoteLabel, type SidebarDensity, type Theme } from "../api";
 import { themeName, themeProblemText } from "../core-text";
 import { describeError, t } from "../i18n";
 import { heading, row, select } from "./controls";
@@ -47,6 +47,22 @@ export async function renderAppearance(): Promise<void> {
         (value) => void patch({ noteLabel: value as NoteLabel }),
       ),
       t("settings.appearance.noteLabel.detail"),
+    ),
+  );
+
+  page.append(
+    row(
+      t("settings.appearance.density"),
+      select(
+        [
+          { value: "compact", label: t("settings.appearance.density.compact") },
+          { value: "normal", label: t("settings.appearance.density.normal") },
+          { value: "comfortable", label: t("settings.appearance.density.comfortable") },
+        ],
+        state.settings!.sidebarDensity,
+        (value) => void patch({ sidebarDensity: value as SidebarDensity }),
+      ),
+      t("settings.appearance.density.detail"),
     ),
   );
 
