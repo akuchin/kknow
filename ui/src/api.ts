@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { call } from "./command";
+import { ATTACHMENT_FILE_HEADER, ATTACHMENT_NAME_HEADER } from "./bindings";
 import { commandName } from "./core-text";
 
 import type {
@@ -232,8 +233,8 @@ export const api = {
   saveAttachment: (name: string, bytes: Uint8Array, file: string | null) =>
     call("save_attachment", bytes, {
       headers: {
-        "kknow-name": encodeURIComponent(name),
-        ...(file === null ? {} : { "kknow-file": encodeURIComponent(file) }),
+        [ATTACHMENT_NAME_HEADER]: encodeURIComponent(name),
+        ...(file === null ? {} : { [ATTACHMENT_FILE_HEADER]: encodeURIComponent(file) }),
       },
     }),
   attachFile: (source: string, file: string | null) =>

@@ -11,13 +11,13 @@ impl Workspace {
             .collect()
     }
 
-    pub fn set_task(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
-        let content = self.read(id)?;
+    pub fn set_task_plain(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
+        let content = self.read_plain(id)?;
         self.write_task(id, content, line, done)
     }
 
-    pub fn set_task_unlocked(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
-        let content = self.open_text(id)?;
+    pub fn set_task_decrypted(&mut self, id: &NoteId, line: usize, done: bool) -> Result<String> {
+        let content = self.read_decrypted(id)?;
         self.write_task(id, content, line, done)
     }
 
@@ -49,7 +49,7 @@ impl Workspace {
         line: usize,
         text: &str,
     ) -> Result<String> {
-        let content = self.read(id)?;
+        let content = self.read_plain(id)?;
         let changed = kknow_index::parse::remove_agent_comment(&content, line, text)
             .ok_or_else(|| Error::NotAnAgentComment(id.clone(), line, text.trim().to_string()))?;
         self.save(id, &changed)?;

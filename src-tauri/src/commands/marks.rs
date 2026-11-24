@@ -100,7 +100,7 @@ pub fn set_task(
 ) -> Result<NoteView> {
     state.slot(vault.as_deref())?.write(|workspace| {
         let id = note_id(workspace, &id)?;
-        let content = workspace.set_task_unlocked(&id, line, done)?;
+        let content = workspace.set_task_decrypted(&id, line, done)?;
         Ok(workspace.note_view(&id, content))
     })
 }

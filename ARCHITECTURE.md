@@ -48,12 +48,13 @@ attention away from Rust, and Rust is the purpose of the project.
 
 ```
 crates/
-  kknow-core    Vault, Note, NoteId — the vault model, reading and writing files
+  kknow-core    Vault, Note, NoteId, fsx (atomic write, set aside) — the vault model, reading and writing files
   kknow-index   markdown parsing, wiki links, tags, link graph, HTML, tantivy
   kknow-crypto  the cipher, the key file and the locked-note format; no input or output
   kknow-sync    manifests, sync plan, conflicts, configuration, S3, folder, git
-  kknow-run     commands on targets: manifest, Runner trait, running with a timeout
-  kknow-app     Workspace, vault registry, app settings, themes, watcher
+  kknow-run     commands on targets: manifest, Runner trait, running with a timeout;
+                modules error, target, locate, process, outcome, spec, runner, login, glob
+  kknow-app     Workspace, vault registry, app settings, themes, watcher, the default commands
   kknow-cli     the kknow binary — the same thing in the terminal
 src-tauri/      commands on top of kknow-app, background watchers, keychain
                 commands/ has one module per domain (vaults, notes, links, search,
@@ -71,6 +72,42 @@ Dependencies go in one direction only: `core → {index, sync, run} → app →
 {cli, src-tauri}`, and `crypto → {sync, app}`. `kknow-run` does not depend even on `core`; `kknow-crypto` depends on no other kknow crate. A module that
 runs external programs must know nothing about note parsing. The caller gives
 it a target that is ready to use.
+
+- **One module writes files safely: `kknow_core::fsx`.** `write_atomic(path,
+  bytes)` writes `<file name>.tmp`, calls `sync_all` on it, copies the
+  permissions of the old file, renames it over the target and syncs the folder
+  (Unix). On an error it removes the temp file. Thus a power loss leaves the old
+  file or the new file whole. `write_atomic_via(path, temp, bytes)` takes the
+  temp path for the callers whose temp name is a contract: `FolderProvider`
+  (`<key>.kknow-tmp`, which `list` skips), the attachment save
+  (`.<name>.kknow-tmp`, hidden) and `files::write` (`<file>.kknow-tmp`).
+  `set_aside(path)` renames a broken file to `<file name>.broken`, and
+  `load_or_set_aside(path, parse)` returns `Missing`, `Parsed` or `SetAside`.
+  Every crate calls these functions; no other code builds a `.tmp` or a
+  `.broken` path. The helpers do not create the parent folder: the caller
+  does. `commands.json` is the one exception for `.broken`: a broken file is
+  reported and stays in place.
+- **`kknow-run` has no defaults and no file write.** The default commands
+  (`confluence`, `agent`, `AGENT_VAR`, `MODE_VAR`) and the save of
+  `commands.json` (`save_manifest`) live in `kknow_app::commands`. The
+  functions `Manifest::load(path, defaults)` and `CommandSet::load(path,
+  defaults)` get the defaults from the caller. A run ends in one way:
+  `RunEnd` is `exited`, `timedOut` or `stopped`, and `Outcome::ok()` is true
+  only for `exited` with code 0. `Target::vault` is `Option<VaultRef>`: a file
+  outside a vault has none.
+- **Boolean parameters that stay.** A `bool` that is data and not a switch
+  between two code paths stays: the `done` of a task, `login` and `confirm`
+  of a command, `enabled` of a setting, `is_embed` of a wiki link, `all` of a
+  list, `staged` of a git diff and the `example` flag of the CLI. The code
+  paths that a `bool` once selected have names now: `store_plain` and
+  `store_sealed`, and `HtmlShape::Document` and `HtmlShape::Fragment`.
+- **Names that tell the lock state.** `Workspace::read_plain` refuses a locked
+  note, `read_decrypted` opens it. `set_task_plain` and `set_task_decrypted`
+  follow the same rule. `Status::waits_for_agent` tells that a thread waits
+  for the agent, and `USER_AUTHOR` and `AGENT_AUTHOR` are the two authors.
+- **Attachment header names are one constant.** `ATTACHMENT_NAME_HEADER` and
+  `ATTACHMENT_FILE_HEADER` are in `kknow_app::attachments`. The bindings
+  generator writes them to `ui/src/bindings.ts`, and the window uses them.
 
 A vault keeps its service data in a hidden folder inside the vault. The vault
 does not treat this folder as notes. The files are:
@@ -126,8 +163,7 @@ External edit:
   merge the skipped file, because it can hold text that the user wants. Sync
   keeps the remote key `<id>.md`: the extension is a local detail.
 
-  It writes atomically through a
-  temp file and `rename`. It updates (`refresh`) one file. It moves and copies a
+  It writes atomically through `fsx::write_atomic`. It updates (`refresh`) one file. It moves and copies a
   note to a new identifier, and it moves a folder. All of these operations
   refuse to overwrite a path that a file already uses. A case-insensitive disk
   does not confuse them: `Note` → `note` is the same file, not a different one.
@@ -780,7 +816,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
 
   The file also has its own `env`. All commands get it, and the `env` of a
   command goes on top of it.
-- **A missing `commands.json` gives the shipped commands** (`spec::defaults`):
+- **A missing `commands.json` gives the shipped commands** (`kknow_app::commands::defaults`):
   `confluence` and `agent`. Both `Manifest::load` and `CommandSet::load` give
   them, so the window, the form and the CLI agree. kknow does not write the
   file on a read. The first save in the form, "Reveal" and `kknow commands
@@ -914,7 +950,7 @@ Examples: publish a page to Confluence, run a linter, make an archive.
   a process group, and `kknow-run` has `libc` and one `unsafe` for `killpg`.
   Windows has no groups, so the run gets a **job object** (`windows-sys`), and
   a process started inside a job belongs to it too. A stopped command has
-  `stopped` in its outcome, not `timedOut`.
+  `end: "stopped"` in its outcome, not `"timedOut"`.
 - An incorrect entry in the file becomes an error message. It does not silently
   disappear. Examples: a typo in `kind`, an empty script, a repeated `id`. The
   list of errors goes to the status bar and to `kknow commands`.

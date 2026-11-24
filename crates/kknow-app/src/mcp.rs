@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use crate::proposals::Status as ProposalStatus;
 use crate::text::{backlink_row, describe, plain_snippet, task_row};
-use crate::threads::{CommentRef, ME, Status as ThreadStatus, Thread};
+use crate::threads::{CommentRef, Status as ThreadStatus, Thread, USER_AUTHOR};
 use crate::{Error, Result as AppResult, Workspace};
 
 pub const VERSIONS: [&str; 3] = ["2024-11-05", "2025-03-26", "2025-06-18"];
@@ -486,7 +486,7 @@ fn list_vaults(host: &impl Host) -> Outcome {
 
 fn search(host: &impl Host, args: &Args) -> Outcome {
     let query = args.str("query")?;
-    let limit = args.uint("limit").unwrap_or(10);
+    let limit = args.uint("limit").unwrap_or(crate::DEFAULT_SEARCH_LIMIT);
     let mut rows = Vec::new();
     for index in args.vaults(host)? {
         let hits = host.read(index, |workspace| workspace.search(query, limit))?;
@@ -531,7 +531,7 @@ fn list_notes(host: &impl Host, args: &Args) -> Outcome {
 fn read_note(host: &impl Host, args: &Args) -> Outcome {
     let (index, id) = args.note(host)?;
     host.read(index, |workspace| {
-        let content = workspace.read(&id).map_err(text)?;
+        let content = workspace.read_plain(&id).map_err(text)?;
         Ok(format!(
             "path: {}\n\n{content}",
             workspace.path_for(&id).display()
@@ -600,7 +600,7 @@ fn set_task(host: &mut impl Host, args: &Args) -> Outcome {
     let done = args
         .bool("done")
         .ok_or("boolean argument done is required")?;
-    host.write(index, |workspace| workspace.set_task(&id, line, done))?
+    host.write(index, |workspace| workspace.set_task_plain(&id, line, done))?
         .map_err(text)?;
     host.changed(index, &id);
     let state = if done { "done" } else { "open" };
@@ -623,7 +623,7 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                         .as_deref()
                         .and_then(|key| workspace.thread(key).ok().flatten());
                     let status = thread.as_ref().map_or(ThreadStatus::Open, |t| t.status);
-                    if !all && !status.for_agent() && status != ThreadStatus::InProgress {
+                    if !all && !status.waits_for_agent() && status != ThreadStatus::InProgress {
                         return None;
                     }
                     let key = comment
@@ -643,7 +643,7 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
                         format!("{place}  \"{}\": {}", comment.anchor, comment.text)
                     };
                     for message in thread.iter().flat_map(|t| t.messages.iter().skip(1)) {
-                        let who = if message.from == ME {
+                        let who = if message.from == USER_AUTHOR {
                             "human"
                         } else {
                             &message.from
@@ -662,8 +662,8 @@ fn agent_comments(host: &impl Host, args: &Args) -> Outcome {
 fn agent_name<'a>(args: &'a Args) -> &'a str {
     args.opt_str("agent")
         .map(str::trim)
-        .filter(|name| !name.is_empty() && *name != ME)
-        .unwrap_or(crate::threads::AGENT)
+        .filter(|name| !name.is_empty() && *name != USER_AUTHOR)
+        .unwrap_or(crate::threads::AGENT_AUTHOR)
 }
 
 fn comment_ref(host: &impl Host, args: &Args) -> Result<(usize, CommentRef), String> {
@@ -929,9 +929,7 @@ impl McpConfig {
         }
         let mut bytes = serde_json::to_vec_pretty(self).expect("settings serialize");
         bytes.push(b'\n');
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        kknow_core::fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
     }
 }
 
@@ -1295,7 +1293,7 @@ mod tests {
 
         let target = CommentRef::Id(key.clone());
         host.workspaces[0]
-            .reply_comment(&target, ME, "12", false)
+            .reply_comment(&target, USER_AUTHOR, "12", false)
             .unwrap();
         let (claimed, error) = tool(&mut host, "claim_comment", json!({ "id": key }));
         assert!(!error, "{claimed}");
@@ -1314,7 +1312,7 @@ mod tests {
         let proposal = host.workspaces[0].proposals().unwrap()[0].id.clone();
         assert!(
             host.workspaces[0]
-                .read(&NoteId::parse("План").unwrap())
+                .read_plain(&NoteId::parse("План").unwrap())
                 .unwrap()
                 .contains("14 недель<")
         );
@@ -1333,7 +1331,7 @@ mod tests {
         assert!(status.contains("(accepted)"), "{status}");
         assert_eq!(
             host.workspaces[0]
-                .read(&NoteId::parse("План").unwrap())
+                .read_plain(&NoteId::parse("План").unwrap())
                 .unwrap(),
             "Занял 12 недель.\n"
         );

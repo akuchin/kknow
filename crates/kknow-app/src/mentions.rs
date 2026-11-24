@@ -40,7 +40,7 @@ impl Workspace {
 
         let mut mentions = Vec::new();
         for from in candidates {
-            let Ok(source) = self.read(&from) else {
+            let Ok(source) = self.read_plain(&from) else {
                 continue;
             };
             for span in kknow_index::mention::find(&source, &refs) {
@@ -63,7 +63,7 @@ impl Workspace {
         text: &str,
         target: &NoteId,
     ) -> Result<String> {
-        let source = self.read(from)?;
+        let source = self.read_plain(from)?;
         let names = self.names_of(target);
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let line = source

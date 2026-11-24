@@ -86,8 +86,8 @@ impl Workspace {
         if self.is_locked(id) {
             return Err(Error::AlreadyLocked(id.clone()));
         }
-        let text = self.read(id)?;
-        self.store_as(id, &text, true)?;
+        let text = self.read_plain(id)?;
+        self.store_sealed(id, &text)?;
         self.search.commit()?;
         self.rebuild_graph();
         Ok(())
@@ -97,14 +97,14 @@ impl Workspace {
         if !self.is_locked(id) {
             return Err(Error::NotLocked(id.clone()));
         }
-        let text = self.open_text(id)?;
-        self.store_as(id, &text, false)?;
+        let text = self.read_decrypted(id)?;
+        self.store_plain(id, &text)?;
         self.search.commit()?;
         self.rebuild_graph();
         Ok(())
     }
 
-    pub fn open_text(&self, id: &NoteId) -> Result<String> {
+    pub fn read_decrypted(&self, id: &NoteId) -> Result<String> {
         let content = self.vault.read(id)?;
         if !locked::is_locked(content.as_bytes()) {
             return Ok(content);
@@ -139,9 +139,7 @@ fn write_lock_file(path: &Path, file: &KeyFile) -> Result<()> {
     }
     let mut bytes = file.to_json();
     bytes.push(b'\n');
-    let temp = path.with_extension("json.tmp");
-    fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-    fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+    kknow_core::fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
 }
 
 #[cfg(test)]
@@ -230,9 +228,12 @@ mod tests {
     fn agents_never_read_a_locked_note() {
         let (_dir, mut workspace, _) = locked_workspace();
         let diary = id("Diary");
-        assert!(matches!(workspace.read(&diary), Err(Error::NoteLocked(_))));
         assert!(matches!(
-            workspace.set_task(&diary, 4, true),
+            workspace.read_plain(&diary),
+            Err(Error::NoteLocked(_))
+        ));
+        assert!(matches!(
+            workspace.set_task_plain(&diary, 4, true),
             Err(Error::NoteLocked(_))
         ));
         assert!(workspace.render_section(&diary, None).is_err());
@@ -242,7 +243,7 @@ mod tests {
     fn the_person_reads_and_saves_while_unlocked() {
         let (dir, mut workspace, _) = locked_workspace();
         let diary = id("Diary");
-        let text = workspace.open_text(&diary).unwrap();
+        let text = workspace.read_decrypted(&diary).unwrap();
         assert!(text.contains("zebra"));
 
         let edited = text.replace("zebra", "giraffe");
@@ -253,13 +254,13 @@ mod tests {
         let on_disk = disk(&dir, "Diary.md");
         assert!(locked::is_locked(on_disk.as_bytes()));
         assert!(!on_disk.contains("giraffe"));
-        assert_eq!(workspace.open_text(&diary).unwrap(), edited);
+        assert_eq!(workspace.read_decrypted(&diary).unwrap(), edited);
         assert!(workspace.search("giraffe", 10).unwrap().is_empty());
 
-        workspace.set_task_unlocked(&diary, 4, true).unwrap();
+        workspace.set_task_decrypted(&diary, 4, true).unwrap();
         assert!(
             workspace
-                .open_text(&diary)
+                .read_decrypted(&diary)
                 .unwrap()
                 .contains("- [x] call back")
         );
@@ -270,7 +271,7 @@ mod tests {
     fn a_conflict_copy_of_a_locked_note_is_locked_too() {
         let (dir, mut workspace, _) = locked_workspace();
         let diary = id("Diary");
-        let base = workspace.open_text(&diary).unwrap();
+        let base = workspace.read_decrypted(&diary).unwrap();
         workspace
             .save(&diary, "# Diary\n\nfrom elsewhere\n")
             .unwrap();
@@ -285,7 +286,10 @@ mod tests {
         assert!(workspace.is_locked(&copy));
         let copy_text = disk(&dir, &format!("{copy}.md"));
         assert!(locked::is_locked(copy_text.as_bytes()));
-        assert_eq!(workspace.open_text(&copy).unwrap(), "# Diary\n\nmine\n");
+        assert_eq!(
+            workspace.read_decrypted(&copy).unwrap(),
+            "# Diary\n\nmine\n"
+        );
     }
 
     #[test]
@@ -295,7 +299,7 @@ mod tests {
         workspace.lock_all();
         assert!(!workspace.lock_state().unlocked);
         assert!(matches!(
-            workspace.open_text(&diary),
+            workspace.read_decrypted(&diary),
             Err(Error::NotesClosed)
         ));
         assert!(matches!(
@@ -311,7 +315,7 @@ mod tests {
             workspace.unlock_notes(PASSWORD).unwrap(),
             Unlocked::Password
         );
-        assert!(workspace.open_text(&diary).unwrap().contains("zebra"));
+        assert!(workspace.read_decrypted(&diary).unwrap().contains("zebra"));
     }
 
     #[test]
@@ -329,7 +333,12 @@ mod tests {
         workspace.lock_all();
         assert!(workspace.unlock_notes(PASSWORD).is_err());
         workspace.unlock_notes("battery staple").unwrap();
-        assert!(workspace.open_text(&id("Diary")).unwrap().contains("zebra"));
+        assert!(
+            workspace
+                .read_decrypted(&id("Diary"))
+                .unwrap()
+                .contains("zebra")
+        );
     }
 
     #[test]
@@ -347,7 +356,12 @@ mod tests {
         );
         let mut other = other;
         other.unlock_notes(PASSWORD).unwrap();
-        assert!(other.open_text(&id("Diary")).unwrap().contains("zebra"));
+        assert!(
+            other
+                .read_decrypted(&id("Diary"))
+                .unwrap()
+                .contains("zebra")
+        );
     }
 
     #[test]
@@ -371,7 +385,7 @@ mod tests {
     fn a_locked_note_keeps_no_bookmarks() {
         let (_dir, mut workspace) = workspace();
         let diary = id("Diary");
-        let text = workspace.read(&diary).unwrap();
+        let text = workspace.read_plain(&diary).unwrap();
         workspace.toggle_bookmark(&diary, 3).unwrap();
         assert_eq!(workspace.note_bookmarks(&diary, &text).len(), 1);
 
@@ -405,11 +419,11 @@ mod tests {
             .unwrap();
         let moved = id("Private/Diary");
         assert!(workspace.is_locked(&moved));
-        assert!(workspace.open_text(&moved).unwrap().contains("zebra"));
+        assert!(workspace.read_decrypted(&moved).unwrap().contains("zebra"));
 
         let copy = workspace.duplicate(&moved).unwrap();
         assert!(workspace.is_locked(&copy));
-        assert!(workspace.open_text(&copy).unwrap().contains("zebra"));
+        assert!(workspace.read_decrypted(&copy).unwrap().contains("zebra"));
     }
 
     #[test]

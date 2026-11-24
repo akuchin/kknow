@@ -25,6 +25,12 @@ const ANALYZER: &str = "kknow";
 
 const SNIPPET_CHARS: usize = 180;
 
+const PREFIX_QUERY_BOOST: f32 = 3.0;
+const TITLE_BOOST: f32 = 4.0;
+const TAG_BOOST: f32 = 2.0;
+const PATH_BOOST: f32 = 1.5;
+const MAX_TOKEN_LENGTH: usize = 40;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchHit {
     pub id: NoteId,
@@ -113,7 +119,10 @@ impl SearchIndex {
 
         let query: Box<dyn Query> = match self.prefix_query(query)? {
             Some(prefix) => Box::new(BooleanQuery::new(vec![
-                (Occur::Should, Box::new(BoostQuery::new(parsed, 3.0))),
+                (
+                    Occur::Should,
+                    Box::new(BoostQuery::new(parsed, PREFIX_QUERY_BOOST)),
+                ),
                 (Occur::Should, prefix),
             ])),
             None => parsed,
@@ -148,9 +157,9 @@ impl SearchIndex {
     fn parser(&self) -> QueryParser {
         let mut parser = QueryParser::for_index(&self.index, self.searchable().to_vec());
         parser.set_conjunction_by_default();
-        parser.set_field_boost(self.fields.title, 4.0);
-        parser.set_field_boost(self.fields.tag, 2.0);
-        parser.set_field_boost(self.fields.path, 1.5);
+        parser.set_field_boost(self.fields.title, TITLE_BOOST);
+        parser.set_field_boost(self.fields.tag, TAG_BOOST);
+        parser.set_field_boost(self.fields.path, PATH_BOOST);
         parser
     }
 
@@ -267,7 +276,7 @@ fn analyzed() -> TextOptions {
 
 fn analyzer() -> TextAnalyzer {
     TextAnalyzer::builder(SimpleTokenizer::default())
-        .filter(RemoveLongFilter::limit(40))
+        .filter(RemoveLongFilter::limit(MAX_TOKEN_LENGTH))
         .filter(LowerCaser)
         .filter(Stemmer::new(tantivy::tokenizer::Language::Russian))
         .build()

@@ -148,9 +148,8 @@ impl Manifest {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, self.to_json()).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        kknow_core::fsx::write_atomic(path, &self.to_json())
+            .map_err(|source| Error::io(path, source))
     }
 }
 

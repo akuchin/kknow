@@ -3,6 +3,9 @@ use tauri::State;
 
 use crate::state::{AppState, Result};
 
+const NOTE_SEARCH_LIMIT: usize = 50;
+const GLOBAL_SEARCH_LIMIT: usize = 20;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -33,7 +36,7 @@ pub fn search(
     vault: Option<String>,
 ) -> Result<Vec<SearchResult>> {
     state.slot(vault.as_deref())?.read(|workspace| {
-        let hits = workspace.search(&query, limit.unwrap_or(50))?;
+        let hits = workspace.search(&query, limit.unwrap_or(NOTE_SEARCH_LIMIT))?;
 
         Ok(hits
             .into_iter()
@@ -54,7 +57,7 @@ pub fn search_all(
     limit: Option<usize>,
     vaults: Option<Vec<String>>,
 ) -> Result<Vec<GlobalResult>> {
-    let limit = limit.unwrap_or(20);
+    let limit = limit.unwrap_or(GLOBAL_SEARCH_LIMIT);
     let mut found = Vec::new();
 
     for entry in state.search_order() {

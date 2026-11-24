@@ -172,13 +172,15 @@ impl ManifestView {
 pub fn edit_commands(state: State<'_, AppState>) -> Result<ManifestView> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 
-    Ok(match Manifest::load(&path) {
-        Ok(manifest) => ManifestView::new(&path, manifest, None),
-        Err(kknow_run::Error::Manifest { reason, .. }) => {
-            ManifestView::new(&path, Manifest::default(), Some(reason))
-        }
-        Err(other) => return Err(other.into()),
-    })
+    Ok(
+        match Manifest::load(&path, kknow_app::commands::defaults()) {
+            Ok(manifest) => ManifestView::new(&path, manifest, None),
+            Err(kknow_run::Error::Manifest { reason, .. }) => {
+                ManifestView::new(&path, Manifest::default(), Some(reason))
+            }
+            Err(other) => return Err(other.into()),
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -194,7 +196,7 @@ pub fn save_commands(
         env,
         commands,
     };
-    manifest.save(&path)?;
+    kknow_app::commands::save_manifest(&path, &manifest)?;
 
     Ok(ManifestView::new(&path, manifest, None))
 }
@@ -204,7 +206,7 @@ pub fn reveal_commands(state: State<'_, AppState>) -> Result<()> {
     let path = state.commands_path().ok_or(Error::NoConfig)?;
 
     if !path.exists() {
-        kknow_run::spec::defaults().save(&path)?;
+        kknow_app::commands::save_manifest(&path, &kknow_app::commands::defaults())?;
     }
     crate::commands::windows::reveal(&path).map_err(|error| Error::Reveal(error.to_string()))
 }
@@ -504,7 +506,7 @@ mod tests {
 
         let opened = edit_commands(app.state()).unwrap();
 
-        assert_eq!(opened.commands, kknow_run::spec::defaults().commands);
+        assert_eq!(opened.commands, kknow_app::commands::defaults().commands);
         assert!(opened.broken.is_none());
     }
 
@@ -561,7 +563,7 @@ mod tests {
         stop_command(app.state(), "запуск-1".into());
         let outcome = running.join().unwrap().unwrap();
 
-        assert!(outcome.stopped, "{outcome:?}");
+        assert_eq!(outcome.end, kknow_run::RunEnd::Stopped, "{outcome:?}");
         assert!(outcome.millis < 20_000, "{outcome:?}");
         assert!(!app.state::<AppState>().stop_run("запуск-1"));
     }

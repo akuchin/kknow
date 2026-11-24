@@ -97,6 +97,10 @@ fn generate() -> String {
         );
     }
     out.push('\n');
+    for (name, value) in kknow_app::attachments::HEADER_CONSTANTS {
+        out.push_str(&format!("export const {name} = \"{value}\";\n"));
+    }
+    out.push('\n');
     out.push_str(&commands);
     out
 }
@@ -363,6 +367,14 @@ fn bindings_match_the_rust_types() {
         lines(&current) == lines(&fresh),
         "ui/src/bindings.ts is stale: KKNOW_BLESS=1 cargo test -p kknow-desktop bindings"
     );
+}
+
+#[test]
+fn the_attachment_headers_are_shared_with_the_window() {
+    let text = generate();
+    for (name, value) in kknow_app::attachments::HEADER_CONSTANTS {
+        assert!(text.contains(&format!("export const {name} = \"{value}\";")));
+    }
 }
 
 fn lines(text: &str) -> Vec<&str> {

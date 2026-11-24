@@ -13,9 +13,9 @@ use crate::{Error, Result, Workspace};
 
 pub const THREADS_DIR: &str = ".kknow/threads";
 
-pub const ME: &str = "me";
+pub const USER_AUTHOR: &str = "me";
 
-pub const AGENT: &str = "agent";
+pub const AGENT_AUTHOR: &str = "agent";
 
 const CLAIM_TIMEOUT: u64 = 30 * 60;
 
@@ -43,7 +43,7 @@ impl Status {
         }
     }
 
-    pub fn for_agent(self) -> bool {
+    pub fn waits_for_agent(self) -> bool {
         matches!(self, Status::Open | Status::Answered)
     }
 }
@@ -181,7 +181,7 @@ impl Workspace {
                 (note, comment)
             }
             CommentRef::Place { note, line, text } => {
-                let content = self.read(note)?;
+                let content = self.read_plain(note)?;
                 let parsed = kknow_index::parse::parse(&content);
                 let comment = parsed
                     .agent_comments
@@ -215,7 +215,7 @@ impl Workspace {
     }
 
     pub fn adopt_agent_answers(&mut self, note: &NoteId) -> Result<bool> {
-        let content = self.read(note)?;
+        let content = self.read_plain(note)?;
         let answers = agent_answers(&content);
         if answers.is_empty() {
             return Ok(false);
@@ -240,7 +240,7 @@ impl Workspace {
                 Some(thread) => thread,
                 None => self.thread_value(note, &comment),
             };
-            thread.say(AGENT, &answer.text);
+            thread.say(AGENT_AUTHOR, &answer.text);
             thread.status = Status::Question;
             threads.push(thread);
         }
@@ -267,7 +267,7 @@ impl Workspace {
             task: comment.text.clone(),
             status: Status::Open,
             messages: vec![Message {
-                from: ME.to_string(),
+                from: USER_AUTHOR.to_string(),
                 text: comment.text.clone(),
                 at: time,
                 event: None,
@@ -313,7 +313,7 @@ impl Workspace {
             return Err(Error::CommentBusy(thread.id.clone(), thread.status));
         }
         thread.say(from, text);
-        thread.status = if from == ME {
+        thread.status = if from == USER_AUTHOR {
             match thread.status {
                 Status::Question | Status::InProgress => Status::Answered,
                 other => other,
@@ -351,13 +351,13 @@ impl Workspace {
                     .find(|(_, comment)| comment.id.as_deref() == Some(id))
                     .map(|(note, _)| note.clone())
                     .ok_or_else(|| Error::UnknownComment(id.clone()))?;
-                let content = self.read(&note)?;
+                let content = self.read_plain(&note)?;
                 let changed = remove_agent_comment_by_id(&content, id)
                     .ok_or_else(|| Error::UnknownComment(id.clone()))?;
                 (note, changed)
             }
             CommentRef::Place { note, line, text } => {
-                let content = self.read(note)?;
+                let content = self.read_plain(note)?;
                 let changed = remove_agent_comment(&content, *line, text).ok_or_else(|| {
                     Error::NotAnAgentComment(note.clone(), *line, text.trim().to_string())
                 })?;
@@ -434,7 +434,7 @@ impl Workspace {
                 proposal: proposal.id.clone(),
                 feedback: feedback.to_string(),
             };
-            thread.say_event(ME, &text, Some(event));
+            thread.say_event(USER_AUTHOR, &text, Some(event));
             thread.status = Status::Answered;
             thread.proposal = None;
             self.put_thread(&thread)?;
@@ -457,7 +457,7 @@ impl Workspace {
             partly,
             feedback: feedback.to_string(),
         };
-        match self.resolve_with_event(&target, ME, Some(&text), Some(event.clone())) {
+        match self.resolve_with_event(&target, USER_AUTHOR, Some(&text), Some(event.clone())) {
             Ok(_) => Ok(()),
             Err(Error::UnknownComment(_) | Error::NotAnAgentComment(..)) => {
                 self.close_thread_without_comment(thread, &text, event)
@@ -472,7 +472,7 @@ impl Workspace {
         text: &str,
         event: Event,
     ) -> Result<()> {
-        thread.say_event(ME, text, Some(event));
+        thread.say_event(USER_AUTHOR, text, Some(event));
         thread.status = Status::Done;
         thread.proposal = None;
         self.put_thread(&thread)
@@ -555,14 +555,14 @@ mod tests {
             )
             .unwrap();
 
-        let content = workspace.read(&note).unwrap();
+        let content = workspace.read_plain(&note).unwrap();
         assert!(content.contains(&format!(
             "<!-- @agent#{} «14 недель»: проверь цифру -->",
             thread.id
         )));
         assert_eq!(thread.status, Status::Question);
         assert_eq!(thread.messages.len(), 2);
-        assert_eq!(thread.messages[0].from, ME);
+        assert_eq!(thread.messages[0].from, USER_AUTHOR);
         assert_eq!(workspace.note_threads(&note).unwrap(), vec![thread]);
     }
 
@@ -580,10 +580,10 @@ mod tests {
         assert_eq!(threads.len(), 1);
         let thread = &threads[0];
         assert_eq!(thread.status, Status::Question);
-        assert_eq!(thread.messages[1].from, AGENT);
+        assert_eq!(thread.messages[1].from, AGENT_AUTHOR);
         assert_eq!(thread.messages[1].text, "VARIANTS: 1) a 2) b");
         assert_eq!(
-            workspace.read(&note).unwrap(),
+            workspace.read_plain(&note).unwrap(),
             format!(
                 "Demo zero<!-- @agent#{} «zero»: start for one -->\nDemo one\n",
                 thread.id
@@ -591,9 +591,14 @@ mod tests {
         );
 
         workspace
-            .reply_comment(&CommentRef::Id(thread.id.clone()), ME, "variant 2", false)
+            .reply_comment(
+                &CommentRef::Id(thread.id.clone()),
+                USER_AUTHOR,
+                "variant 2",
+                false,
+            )
             .unwrap();
-        let again = workspace.read(&note).unwrap().replace(
+        let again = workspace.read_plain(&note).unwrap().replace(
             "-->\nDemo one",
             "-->\n<!-- @agent-note: and the title? -->\nDemo one",
         );
@@ -613,10 +618,12 @@ mod tests {
             .unwrap();
         let by_id = CommentRef::Id(thread.id.clone());
 
-        let thread = workspace.reply_comment(&by_id, ME, "отчёт", false).unwrap();
+        let thread = workspace
+            .reply_comment(&by_id, USER_AUTHOR, "отчёт", false)
+            .unwrap();
 
         assert_eq!(thread.status, Status::Answered);
-        assert!(thread.status.for_agent());
+        assert!(thread.status.waits_for_agent());
     }
 
     #[test]
@@ -643,7 +650,10 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(workspace.read(&note).unwrap(), "Проект занял 14 недель.\n");
+        assert_eq!(
+            workspace.read_plain(&note).unwrap(),
+            "Проект занял 14 недель.\n"
+        );
         let thread = workspace.thread(&thread.id).unwrap().unwrap();
         assert_eq!(thread.status, Status::Done);
         assert_eq!(thread.messages.last().unwrap().text, "цифра верна");
@@ -657,7 +667,10 @@ mod tests {
             .resolve_comment(&place(&note), "claude", None)
             .unwrap();
 
-        assert_eq!(workspace.read(&note).unwrap(), "Проект занял 14 недель.\n");
+        assert_eq!(
+            workspace.read_plain(&note).unwrap(),
+            "Проект занял 14 недель.\n"
+        );
         assert!(workspace.threads().unwrap().is_empty());
     }
 
@@ -689,7 +702,7 @@ mod tests {
             )
             .unwrap();
 
-        let content = workspace.read(&note).unwrap();
+        let content = workspace.read_plain(&note).unwrap();
         assert!(content.starts_with("Проект занял 12 недель"));
         assert!(!content.contains("@agent"));
         assert_eq!(
@@ -755,6 +768,6 @@ mod tests {
         let thread = workspace.thread(&thread.id).unwrap().unwrap();
         assert_eq!(thread.status, Status::Answered);
         assert!(thread.messages.last().unwrap().text.contains("в отчёте 14"));
-        assert!(workspace.read(&note).unwrap().contains("@agent#"));
+        assert!(workspace.read_plain(&note).unwrap().contains("@agent#"));
     }
 }

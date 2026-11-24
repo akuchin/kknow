@@ -11,17 +11,21 @@ impl Workspace {
     }
 
     pub(crate) fn store(&mut self, id: &NoteId, content: &str) -> Result<()> {
-        let locked = self.locked.contains(id);
-        self.store_as(id, content, locked)
+        if self.locked.contains(id) {
+            self.store_sealed(id, content)
+        } else {
+            self.store_plain(id, content)
+        }
     }
 
-    pub(crate) fn store_as(&mut self, id: &NoteId, content: &str, locked: bool) -> Result<()> {
-        if locked {
-            let sealed = self.notes_key()?.seal(content)?;
-            self.vault.write(id, &sealed)?;
-            self.ingest(id, &sealed)?;
-            return self.anchor_bookmarks(id, &sealed);
-        }
+    pub(crate) fn store_sealed(&mut self, id: &NoteId, content: &str) -> Result<()> {
+        let sealed = self.notes_key()?.seal(content)?;
+        self.vault.write(id, &sealed)?;
+        self.ingest(id, &sealed)?;
+        self.anchor_bookmarks(id, &sealed)
+    }
+
+    pub(crate) fn store_plain(&mut self, id: &NoteId, content: &str) -> Result<()> {
         self.vault.write(id, content)?;
         self.ingest(id, content)?;
         self.anchor_bookmarks(id, content)
@@ -51,7 +55,11 @@ impl Workspace {
         match disk {
             Some(disk) if disk != base && disk != content => {
                 let copy = conflict_copy(id, content);
-                self.store_as(&copy, content, locked)?;
+                if locked {
+                    self.store_sealed(&copy, content)?;
+                } else {
+                    self.store_plain(&copy, content)?;
+                }
                 self.search.commit()?;
                 self.rebuild_graph();
                 Ok(Saved::Conflict { copy, disk })

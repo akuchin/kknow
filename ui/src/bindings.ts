@@ -92,9 +92,11 @@ export type RenamedNote = { id: string, relinked: number, };
 
 export type Review = { accept: Array<number>, reject: Array<number>, feedback?: string, };
 
+export type RunEnd = "exited" | "timedOut" | "stopped";
+
 export type RunLine = { stream: RunStream, text: string, };
 
-export type RunOutcome = { command: string, code: number | null, stdout: string, stderr: string, timedOut: boolean, stopped: boolean, truncated: boolean, millis: number, };
+export type RunOutcome = { command: string, code: number | null, stdout: string, stderr: string, end: RunEnd, truncated: boolean, millis: number, };
 
 export type RunStream = "stdout" | "stderr";
 
@@ -151,6 +153,9 @@ export type VaultStats = { notes: number, folders: number, bytes: number, };
 export type VaultView = { id: string, name: string, path: string, color: string, labels: Array<string>, active: boolean, available: boolean, git: boolean, };
 
 export type ViewMode = "edit" | "split" | "read";
+
+export const ATTACHMENT_NAME_HEADER = "kknow-name";
+export const ATTACHMENT_FILE_HEADER = "kknow-file";
 
 export type Commands = {
   activate_vault: { args: { id: string }; result: VaultInfo };

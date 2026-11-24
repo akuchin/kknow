@@ -69,9 +69,7 @@ pub fn write(root: &Path, key: &str, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
     }
-    let temp = path.with_extension("json.tmp");
-    fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-    fs::rename(&temp, &path).map_err(|source| Error::io(&path, source))
+    kknow_core::fsx::write_atomic(&path, bytes).map_err(|source| Error::io(&path, source))
 }
 
 pub fn remove(root: &Path, key: &str) -> Result<()> {

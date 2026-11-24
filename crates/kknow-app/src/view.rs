@@ -114,7 +114,7 @@ impl Workspace {
     }
 
     pub fn open_view(&self, id: &NoteId) -> Result<NoteView> {
-        match self.open_text(id) {
+        match self.read_decrypted(id) {
             Ok(content) => Ok(self.note_view(id, content)),
             Err(Error::NotesClosed) => Ok(NoteView {
                 closed: true,
@@ -131,7 +131,7 @@ impl Workspace {
             return Ok(view);
         }
         self.adopt_agent_answers(id)?;
-        let content = self.read(id)?;
+        let content = self.read_plain(id)?;
         Ok(self.note_view(id, content))
     }
 

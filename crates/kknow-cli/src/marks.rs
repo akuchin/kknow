@@ -46,7 +46,7 @@ pub(crate) fn bookmark(
     name: Option<&str>,
 ) -> Result<()> {
     let id = find(workspace, note)?.clone();
-    let lines = workspace.read(&id)?.lines().count();
+    let lines = workspace.read_plain(&id)?.lines().count();
     if line == 0 || line > lines {
         return Err(CliError::NoSuchLine(id, line, lines));
     }

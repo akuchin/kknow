@@ -49,7 +49,7 @@ impl Workspace {
     }
 
     pub fn toggle_bookmark(&mut self, id: &NoteId, line: usize) -> Result<bool> {
-        let content = self.read(id)?;
+        let content = self.read_plain(id)?;
         let mut set = false;
         self.edit_bookmarks(|bookmarks| set = bookmarks.toggle(id, line, &content))?;
         Ok(set)

@@ -19,7 +19,7 @@ impl Workspace {
         let mut source: Option<(&NoteId, String)> = None;
         for edge in edges {
             if source.as_ref().is_none_or(|(from, _)| *from != &edge.from) {
-                source = Some((&edge.from, self.read(&edge.from).unwrap_or_default()));
+                source = Some((&edge.from, self.read_plain(&edge.from).unwrap_or_default()));
             }
             let Some((_, text)) = &source else { continue };
             if let Some(context) = LineContext::around(text, &edge.span) {

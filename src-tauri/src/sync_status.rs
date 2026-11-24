@@ -11,6 +11,8 @@ use crate::state::{AppState, VaultSlot};
 
 pub const EVENT: &str = "sync-status";
 
+const SECONDS_PER_MINUTE: u64 = 60;
+
 const TICK: Duration = Duration::from_secs(1);
 
 const IDLE_POLL: Duration = Duration::from_millis(50);
@@ -169,7 +171,7 @@ pub fn schedule<R: Runtime>(app: AppHandle<R>, slot: Arc<VaultSlot>) {
             if minutes == 0 {
                 continue;
             }
-            cadence.set_interval(Duration::from_secs(u64::from(minutes) * 60));
+            cadence.set_interval(Duration::from_secs(u64::from(minutes) * SECONDS_PER_MINUTE));
 
             if !cadence.due(Instant::now()) {
                 continue;

@@ -172,11 +172,8 @@ impl Vault {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let mut temp_name = path.as_os_str().to_owned();
-        temp_name.push(".tmp");
-        let temp = PathBuf::from(temp_name);
-        fs::write(&temp, content).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, &path).map_err(|source| Error::io(&path, source))?;
+        crate::fsx::write_atomic(&path, content.as_bytes())
+            .map_err(|source| Error::io(&path, source))?;
 
         let metadata = fs::metadata(&path).map_err(|source| Error::io(&path, source))?;
         let note = Note {

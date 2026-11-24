@@ -14,7 +14,7 @@ impl Workspace {
         let Some(parsed) = self.parsed(id) else {
             return Ok(None);
         };
-        let source = self.read(id)?;
+        let source = self.read_plain(id)?;
         let subpath = subpath.map(str::trim).filter(|sub| !sub.is_empty());
         let Some((text, line)) = section_text(&source, parsed, subpath) else {
             return Ok(None);
@@ -29,7 +29,7 @@ impl Workspace {
 impl EmbedSource for Workspace {
     fn embed_text(&self, id: &NoteId, subpath: Option<&str>) -> Option<String> {
         let parsed = self.parsed(id)?;
-        let source = self.read(id).ok()?;
+        let source = self.read_plain(id).ok()?;
         section_text(&source, parsed, subpath).map(|(text, _)| text)
     }
 }

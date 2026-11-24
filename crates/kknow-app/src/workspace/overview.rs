@@ -80,7 +80,7 @@ impl Workspace {
         self.vault.path_for(id)
     }
 
-    pub fn read(&self, id: &NoteId) -> Result<String> {
+    pub fn read_plain(&self, id: &NoteId) -> Result<String> {
         let content = self.vault.read(id)?;
         if kknow_crypto::locked::is_locked(content.as_bytes()) {
             return Err(Error::NoteLocked(id.clone()));

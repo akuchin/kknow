@@ -1,4 +1,5 @@
 use crate::problem::{FileKind, LoadProblem};
+use kknow_core::fsx::{self, Loaded as Read};
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -96,35 +97,28 @@ impl AppSettings {
     }
 
     pub fn load(path: &Path) -> Result<Loaded> {
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Loaded {
-                    settings: AppSettings::default(),
-                    problem: None,
-                });
-            }
-            Err(source) => return Err(Error::io(path, source)),
-        };
-
-        match serde_json::from_slice::<AppSettings>(&bytes) {
-            Ok(mut settings) => {
-                settings.adopt_legacy(&bytes);
+        let read = fsx::load_or_set_aside(path, |bytes| {
+            serde_json::from_slice::<AppSettings>(bytes).map(|mut settings| {
+                settings.adopt_legacy(bytes);
                 settings.tidy();
-                Ok(Loaded {
-                    settings,
-                    problem: None,
-                })
-            }
-            Err(error) => {
-                let broken = path.with_extension("json.broken");
-                let _ = fs::rename(path, &broken);
-                Ok(Loaded {
-                    settings: AppSettings::default(),
-                    problem: Some(LoadProblem::new(FileKind::Settings, broken, error)),
-                })
-            }
-        }
+                settings
+            })
+        })
+        .map_err(|source| Error::io(path, source))?;
+        Ok(match read {
+            Read::Missing => Loaded {
+                settings: AppSettings::default(),
+                problem: None,
+            },
+            Read::Parsed(settings) => Loaded {
+                settings,
+                problem: None,
+            },
+            Read::SetAside { broken, error } => Loaded {
+                settings: AppSettings::default(),
+                problem: Some(LoadProblem::new(FileKind::Settings, broken, error)),
+            },
+        })
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -135,9 +129,7 @@ impl AppSettings {
         let mut bytes = serde_json::to_vec_pretty(self).expect("settings serialize");
         bytes.push(b'\n');
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
     }
 
     fn adopt_legacy(&mut self, bytes: &[u8]) {

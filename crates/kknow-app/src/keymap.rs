@@ -1,3 +1,4 @@
+use kknow_core::fsx;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -135,16 +136,14 @@ impl Keymap {
         }
         if let Ok(bytes) = fs::read(path) {
             if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
-                let _ = fs::rename(path, path.with_extension("json.broken"));
+                let _ = fsx::set_aside(path);
             }
         }
 
         let mut bytes = serde_json::to_vec_pretty(self).expect("keys serialize");
         bytes.push(b'\n');
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::problem::{FileKind, LoadProblem};
+use kknow_core::fsx::{self, Loaded as Read};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -98,31 +99,22 @@ impl Bookmarks {
     }
 
     pub fn load(path: &Path) -> Result<Loaded> {
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Loaded {
-                    bookmarks: Bookmarks::default(),
-                    problem: None,
-                });
-            }
-            Err(source) => return Err(Error::io(path, source)),
-        };
-
-        match serde_json::from_slice::<Bookmarks>(&bytes) {
-            Ok(bookmarks) => Ok(Loaded {
+        let read = fsx::load_or_set_aside(path, |bytes| serde_json::from_slice::<Bookmarks>(bytes))
+            .map_err(|source| Error::io(path, source))?;
+        Ok(match read {
+            Read::Missing => Loaded {
+                bookmarks: Bookmarks::default(),
+                problem: None,
+            },
+            Read::Parsed(bookmarks) => Loaded {
                 bookmarks,
                 problem: None,
-            }),
-            Err(error) => {
-                let broken = path.with_extension("json.broken");
-                let _ = fs::rename(path, &broken);
-                Ok(Loaded {
-                    bookmarks: Bookmarks::default(),
-                    problem: Some(LoadProblem::new(FileKind::Bookmarks, broken, error)),
-                })
-            }
-        }
+            },
+            Read::SetAside { broken, error } => Loaded {
+                bookmarks: Bookmarks::default(),
+                problem: Some(LoadProblem::new(FileKind::Bookmarks, broken, error)),
+            },
+        })
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -133,9 +125,7 @@ impl Bookmarks {
         let mut bytes = serde_json::to_vec_pretty(self).expect("bookmarks serialize");
         bytes.push(b'\n');
 
-        let temp = path.with_extension("json.tmp");
-        fs::write(&temp, bytes).map_err(|source| Error::io(&temp, source))?;
-        fs::rename(&temp, path).map_err(|source| Error::io(path, source))
+        fsx::write_atomic(path, &bytes).map_err(|source| Error::io(path, source))
     }
 
     pub fn merged(&self, theirs: &Bookmarks) -> Bookmarks {
