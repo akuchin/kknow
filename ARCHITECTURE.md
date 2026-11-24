@@ -50,6 +50,7 @@ attention away from Rust, and Rust is the purpose of the project.
 crates/
   kknow-core    Vault, Note, NoteId — the vault model, reading and writing files
   kknow-index   markdown parsing, wiki links, tags, link graph, HTML, tantivy
+  kknow-crypto  the cipher, the key file and the locked-note format; no input or output
   kknow-sync    manifests, sync plan, conflicts, configuration, S3, folder, git
   kknow-run     commands on targets: manifest, Runner trait, running with a timeout
   kknow-app     Workspace, vault registry, app settings, themes, watcher
@@ -63,7 +64,7 @@ docs/mockup/    the redesign mockup the header, status bar and settings were bui
 ```
 
 Dependencies go in one direction only: `core → {index, sync, run} → app →
-{cli, src-tauri}`. `kknow-run` does not depend even on `core`. A module that
+{cli, src-tauri}`, and `crypto → {sync, app}`. `kknow-run` does not depend even on `core`; `kknow-crypto` depends on no other kknow crate. A module that
 runs external programs must know nothing about note parsing. The caller gives
 it a target that is ready to use.
 
@@ -353,7 +354,7 @@ The plan and its decisions are in
 - **A wrapper, not a change in the algorithm.** `Encrypted<P>`
   (`kknow_sync::encrypted`) is a `SyncProvider` on top of S3 or a folder.
   The engine, the plan and the conflicts see logical keys and plain bytes.
-  The bytes and the names are changed in `kknow_sync::crypto`, which does no
+  The bytes and the names are changed in `kknow-crypto`, which does no
   input or output.
 - **Names are encrypted too.** A note name such as `Health/Diagnosis` tells
   too much. AES-SIV is deterministic, so a logical key always gives the same
@@ -368,10 +369,13 @@ The plan and its decisions are in
 - **The logical key is the associated data** of each object: a storage owner
   cannot swap two notes without detection. Padding to 256 bytes hides small
   edits. Rollback is not detected: see the threat model in the plan.
-- **`SyncProvider::prepare`** runs at the start of `stage`, not in `plan`:
-  it writes, and `--dry-run` must not write. The default implementation
+- **The encryption check is in the engine, not in the trait.** `SyncProvider`
+  has only `get`, `put`, `delete` and `list`: a backend knows nothing about
+  encryption. `SyncEngine` holds a `Storage`, which is `Plain` or
+  `Encrypted`. `Storage::prepare` runs at the start of `stage`, not in `plan`:
+  it writes, and `--dry-run` must not write. For `Plain` it
   refuses a storage that has `key.json`, so a device without the key never
-  writes plain notes there. `Encrypted::prepare` checks `key.json` against its
+  writes plain notes there. For `Encrypted` it calls `Encrypted::prepare`, which checks `key.json` against its
   key (`WrongKey` after encryption was turned on again), keeps the plain stub
   manifest, and encrypts plain notes and shared files of other programs. It
   gives their keys back, and the engine takes their hashes again: a plain
@@ -397,10 +401,12 @@ A locked note is encrypted in the vault folder, not only in the storage. The
 plan was issue #12; the model follows Apple Notes: one password for each
 vault opens all its locked notes until the app closes.
 
-- **The format and the crypto are in `kknow_sync::locked`**, next to
-  `kknow_sync::crypto`: the envelope (`KeyFile`, Argon2id, the recovery code)
-  and the cipher are already there, and the sync engine must tell a locked
-  note itself. A separate key context (`Cipher::for_locked_notes`) keeps the
+- **The format and the crypto are in `kknow_crypto::locked`**, next to the
+  rest of `kknow-crypto`: the envelope (`KeyFile`, Argon2id, the recovery
+  code) and the cipher are there, and the sync engine must tell a locked
+  note itself, so `kknow-sync` depends on `kknow-crypto`. The crypto does no
+  input or output, and the vault locks notes with no sync involved, so it is
+  a crate and not a module of sync. A separate key context (`Cipher::for_locked_notes`) keeps the
   notes key apart from a sync key. The session is `kknow_app::lock`.
 - **The file stays a `.md` text file with the same name.** The vault, the
   watcher, sync and git read it as any note. The text is an armor: `BEGIN`

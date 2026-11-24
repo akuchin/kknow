@@ -18,6 +18,7 @@ kknow-app.workspace = true
 kknow-core.workspace = true
 kknow-index.workspace = true
 # The window app builds the binary, so it selects the storage backend.
+kknow-crypto.workspace = true
 kknow-sync = { workspace = true, features = ["s3"] }
 kknow-run.workspace = true
 

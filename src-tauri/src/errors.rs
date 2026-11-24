@@ -87,6 +87,7 @@ fn app(error: &kknow_app::Error) -> Coded {
         E::Vault(error) => core(error),
         E::Search(error) => search(error),
         E::Sync(error) => sync(error),
+        E::Crypto(error) => crypto(error),
         E::Run(error) => run(error),
         E::Watch(why) => detail("watch", why),
         E::InvalidName(name) => value("invalidName", name),
@@ -207,40 +208,68 @@ fn sync(error: &kknow_sync::Error) -> Coded {
             )
         }
         E::Manifest(why) => detail("manifest", why),
-        E::NoBucket => ("noBucket", vec![]),
-        E::NoFolder => ("noFolder", vec![]),
-        E::NoS3 => ("noS3", vec![]),
         E::MissingRemote(id) => value("missingRemote", id),
         E::NotUtf8(id) => value("notUtf8", id),
         E::NotStaged(id) => value("notStaged", id),
         E::RemoteChanged => ("remoteChanged", vec![]),
-        E::Crypto(why) => detail("crypto", why),
-        E::WrongPassphrase => ("wrongPassphrase", vec![]),
-        E::PassphraseTooShort(min) => value("passphraseTooShort", min),
-        E::Damaged(key) => value("damagedObject", key),
-        E::KeyTooLong(key) => value("keyTooLong", key),
-        E::OtherNotesKey => ("otherNotesKey", vec![]),
+        E::Git(error) => git(error),
+        E::Config(error) => config(error),
+        E::Encryption(error) => encryption(error),
+        E::Crypto(error) => crypto(error),
+        E::Io { path, source } => io(path, source),
+    }
+}
+
+fn git(error: &kknow_sync::git::Error) -> Coded {
+    use kknow_sync::git::Error as E;
+    match error {
+        E::Missing(path) => value("gitMissing", path.display()),
+        E::Command(why) => detail("git", why),
+        E::NotEmpty => ("gitNotEmpty", vec![]),
+        E::NotRoot(top) => value("gitNotRoot", top.display()),
+        E::NoOrigin => ("gitNoOrigin", vec![]),
+        E::Unreachable(why) => detail("gitUnreachable", why),
+        E::Denied(why) => detail("gitDenied", why),
+        E::RepoMissing(why) => detail("gitRepoMissing", why),
+        E::UrlCredentials => ("gitUrlCredentials", vec![]),
+        E::Detached => ("gitDetached", vec![]),
+        E::EmptyMessage => ("gitEmptyMessage", vec![]),
+        E::LocalChanges(files) => value("gitLocalChanges", files.join(", ")),
+    }
+}
+
+fn config(error: &kknow_sync::config::Error) -> Coded {
+    use kknow_sync::config::Error as E;
+    match error {
+        E::NoBucket => ("noBucket", vec![]),
+        E::NoFolder => ("noFolder", vec![]),
+        E::NoS3 => ("noS3", vec![]),
+        E::NoGitUrl => ("noGitUrl", vec![]),
+        E::GitIsNotAProvider => ("gitNotProvider", vec![]),
+        E::GitEncrypted => ("gitEncrypted", vec![]),
+    }
+}
+
+fn encryption(error: &kknow_sync::encrypted::Error) -> Coded {
+    use kknow_sync::encrypted::Error as E;
+    match error {
         E::Locked => ("storageLocked", vec![]),
         E::NotEncrypted => ("notEncrypted", vec![]),
         E::AlreadyEncrypted => ("alreadyEncrypted", vec![]),
         E::WrongKey => ("wrongStorageKey", vec![]),
         E::MixedStorage => ("mixedStorage", vec![]),
-        E::GitEncrypted => ("gitEncrypted", vec![]),
-        E::NoGitUrl => ("noGitUrl", vec![]),
-        E::GitIsNotAProvider => ("gitNotProvider", vec![]),
-        E::GitMissing(path) => value("gitMissing", path.display()),
-        E::Git(why) => detail("git", why),
-        E::GitNotEmpty => ("gitNotEmpty", vec![]),
-        E::GitNotRoot(top) => value("gitNotRoot", top.display()),
-        E::GitNoOrigin => ("gitNoOrigin", vec![]),
-        E::GitUnreachable(why) => detail("gitUnreachable", why),
-        E::GitDenied(why) => detail("gitDenied", why),
-        E::GitRepoMissing(why) => detail("gitRepoMissing", why),
-        E::GitUrlCredentials => ("gitUrlCredentials", vec![]),
-        E::GitDetached => ("gitDetached", vec![]),
-        E::GitEmptyMessage => ("gitEmptyMessage", vec![]),
-        E::GitLocalChanges(files) => value("gitLocalChanges", files.join(", ")),
-        E::Io { path, source } => io(path, source),
+    }
+}
+
+fn crypto(error: &kknow_crypto::Error) -> Coded {
+    use kknow_crypto::Error as E;
+    match error {
+        E::Cipher(why) => detail("crypto", why),
+        E::WrongPassphrase => ("wrongPassphrase", vec![]),
+        E::PassphraseTooShort(min) => value("passphraseTooShort", min),
+        E::Damaged(key) => value("damagedObject", key),
+        E::KeyTooLong(key) => value("keyTooLong", key),
+        E::OtherNotesKey => ("otherNotesKey", vec![]),
     }
 }
 
@@ -359,9 +388,116 @@ mod tests {
             assert_eq!(ErrorView::from(&storage(cause)).code, code);
         }
 
-        let git = Error::Sync(kknow_sync::Error::GitDenied("Authentication failed".into()));
+        let git = Error::Sync(kknow_sync::Error::Git(kknow_sync::git::Error::Denied(
+            "Authentication failed".into(),
+        )));
         let view = ErrorView::from(&git);
         assert_eq!(view.code, "gitDenied");
         assert_eq!(view.params["detail"], "Authentication failed");
+    }
+
+    #[test]
+    fn every_wrapped_error_keeps_its_old_code_and_values() {
+        use kknow_crypto::Error as C;
+        use kknow_sync::Error as S;
+        use kknow_sync::config::Error as Cf;
+        use kknow_sync::encrypted::Error as En;
+        use kknow_sync::git::Error as G;
+
+        type Case = (S, &'static str, Vec<(&'static str, &'static str)>);
+        let cases: Vec<Case> = vec![
+            (
+                G::Missing("/bin/git".into()).into(),
+                "gitMissing",
+                vec![("value", "/bin/git")],
+            ),
+            (
+                G::Command("boom".into()).into(),
+                "git",
+                vec![("detail", "boom")],
+            ),
+            (G::NotEmpty.into(), "gitNotEmpty", vec![]),
+            (
+                G::NotRoot("/top".into()).into(),
+                "gitNotRoot",
+                vec![("value", "/top")],
+            ),
+            (G::NoOrigin.into(), "gitNoOrigin", vec![]),
+            (
+                G::Unreachable("down".into()).into(),
+                "gitUnreachable",
+                vec![("detail", "down")],
+            ),
+            (
+                G::Denied("no".into()).into(),
+                "gitDenied",
+                vec![("detail", "no")],
+            ),
+            (
+                G::RepoMissing("gone".into()).into(),
+                "gitRepoMissing",
+                vec![("detail", "gone")],
+            ),
+            (G::UrlCredentials.into(), "gitUrlCredentials", vec![]),
+            (G::Detached.into(), "gitDetached", vec![]),
+            (G::EmptyMessage.into(), "gitEmptyMessage", vec![]),
+            (
+                G::LocalChanges(vec!["a.md".into(), "b.md".into()]).into(),
+                "gitLocalChanges",
+                vec![("value", "a.md, b.md")],
+            ),
+            (Cf::NoBucket.into(), "noBucket", vec![]),
+            (Cf::NoFolder.into(), "noFolder", vec![]),
+            (Cf::NoS3.into(), "noS3", vec![]),
+            (Cf::NoGitUrl.into(), "noGitUrl", vec![]),
+            (Cf::GitIsNotAProvider.into(), "gitNotProvider", vec![]),
+            (Cf::GitEncrypted.into(), "gitEncrypted", vec![]),
+            (En::Locked.into(), "storageLocked", vec![]),
+            (En::NotEncrypted.into(), "notEncrypted", vec![]),
+            (En::AlreadyEncrypted.into(), "alreadyEncrypted", vec![]),
+            (En::WrongKey.into(), "wrongStorageKey", vec![]),
+            (En::MixedStorage.into(), "mixedStorage", vec![]),
+            (
+                C::Cipher("bad".into()).into(),
+                "crypto",
+                vec![("detail", "bad")],
+            ),
+            (C::WrongPassphrase.into(), "wrongPassphrase", vec![]),
+            (
+                C::PassphraseTooShort(8).into(),
+                "passphraseTooShort",
+                vec![("value", "8")],
+            ),
+            (
+                C::Damaged("a.md".into()).into(),
+                "damagedObject",
+                vec![("value", "a.md")],
+            ),
+            (
+                C::KeyTooLong("a/b".into()).into(),
+                "keyTooLong",
+                vec![("value", "a/b")],
+            ),
+            (C::OtherNotesKey.into(), "otherNotesKey", vec![]),
+        ];
+        for (error, code, params) in cases {
+            let view = ErrorView::from(&Error::Sync(error));
+            assert_eq!(view.code, code);
+            let found: Vec<(&str, &str)> = view
+                .params
+                .iter()
+                .map(|(name, text)| (*name, text.as_str()))
+                .collect();
+            assert_eq!(found, params, "{code}");
+        }
+    }
+
+    #[test]
+    fn a_crypto_error_of_the_app_has_the_same_code_as_one_of_sync() {
+        let view = ErrorView::from(&Error::App(kknow_app::Error::Crypto(
+            kknow_crypto::Error::WrongPassphrase,
+        )));
+
+        assert_eq!(view.code, "wrongPassphrase");
     }
 }

@@ -16,6 +16,7 @@ kknow-index.workspace = true
 # The app does not need storage backends: it uses the SyncProvider trait,
 # and the binary that builds the app adds the concrete S3 backend.
 kknow-sync.workspace = true
+kknow-crypto.workspace = true
 # Commands attached to a note, folder or vault: the trait and the runner live
 # there, and target resolution by note ID lives here.
 kknow-run.workspace = true

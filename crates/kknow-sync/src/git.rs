@@ -6,8 +6,52 @@ use std::process::{Command, Stdio};
 
 use serde::Serialize;
 
+use crate::config;
 use crate::plan::CONFLICT_MARK;
-use crate::{Error, Result};
+use crate::{Error as SyncError, Result};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("git is not found: {}. Set the path to git in the settings", .0.display())]
+    Missing(PathBuf),
+
+    #[error("git: {0}")]
+    Command(String),
+
+    #[error(
+        "the vault folder is not empty and is not a git repository. Connect an empty folder or a folder with a repository"
+    )]
+    NotEmpty,
+
+    #[error("the vault is not the root of a git repository (the root is {}). One vault is one repository", .0.display())]
+    NotRoot(PathBuf),
+
+    #[error("the repository has no remote origin: set the address")]
+    NoOrigin,
+
+    #[error("the git server does not answer ({0}). Check the address and the network connection")]
+    Unreachable(String),
+
+    #[error("the git server refused the sign-in ({0}). Check the token or the SSH key")]
+    Denied(String),
+
+    #[error("the repository is not found ({0}). Check its address")]
+    RepoMissing(String),
+
+    #[error(
+        "the repository address contains a login or a token. Remove it from the address and give the token separately"
+    )]
+    UrlCredentials,
+
+    #[error("HEAD is not on a branch: switch to a branch")]
+    Detached,
+
+    #[error("the commit message is empty")]
+    EmptyMessage,
+
+    #[error("commit your changes first: the merge would overwrite them ({})", .0.join(", "))]
+    LocalChanges(Vec<String>),
+}
 
 const TOKEN_VARIABLE: &str = "KKNOW_GIT_TOKEN";
 
@@ -31,6 +75,18 @@ const DEFAULT_BRANCH: &str = "main";
 
 const FALLBACK_NAME: &str = "kknow";
 const FALLBACK_EMAIL: &str = "kknow@localhost";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Index,
+    WorkTree,
+}
+
+impl Side {
+    pub fn from_staged(staged: bool) -> Self {
+        if staged { Side::Index } else { Side::WorkTree }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Git {
@@ -140,7 +196,7 @@ impl Git {
     pub fn origin(&self) -> Result<Option<String>> {
         match self.text(&["remote", "get-url", REMOTE]) {
             Ok(url) => Ok(Some(url.trim().to_string())),
-            Err(Error::Git(_) | Error::GitNoOrigin) => Ok(None),
+            Err(SyncError::Git(Error::Command(_) | Error::NoOrigin)) => Ok(None),
             Err(error) => Err(error),
         }
     }
@@ -159,15 +215,15 @@ impl Git {
                     self.run(&["remote", "add", REMOTE, url])?;
                     url.to_string()
                 }
-                (None, None) => return Err(Error::GitNoOrigin),
+                (None, None) => return Err(Error::NoOrigin.into()),
             };
             self.exclude()?;
             return Ok(url);
         }
 
-        let url = url.ok_or(Error::NoGitUrl)?;
+        let url = url.ok_or(config::Error::NoGitUrl)?;
         if !is_empty(&self.root)? {
-            return Err(Error::GitNotEmpty);
+            return Err(Error::NotEmpty.into());
         }
 
         let branch = self.remote_default_branch(url)?;
@@ -188,12 +244,14 @@ impl Git {
 
     fn check_root(&self) -> Result<()> {
         let top = self.text(&["rev-parse", "--show-toplevel"])?;
-        let top = fs::canonicalize(top.trim()).map_err(|source| Error::io(top.trim(), source))?;
-        let root = fs::canonicalize(&self.root).map_err(|source| Error::io(&self.root, source))?;
+        let top =
+            fs::canonicalize(top.trim()).map_err(|source| SyncError::io(top.trim(), source))?;
+        let root =
+            fs::canonicalize(&self.root).map_err(|source| SyncError::io(&self.root, source))?;
         if top == root {
             Ok(())
         } else {
-            Err(Error::GitNotRoot(top))
+            Err(Error::NotRoot(top).into())
         }
     }
 
@@ -230,7 +288,7 @@ impl Git {
         let current = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-            Err(source) => return Err(Error::io(&path, source)),
+            Err(source) => return Err(SyncError::io(&path, source)),
         };
 
         let missing: Vec<&str> = EXCLUDE
@@ -256,9 +314,9 @@ impl Git {
         }
 
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
+            fs::create_dir_all(parent).map_err(|source| SyncError::io(parent, source))?;
         }
-        fs::write(&path, text).map_err(|source| Error::io(&path, source))
+        fs::write(&path, text).map_err(|source| SyncError::io(&path, source))
     }
 
     pub fn status(&self) -> Result<GitStatus> {
@@ -299,13 +357,15 @@ impl Git {
         self.run(&args).map(drop)
     }
 
-    pub fn diff(&self, path: &str, from: Option<&str>, staged: bool) -> Result<String> {
+    pub fn diff(&self, path: &str, from: Option<&str>, side: Side) -> Result<String> {
         let mut args = vec!["diff", "--no-color", "--no-ext-diff", "-M"];
-        if staged {
-            args.push("--cached");
-        } else if self.text(&["ls-files", "--", path])?.is_empty() {
-            args.extend(["--no-index", "--", "/dev/null", path]);
-            return self.text_of_diff(&args);
+        match side {
+            Side::Index => args.push("--cached"),
+            Side::WorkTree if self.text(&["ls-files", "--", path])?.is_empty() => {
+                args.extend(["--no-index", "--", "/dev/null", path]);
+                return self.text_of_diff(&args);
+            }
+            Side::WorkTree => {}
         }
         args.push("--");
         args.extend(from);
@@ -313,13 +373,21 @@ impl Git {
         self.text(&args)
     }
 
-    pub fn discard(&self, path: &str, from: Option<&str>, staged: bool) -> Result<()> {
-        if !staged {
-            if !self.text(&["ls-files", "--", path])?.is_empty() {
-                self.run(&["checkout", "-q", "--", path])?;
-            }
-            return Ok(());
+    pub fn discard(&self, path: &str, from: Option<&str>, side: Side) -> Result<()> {
+        match side {
+            Side::WorkTree => self.discard_work_tree(path),
+            Side::Index => self.discard_index(path, from),
         }
+    }
+
+    fn discard_work_tree(&self, path: &str) -> Result<()> {
+        if !self.text(&["ls-files", "--", path])?.is_empty() {
+            self.run(&["checkout", "-q", "--", path])?;
+        }
+        Ok(())
+    }
+
+    fn discard_index(&self, path: &str, from: Option<&str>) -> Result<()> {
         for path in from.into_iter().chain([path]) {
             if self.head().is_some() && self.exists(&format!("HEAD:{path}")) {
                 self.run(&["checkout", "-q", "HEAD", "--", path])?;
@@ -335,17 +403,17 @@ impl Git {
             .command()
             .args(args)
             .output()
-            .map_err(|source| Error::io(&self.program, source))?;
+            .map_err(|source| SyncError::io(&self.program, source))?;
         match output.status.code() {
             Some(0 | 1) => Ok(String::from_utf8_lossy(&output.stdout).into_owned()),
-            _ => Err(Error::Git(failure_text(&output.stderr))),
+            _ => Err(Error::Command(failure_text(&output.stderr)).into()),
         }
     }
 
     pub fn commit(&self, message: &str) -> Result<()> {
         let message = message.trim();
         if message.is_empty() {
-            return Err(Error::GitEmptyMessage);
+            return Err(Error::EmptyMessage.into());
         }
         let mut args = self.identity();
         args.extend(["commit", "-q", "-m", message].map(String::from));
@@ -419,7 +487,9 @@ impl Git {
 
         match self.run(&["push", "-q", "-u", REMOTE, &branch]) {
             Ok(_) => Ok(ahead),
-            Err(Error::Git(message)) if message.contains("rejected") => Err(Error::RemoteChanged),
+            Err(SyncError::Git(Error::Command(message))) if message.contains("rejected") => {
+                Err(SyncError::RemoteChanged)
+            }
             Err(error) => Err(error),
         }
     }
@@ -472,7 +542,7 @@ impl Git {
     fn stage_blob(&self, stage: u8, path: &str) -> Result<Option<Vec<u8>>> {
         match self.run(&["show", &format!(":{stage}:{path}")]) {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(Error::Git(_)) => Ok(None),
+            Err(SyncError::Git(Error::Command(_))) => Ok(None),
             Err(error) => Err(error),
         }
     }
@@ -484,7 +554,7 @@ impl Git {
     fn branch(&self) -> Result<String> {
         self.text(&["symbolic-ref", "-q", "--short", "HEAD"])
             .map(|name| name.trim().to_string())
-            .map_err(|_| Error::GitDetached)
+            .map_err(|_| SyncError::from(Error::Detached))
     }
 
     fn head(&self) -> Option<String> {
@@ -523,15 +593,15 @@ impl Git {
             .output()
             .map_err(|source| match source.kind() {
                 ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                    Error::GitMissing(self.program.clone())
+                    Error::Missing(self.program.clone()).into()
                 }
-                _ => Error::io(&self.program, source),
+                _ => SyncError::io(&self.program, source),
             })?;
 
         if output.status.success() {
             Ok(output.stdout)
         } else {
-            Err(classify(failure_text(&output.stderr)))
+            Err(classify(failure_text(&output.stderr)).into())
         }
     }
 
@@ -577,7 +647,7 @@ fn check_url(url: &str) -> Result<()> {
     let authority = rest.split('/').next().unwrap_or_default();
     match authority.split_once('@') {
         Some((user, _)) if user.contains(':') || url.starts_with("http") => {
-            Err(Error::GitUrlCredentials)
+            Err(Error::UrlCredentials.into())
         }
         _ => Ok(()),
     }
@@ -587,10 +657,10 @@ fn is_empty(root: &Path) -> Result<bool> {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(true),
-        Err(source) => return Err(Error::io(root, source)),
+        Err(source) => return Err(SyncError::io(root, source)),
     };
     for entry in entries {
-        let entry = entry.map_err(|source| Error::io(root, source))?;
+        let entry = entry.map_err(|source| SyncError::io(root, source))?;
         let name = entry.file_name();
         if !SERVICE_NAMES.iter().any(|service| name == *service) {
             return Ok(false);
@@ -615,9 +685,9 @@ pub fn conflict_copy(path: &str, theirs: &[u8]) -> String {
 
 fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
+        fs::create_dir_all(parent).map_err(|source| SyncError::io(parent, source))?;
     }
-    fs::write(path, bytes).map_err(|source| Error::io(path, source))
+    fs::write(path, bytes).map_err(|source| SyncError::io(path, source))
 }
 
 fn failure_text(stderr: &[u8]) -> String {
@@ -640,7 +710,7 @@ fn classify(message: String) -> Error {
         &format!("'{REMOTE}' does not appear to be a git repository"),
         &format!("No such remote '{REMOTE}'"),
     ]) {
-        Error::GitNoOrigin
+        Error::NoOrigin
     } else if has(&[
         "Could not resolve host",
         "Could not resolve hostname",
@@ -651,7 +721,7 @@ fn classify(message: String) -> Error {
         "Network is unreachable",
         "ssh: connect to host",
     ]) {
-        Error::GitUnreachable(first_line(&message))
+        Error::Unreachable(first_line(&message))
     } else if has(&[
         "could not read Username",
         "could not read Password",
@@ -661,16 +731,16 @@ fn classify(message: String) -> Error {
         "The requested URL returned error: 403",
         "Host key verification failed",
     ]) {
-        Error::GitDenied(first_line(&message))
+        Error::Denied(first_line(&message))
     } else if has(&[
         "Repository not found",
         "does not appear to be a git repository",
         "The requested URL returned error: 404",
     ]) || (message.contains("repository '") && message.contains("' not found"))
     {
-        Error::GitRepoMissing(first_line(&message))
+        Error::RepoMissing(first_line(&message))
     } else {
-        Error::Git(message)
+        Error::Command(message)
     }
 }
 
@@ -686,8 +756,8 @@ fn first_line(message: &str) -> String {
         .to_string()
 }
 
-fn local_changes(error: Error) -> Error {
-    let Error::Git(message) = &error else {
+fn local_changes(error: SyncError) -> SyncError {
+    let SyncError::Git(Error::Command(message)) = &error else {
         return error;
     };
     if !message.contains("would be overwritten") {
@@ -698,7 +768,7 @@ fn local_changes(error: Error) -> Error {
         .filter(|line| line.starts_with('\t'))
         .map(|line| line.trim().to_string())
         .collect();
-    Error::GitLocalChanges(files)
+    Error::LocalChanges(files).into()
 }
 
 fn kind(code: char) -> Option<ChangeKind> {
@@ -904,10 +974,14 @@ mod tests {
 
     #[test]
     fn two_edits_of_a_locked_note_give_a_copy_not_a_merge() {
-        let key = crate::locked::NotesKey::new(&crate::DataKey::generate().unwrap());
+        let key = kknow_crypto::locked::NotesKey::new(&kknow_crypto::DataKey::generate().unwrap());
         let world = World::new();
         let laptop = world.machine("laptop");
-        put(&laptop, "Diary.md", &key.seal("line one\nline two\n").unwrap());
+        put(
+            &laptop,
+            "Diary.md",
+            &key.seal("line one\nline two\n").unwrap(),
+        );
         commit_all(&laptop, "start");
         laptop.sync().unwrap();
         let desk = world.machine("desk");
@@ -926,7 +1000,10 @@ mod tests {
         };
         assert_eq!(read(&desk, "Diary.md"), mine);
         assert_eq!(read(&desk, &conflict.copy), theirs);
-        assert_eq!(key.open(&read(&desk, &conflict.copy)).unwrap(), "LINE ONE\nline two\n");
+        assert_eq!(
+            key.open(&read(&desk, &conflict.copy)).unwrap(),
+            "LINE ONE\nline two\n"
+        );
     }
 
     #[test]
@@ -946,7 +1023,7 @@ mod tests {
         let error = desk.sync().unwrap_err();
 
         assert!(
-            matches!(&error, Error::GitLocalChanges(files) if files == &["Index.md".to_string()]),
+            matches!(&error, SyncError::Git(Error::LocalChanges(files)) if files == &["Index.md".to_string()]),
             "{error:?}"
         );
         assert_eq!(
@@ -1019,17 +1096,17 @@ mod tests {
         put(&laptop, "Index.md", "раз\nдва\nтри\n");
         put(&laptop, "Новая.md", "текст\n");
 
-        let staged = laptop.diff("Index.md", None, true).unwrap();
+        let staged = laptop.diff("Index.md", None, Side::Index).unwrap();
         assert!(
             staged.contains("+два") && !staged.contains("+три"),
             "{staged}"
         );
-        let unstaged = laptop.diff("Index.md", None, false).unwrap();
+        let unstaged = laptop.diff("Index.md", None, Side::WorkTree).unwrap();
         assert!(
             unstaged.contains("+три") && !unstaged.contains("+два"),
             "{unstaged}"
         );
-        let new = laptop.diff("Новая.md", None, false).unwrap();
+        let new = laptop.diff("Новая.md", None, Side::WorkTree).unwrap();
         assert!(new.contains("new file") && new.contains("+текст"), "{new}");
     }
 
@@ -1044,10 +1121,10 @@ mod tests {
         put(&laptop, "Index.md", "раз\nдва\n");
         laptop.stage(&["Index.md".to_string()]).unwrap();
         put(&laptop, "Index.md", "раз\nдва\nтри\n");
-        laptop.discard("Index.md", None, false).unwrap();
+        laptop.discard("Index.md", None, Side::WorkTree).unwrap();
         assert_eq!(read(&laptop, "Index.md"), "раз\nдва\n");
 
-        laptop.discard("Index.md", None, true).unwrap();
+        laptop.discard("Index.md", None, Side::Index).unwrap();
         assert_eq!(read(&laptop, "Index.md"), "раз\n");
 
         fs::rename(
@@ -1059,13 +1136,15 @@ mod tests {
             .stage(&["Старое.md".to_string(), "Новое.md".to_string()])
             .unwrap();
         fs::remove_file(laptop.root().join("Новое.md")).unwrap();
-        laptop.discard("Новое.md", Some("Старое.md"), true).unwrap();
+        laptop
+            .discard("Новое.md", Some("Старое.md"), Side::Index)
+            .unwrap();
         assert_eq!(read(&laptop, "Старое.md"), "старое\n");
 
         put(&laptop, "Новая.md", "текст\n");
         laptop.stage(&["Новая.md".to_string()]).unwrap();
-        laptop.discard("Новая.md", None, true).unwrap();
-        laptop.discard("Новая.md", None, false).unwrap();
+        laptop.discard("Новая.md", None, Side::Index).unwrap();
+        laptop.discard("Новая.md", None, Side::WorkTree).unwrap();
 
         let status = laptop.status().unwrap();
         assert_eq!(status.changes.len(), 1, "{status:?}");
@@ -1080,7 +1159,10 @@ mod tests {
         put(&laptop, "Index.md", "a\n");
         laptop.stage(&["Index.md".to_string()]).unwrap();
 
-        assert!(matches!(laptop.commit("  "), Err(Error::GitEmptyMessage)));
+        assert!(matches!(
+            laptop.commit("  "),
+            Err(SyncError::Git(Error::EmptyMessage))
+        ));
         laptop.commit("заметка").unwrap();
 
         let author = laptop.text(&["log", "-1", "--format=%an <%ae>"]).unwrap();
@@ -1137,10 +1219,13 @@ mod tests {
 
         assert!(matches!(
             git.attach(Some(&world.url())),
-            Err(Error::GitNotEmpty)
+            Err(SyncError::Git(Error::NotEmpty))
         ));
         assert!(!root.join(".git").exists());
-        assert!(matches!(git.attach(None), Err(Error::NoGitUrl)));
+        assert!(matches!(
+            git.attach(None),
+            Err(SyncError::Config(config::Error::NoGitUrl))
+        ));
     }
 
     #[test]
@@ -1153,7 +1238,7 @@ mod tests {
         let missing = world.base.join("нет-такого.git");
         assert!(matches!(
             git.attach(Some(&missing.to_string_lossy())),
-            Err(Error::GitRepoMissing(_))
+            Err(SyncError::Git(Error::RepoMissing(_)))
         ));
         assert!(!root.join(".git").exists());
     }
@@ -1164,7 +1249,10 @@ mod tests {
         let laptop = world.machine("laptop");
         laptop.run(&["remote", "remove", REMOTE]).unwrap();
 
-        assert!(matches!(laptop.sync(), Err(Error::GitNoOrigin)));
+        assert!(matches!(
+            laptop.sync(),
+            Err(SyncError::Git(Error::NoOrigin))
+        ));
         assert_eq!(laptop.origin().unwrap(), None);
     }
 
@@ -1175,7 +1263,10 @@ mod tests {
         fs::remove_dir_all(&world.remote).unwrap();
 
         let error = laptop.sync().unwrap_err();
-        assert!(matches!(error, Error::GitRepoMissing(_)), "{error:?}");
+        assert!(
+            matches!(error, SyncError::Git(Error::RepoMissing(_))),
+            "{error:?}"
+        );
         assert!(error.to_string().contains("not found"), "{error}");
     }
 
@@ -1218,11 +1309,11 @@ mod tests {
         ];
         for (text, expected) in cases {
             let found = match classify(text.to_string()) {
-                Error::GitUnreachable(_) => "unreachable",
-                Error::GitDenied(_) => "denied",
-                Error::GitRepoMissing(_) => "missing",
-                Error::GitNoOrigin => "origin",
-                Error::Git(_) => "other",
+                Error::Unreachable(_) => "unreachable",
+                Error::Denied(_) => "denied",
+                Error::RepoMissing(_) => "missing",
+                Error::NoOrigin => "origin",
+                Error::Command(_) => "other",
                 other => panic!("{other:?}"),
             };
             assert_eq!(found, expected, "{text}");
@@ -1274,7 +1365,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let git = Git::new("/нет/такого/git", dir.path());
 
-        assert!(matches!(git.version(), Err(Error::GitMissing(_))));
+        assert!(matches!(
+            git.version(),
+            Err(SyncError::Git(Error::Missing(_)))
+        ));
     }
 
     #[test]

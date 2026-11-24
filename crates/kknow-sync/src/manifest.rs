@@ -28,7 +28,7 @@ impl Entry {
         Entry {
             hash: hash(bytes),
             size: bytes.len() as u64,
-            locked: crate::locked::is_locked(bytes),
+            locked: kknow_crypto::locked::is_locked(bytes),
         }
     }
 
@@ -124,7 +124,7 @@ impl Manifest {
 
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
         if crate::encrypted::is_decoy(bytes) {
-            return Err(crate::Error::Locked);
+            return Err(crate::encrypted::Error::Locked.into());
         }
         Ok(serde_json::from_slice(bytes)?)
     }

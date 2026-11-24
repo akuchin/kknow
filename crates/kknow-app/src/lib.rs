@@ -28,7 +28,7 @@ use kknow_index::{
 };
 use kknow_sync::{
     CONFLICT_MARK, Fetched, Git, GitAuth, GitReport, GitSettings, Merged, Plan as SyncPlan,
-    Report as SyncReport, Staged, SyncEngine, SyncProvider,
+    Report as SyncReport, Side, Staged, SyncEngine, SyncProvider,
 };
 
 use crate::bookmarks::{Bookmark, Bookmarks, Mark};
@@ -56,6 +56,9 @@ pub enum Error {
 
     #[error(transparent)]
     Sync(#[from] kknow_sync::Error),
+
+    #[error(transparent)]
+    Crypto(#[from] kknow_crypto::Error),
 
     #[error(transparent)]
     Run(#[from] kknow_run::Error),
@@ -206,7 +209,7 @@ pub struct Workspace {
     search: SearchIndex,
     bookmarks: Bookmarks,
     locked: BTreeSet<NoteId>,
-    notes_key: Option<kknow_sync::locked::NotesKey>,
+    notes_key: Option<kknow_crypto::locked::NotesKey>,
 }
 
 impl Workspace {
@@ -324,7 +327,7 @@ impl Workspace {
     }
 
     fn ingest(&mut self, id: &NoteId, content: &str) -> Result<()> {
-        let locked = kknow_sync::locked::is_locked(content.as_bytes());
+        let locked = kknow_crypto::locked::is_locked(content.as_bytes());
         let parsed = kknow_index::parse(if locked { "" } else { content });
         if locked {
             self.locked.insert(id.clone());
@@ -439,7 +442,7 @@ impl Workspace {
         git: &Git,
         path: &str,
         from: Option<&str>,
-        staged: bool,
+        side: Side,
     ) -> Result<()> {
         let relative = Path::new(path);
         if !relative
@@ -451,7 +454,7 @@ impl Workspace {
         if self.vault.root().join(relative).is_file() {
             self.trash().put(relative)?;
         }
-        git.discard(path, from, staged)?;
+        git.discard(path, from, side)?;
         self.reload()
     }
 
@@ -547,7 +550,7 @@ impl Workspace {
 
     pub fn read(&self, id: &NoteId) -> Result<String> {
         let content = self.vault.read(id)?;
-        if kknow_sync::locked::is_locked(content.as_bytes()) {
+        if kknow_crypto::locked::is_locked(content.as_bytes()) {
             return Err(Error::NoteLocked(id.clone()));
         }
         Ok(content)
@@ -602,7 +605,7 @@ impl Workspace {
         let path = self.path_for(id);
         let locked = self.locked.contains(id);
         let disk = match std::fs::read_to_string(&path) {
-            Ok(disk) if kknow_sync::locked::is_locked(disk.as_bytes()) => {
+            Ok(disk) if kknow_crypto::locked::is_locked(disk.as_bytes()) => {
                 Some(self.notes_key()?.open(&disk)?)
             }
             Ok(disk) => Some(disk),
@@ -642,7 +645,13 @@ impl Workspace {
         self.write_task(id, content, line, done)
     }
 
-    fn write_task(&mut self, id: &NoteId, content: String, line: usize, done: bool) -> Result<String> {
+    fn write_task(
+        &mut self,
+        id: &NoteId,
+        content: String,
+        line: usize,
+        done: bool,
+    ) -> Result<String> {
         let changed = kknow_index::parse::set_task(&content, line, done)
             .ok_or_else(|| Error::NotATask(id.clone(), line))?;
         if changed != content {

@@ -2,9 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use kknow_core::NoteId;
-use kknow_sync::RecoveryCode;
-use kknow_sync::crypto::{KdfParams, KeyFile, Secret};
-use kknow_sync::locked::{self, LOCK_FILE, NotesKey};
+use kknow_crypto::locked::{self, LOCK_FILE, NotesKey};
+use kknow_crypto::{KdfParams, KeyFile, RecoveryCode, Secret};
 
 use crate::{Error, Result, Workspace};
 
@@ -306,7 +305,7 @@ mod tests {
 
         assert!(matches!(
             workspace.unlock_notes("wrong horse"),
-            Err(Error::Sync(kknow_sync::Error::WrongPassphrase))
+            Err(Error::Crypto(kknow_crypto::Error::WrongPassphrase))
         ));
         assert_eq!(
             workspace.unlock_notes(PASSWORD).unwrap(),

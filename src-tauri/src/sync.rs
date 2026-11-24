@@ -1,7 +1,6 @@
 use kknow_app::Workspace;
-use kknow_sync::{
-    DataKey, GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider,
-};
+use kknow_crypto::DataKey;
+use kknow_sync::{GitSettings, Provider, RemoteConfig, S3Settings, SyncEngine, SyncProvider};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -97,7 +96,9 @@ fn data_key(config: &RemoteConfig) -> Result<Option<DataKey>> {
         return Ok(None);
     }
     match secrets::load(&key_entry(&config.location()))? {
-        Some(text) => Ok(Some(DataKey::import(&text)?)),
+        Some(text) => Ok(Some(
+            DataKey::import(&text).map_err(kknow_sync::Error::from)?,
+        )),
         None => Ok(None),
     }
 }

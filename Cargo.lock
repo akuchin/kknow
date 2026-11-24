@@ -2778,6 +2778,7 @@ version = "0.0.0"
 dependencies = [
  "getrandom 0.4.3",
  "kknow-core",
+ "kknow-crypto",
  "kknow-index",
  "kknow-run",
  "kknow-sync",
@@ -2815,12 +2816,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kknow-crypto"
+version = "0.0.0"
+dependencies = [
+ "aes-siv",
+ "argon2",
+ "blake3",
+ "chacha20poly1305",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
 name = "kknow-desktop"
 version = "0.0.0"
 dependencies = [
  "keyring",
  "kknow-app",
  "kknow-core",
+ "kknow-crypto",
  "kknow-index",
  "kknow-run",
  "kknow-sync",
@@ -2873,12 +2890,9 @@ dependencies = [
 name = "kknow-sync"
 version = "0.0.0"
 dependencies = [
- "aes-siv",
- "argon2",
  "blake3",
- "chacha20poly1305",
- "getrandom 0.4.3",
  "kknow-core",
+ "kknow-crypto",
  "opendal",
  "serde",
  "serde_json",
@@ -2887,7 +2901,6 @@ dependencies = [
  "tiny_http",
  "tokio",
  "ts-rs",
- "zeroize",
 ]
 
 [[package]]

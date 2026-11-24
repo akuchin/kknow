@@ -14,6 +14,7 @@ repository = "https://github.com/akuchin/kknow"
 [workspace.dependencies]
 kknow-core = { path = "crates/kknow-core" }
 kknow-index = { path = "crates/kknow-index" }
+kknow-crypto = { path = "crates/kknow-crypto" }
 kknow-app = { path = "crates/kknow-app" }
 # Crates that need storage backends enable them. The core needs only the trait.
 kknow-sync = { path = "crates/kknow-sync", default-features = false }
@@ -30,7 +31,7 @@ notify-debouncer-full = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 blake3 = "1"
-# Encryption of sync (`kknow_sync::crypto`). All pure Rust.
+# Encryption of sync (`kknow-crypto`). All pure Rust.
 chacha20poly1305 = "0.11"
 aes-siv = "0.8"
 argon2 = "0.6"

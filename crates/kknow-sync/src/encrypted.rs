@@ -1,7 +1,30 @@
-use crate::crypto::{self, Cipher, DataKey, KEY_FILE, KeyFile, RecoveryCode};
+use kknow_crypto::{self as crypto, Cipher, DataKey, KEY_FILE, KeyFile, RecoveryCode};
+
 use crate::engine::{MANIFEST_KEY, note_of_key};
 use crate::provider::{self, Operation, SyncProvider};
-use crate::{Error, Result, shared};
+use crate::{Result, shared};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("the storage is encrypted: enter the passphrase or the recovery code")]
+    Locked,
+
+    #[error("the storage is not encrypted")]
+    NotEncrypted,
+
+    #[error("the storage is already encrypted")]
+    AlreadyEncrypted,
+
+    #[error(
+        "the key of this device does not open the storage: encryption in the storage was turned on again. Type the passphrase again"
+    )]
+    WrongKey,
+
+    #[error(
+        "a device without encryption wrote into this encrypted storage. Update kknow on all devices and check the storage"
+    )]
+    MixedStorage,
+}
 
 pub const DECOY: &[u8] = b"{\n  \"format\": 2,\n  \"encrypted\": true,\n  \"notes\": {}\n}\n";
 
@@ -53,13 +76,40 @@ impl<P: SyncProvider> Encrypted<P> {
             Some(bytes) if is_decoy(&bytes) => Ok(()),
             Some(bytes) => {
                 if self.get(MANIFEST_KEY)?.is_some() {
-                    return Err(Error::MixedStorage);
+                    return Err(Error::MixedStorage.into());
                 }
                 self.put(MANIFEST_KEY, &bytes)?;
                 Ok(self.inner.put(MANIFEST_KEY, DECOY)?)
             }
             None => Ok(self.inner.put(MANIFEST_KEY, DECOY)?),
         }
+    }
+
+    pub fn prepare(&self) -> Result<Vec<String>> {
+        let file = key_file(&self.inner).map_err(|error| match error {
+            crate::Error::Encryption(Error::NotEncrypted) => Error::WrongKey.into(),
+            other => other,
+        })?;
+        if !file.matches(&self.key_check) {
+            return Err(Error::WrongKey.into());
+        }
+
+        let plain: Vec<String> = self
+            .inner
+            .list("")?
+            .into_iter()
+            .filter(|key| !key.starts_with(crypto::NAME_PREFIX))
+            .collect();
+        self.guard_manifest(&plain)?;
+
+        let mut adopted = Vec::new();
+        for key in plain {
+            if note_of_key(&key).is_some() || shared::is_shared(&key) {
+                self.adopt(&key)?;
+                adopted.push(key);
+            }
+        }
+        Ok(adopted)
     }
 }
 
@@ -100,32 +150,49 @@ impl<P: SyncProvider> SyncProvider for Encrypted<P> {
         keys.sort();
         Ok(keys)
     }
+}
 
-    fn prepare(&self) -> Result<Vec<String>> {
-        let file = key_file(&self.inner).map_err(|error| match error {
-            Error::NotEncrypted => Error::WrongKey,
-            other => other,
-        })?;
-        if !file.matches(&self.key_check) {
-            return Err(Error::WrongKey);
-        }
+pub enum Storage<P> {
+    Plain(P),
+    Encrypted(Encrypted<P>),
+}
 
-        let plain: Vec<String> = self
-            .inner
-            .list("")?
-            .into_iter()
-            .filter(|key| !key.starts_with(crypto::NAME_PREFIX))
-            .collect();
-        self.guard_manifest(&plain)?;
-
-        let mut adopted = Vec::new();
-        for key in plain {
-            if note_of_key(&key).is_some() || shared::is_shared(&key) {
-                self.adopt(&key)?;
-                adopted.push(key);
+impl<P: SyncProvider> Storage<P> {
+    pub fn prepare(&self) -> Result<Vec<String>> {
+        match self {
+            Storage::Plain(inner) => {
+                if inner.get(KEY_FILE)?.is_some() {
+                    return Err(Error::Locked.into());
+                }
+                Ok(Vec::new())
             }
+            Storage::Encrypted(encrypted) => encrypted.prepare(),
         }
-        Ok(adopted)
+    }
+
+    fn active(&self) -> &dyn SyncProvider {
+        match self {
+            Storage::Plain(inner) => inner,
+            Storage::Encrypted(encrypted) => encrypted,
+        }
+    }
+}
+
+impl<P: SyncProvider> SyncProvider for Storage<P> {
+    fn get(&self, key: &str) -> provider::Result<Option<Vec<u8>>> {
+        self.active().get(key)
+    }
+
+    fn put(&self, key: &str, bytes: &[u8]) -> provider::Result<()> {
+        self.active().put(key, bytes)
+    }
+
+    fn delete(&self, key: &str) -> provider::Result<()> {
+        self.active().delete(key)
+    }
+
+    fn list(&self, prefix: &str) -> provider::Result<Vec<String>> {
+        self.active().list(prefix)
     }
 }
 
@@ -147,7 +214,7 @@ pub fn init(storage: &dyn SyncProvider, passphrase: &str) -> Result<(DataKey, Re
 
 fn init_with(storage: &dyn SyncProvider, file: KeyFile, key: &DataKey) -> Result<()> {
     if is_encrypted(storage)? {
-        return Err(Error::AlreadyEncrypted);
+        return Err(Error::AlreadyEncrypted.into());
     }
     storage.put(KEY_FILE, &file.to_json())?;
     Encrypted::new(storage, key).prepare()?;
@@ -155,7 +222,7 @@ fn init_with(storage: &dyn SyncProvider, file: KeyFile, key: &DataKey) -> Result
 }
 
 pub fn unlock(storage: &dyn SyncProvider, secret: &str) -> Result<DataKey> {
-    key_file(storage)?.unlock(secret)
+    Ok(key_file(storage)?.unlock(secret)?)
 }
 
 pub fn change_passphrase(storage: &dyn SyncProvider, secret: &str, new: &str) -> Result<DataKey> {
@@ -168,7 +235,7 @@ pub fn change_passphrase(storage: &dyn SyncProvider, secret: &str, new: &str) ->
 
 fn key_file(storage: &(impl SyncProvider + ?Sized)) -> Result<KeyFile> {
     let bytes = storage.get(KEY_FILE)?.ok_or(Error::NotEncrypted)?;
-    KeyFile::from_json(&bytes)
+    Ok(KeyFile::from_json(&bytes)?)
 }
 
 #[cfg(test)]
@@ -176,8 +243,8 @@ mod tests {
     use kknow_core::{NoteId, Vault};
 
     use super::*;
-    use crate::crypto::KdfParams;
     use crate::{MemoryProvider, SyncEngine};
+    use kknow_crypto::KdfParams;
 
     const WEAK: KdfParams = KdfParams {
         memory_kib: 64,
@@ -208,8 +275,8 @@ mod tests {
         (dir, vault)
     }
 
-    fn engine(storage: &MemoryProvider, key: &DataKey) -> SyncEngine<Encrypted<MemoryProvider>> {
-        SyncEngine::new(Encrypted::new(storage.clone(), key))
+    fn engine(storage: &MemoryProvider, key: &DataKey) -> SyncEngine<MemoryProvider> {
+        SyncEngine::encrypted(Encrypted::new(storage.clone(), key))
     }
 
     fn everything(storage: &MemoryProvider) -> String {
@@ -341,7 +408,7 @@ mod tests {
         let (_b, mut desktop) = device(&[]);
         let sync = |vault: &mut Vault| {
             let folder = crate::FolderProvider::open(remote.path()).unwrap();
-            SyncEngine::new(Encrypted::new(folder, &key))
+            SyncEngine::encrypted(Encrypted::new(folder, &key))
                 .run(vault)
                 .unwrap()
         };
@@ -376,7 +443,7 @@ mod tests {
         let (storage, _) = encrypted_storage();
         assert!(matches!(
             init(&storage, PASSPHRASE),
-            Err(Error::AlreadyEncrypted)
+            Err(crate::Error::Encryption(Error::AlreadyEncrypted))
         ));
     }
 
@@ -401,8 +468,14 @@ mod tests {
 
         let (_b, mut other) = device(&[("B.md", "# beta")]);
         let plain = SyncEngine::new(storage.clone());
-        assert!(matches!(plain.run(&mut other), Err(Error::Locked)));
-        assert!(matches!(plain.plan(&other), Err(Error::Locked)));
+        assert!(matches!(
+            plain.run(&mut other),
+            Err(crate::Error::Encryption(Error::Locked))
+        ));
+        assert!(matches!(
+            plain.plan(&other),
+            Err(crate::Error::Encryption(Error::Locked))
+        ));
         assert!(!everything(&storage).contains("beta"));
     }
 
@@ -437,7 +510,7 @@ mod tests {
 
         assert!(matches!(
             engine(&storage, &key).run(&mut vault),
-            Err(Error::MixedStorage)
+            Err(crate::Error::Encryption(Error::MixedStorage))
         ));
     }
 
@@ -451,11 +524,11 @@ mod tests {
         let (_b, mut stranger) = device(&[("B.md", "# beta")]);
         assert!(matches!(
             engine(&storage, &other).run(&mut stranger),
-            Err(Error::WrongKey)
+            Err(crate::Error::Encryption(Error::WrongKey))
         ));
         assert!(matches!(
             unlock(&storage, "wrong horse"),
-            Err(Error::WrongPassphrase)
+            Err(crate::Error::Crypto(kknow_crypto::Error::WrongPassphrase))
         ));
     }
 
@@ -466,7 +539,7 @@ mod tests {
         let (_a, mut vault) = device(&[("A.md", "# alpha")]);
         assert!(matches!(
             engine(&storage, &key).run(&mut vault),
-            Err(Error::WrongKey)
+            Err(crate::Error::Encryption(Error::WrongKey))
         ));
     }
 
@@ -490,7 +563,7 @@ mod tests {
         let storage = MemoryProvider::new();
         assert!(matches!(
             unlock(&storage, PASSPHRASE),
-            Err(Error::NotEncrypted)
+            Err(crate::Error::Encryption(Error::NotEncrypted))
         ));
         assert!(!is_encrypted(&storage).unwrap());
     }
