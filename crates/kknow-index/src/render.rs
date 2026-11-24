@@ -504,7 +504,7 @@ fn is_mermaid(info: &str) -> bool {
         .is_some_and(|lang| lang.eq_ignore_ascii_case(MERMAID_LANG))
 }
 
-fn escape_html(text: &str) -> String {
+pub(crate) fn escape_html(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {

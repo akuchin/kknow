@@ -414,3 +414,28 @@ fn a_shared_file_changed_on_both_sides_is_merged() {
     );
     assert!(second.ids().iter().all(|id| !id.contains("конфликт")));
 }
+
+#[test]
+fn a_download_goes_to_the_real_file_of_the_note() {
+    let cloud = MemoryProvider::new();
+    let mut first = Device::new(&cloud);
+    let mut second = Device::new(&cloud);
+
+    first.edit("Index", "first version");
+    first.sync();
+    second.sync();
+    fs::rename(
+        second.path().join("Index.md"),
+        second.path().join("Index.markdown"),
+    )
+    .unwrap();
+    second.vault.rescan().unwrap();
+
+    first.edit("Index", "second version");
+    first.sync();
+    second.sync();
+
+    let text = fs::read_to_string(second.path().join("Index.markdown")).unwrap();
+    assert_eq!(text, "second version");
+    assert!(!second.path().join("Index.md").exists());
+}

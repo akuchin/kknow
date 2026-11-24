@@ -110,6 +110,17 @@ External edit:
 - `Vault` walks the folder. It skips hidden folders, for example `.git` and the
   hidden folders of other tools. It reads files.
 
+  The `NoteId` has no extension, but the vault keeps the real file of each
+  note (`Note.path`): `.md`, `.markdown` or `.mdown`. Every operation uses this
+  file, so a note never gets a second copy with another extension. A new note
+  gets `.md`. `rename` and `copy` keep the extension of the source. If two
+  files give one ID, for example `a.md` and `a.markdown`, `rescan` keeps the
+  first by the order `md`, `markdown`, `mdown` (then by path), so the result
+  does not depend on the order of the walk. `Vault::duplicates` lists the
+  skipped files and the CLI prints a warning. The vault does not delete or
+  merge the skipped file, because it can hold text that the user wants. Sync
+  keeps the remote key `<id>.md`: the extension is a local detail.
+
   It writes atomically through a
   temp file and `rename`. It updates (`refresh`) one file. It moves and copies a
   note to a new identifier, and it moves a folder. All of these operations

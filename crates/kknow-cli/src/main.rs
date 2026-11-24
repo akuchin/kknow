@@ -386,6 +386,7 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
         Command::Render { note } => render(&workspace, &note)?,
         Command::New { name } => {
             let id = workspace.create(&name).map_err(|error| error.to_string())?;
+    warn_about_duplicates(&workspace);
             println!("created note {id}");
         }
         Command::Lock { note } => lock(&mut workspace, &note)?,
@@ -459,6 +460,24 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     }
 
     Ok(code)
+}
+
+fn warn_about_duplicates(workspace: &Workspace) {
+    let root = workspace.root();
+    let shown = |path: &std::path::Path| {
+        path.strip_prefix(root)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    };
+    for duplicate in workspace.duplicates() {
+        eprintln!(
+            "warning: two files for the note {}: kept {}, skipped {}",
+            duplicate.id,
+            shown(&duplicate.kept),
+            shown(&duplicate.skipped)
+        );
+    }
 }
 
 fn load_registry() -> Result<(VaultRegistry, PathBuf), String> {

@@ -22,6 +22,12 @@ pub fn note_of_key(key: &str) -> Option<NoteId> {
     NoteId::parse(path)
 }
 
+fn staged_text(outgoing: &mut BTreeMap<NoteId, String>, id: &NoteId) -> Result<String> {
+    outgoing
+        .remove(id)
+        .ok_or_else(|| Error::NotStaged(id.clone()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Progress {
     pub done: usize,
@@ -193,7 +199,7 @@ impl<P: SyncProvider> SyncEngine<P> {
     pub fn transfer(&self, staged: Staged, progress: &mut dyn FnMut(Progress)) -> Result<Fetched> {
         let Staged {
             plan,
-            outgoing,
+            mut outgoing,
             outgoing_files,
         } = staged;
         let Plan {
@@ -230,7 +236,7 @@ impl<P: SyncProvider> SyncEngine<P> {
         for (done, action) in actions.iter().enumerate() {
             match action {
                 Action::Upload(id) => {
-                    let content = outgoing.get(id).cloned().unwrap_or_default();
+                    let content = staged_text(&mut outgoing, id)?;
                     self.provider.put(&note_key(id), content.as_bytes())?;
                     next.insert(id.clone(), Entry::of(&content));
                     fetched.report.uploaded.push(id.clone());
@@ -252,12 +258,12 @@ impl<P: SyncProvider> SyncEngine<P> {
                     fetched.report.removed_remote.push(id.clone());
                 }
                 Action::KeepBoth { id, copy } => {
+                    let mine = staged_text(&mut outgoing, id)?;
                     let theirs = self.download(id)?;
                     self.provider.put(&note_key(copy), theirs.as_bytes())?;
                     next.insert(copy.clone(), Entry::of(&theirs));
                     fetched.incoming.push((copy.clone(), theirs));
 
-                    let mine = outgoing.get(id).cloned().unwrap_or_default();
                     self.provider.put(&note_key(id), mine.as_bytes())?;
                     next.insert(id.clone(), Entry::of(&mine));
 
@@ -455,5 +461,50 @@ impl<P> std::fmt::Debug for SyncEngine<P> {
         f.debug_struct("SyncEngine")
             .field("policy", &self.policy)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::MemoryProvider;
+
+    fn staged_with(action: Action) -> Staged {
+        Staged {
+            plan: Plan {
+                actions: vec![action],
+                files: Vec::new(),
+                local: Manifest::new(),
+                remote: Manifest::new(),
+                revision: None,
+            },
+            outgoing: BTreeMap::new(),
+            outgoing_files: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn upload_of_a_note_that_was_not_staged_is_an_error() {
+        let id = NoteId::parse("a").unwrap();
+        let provider = MemoryProvider::new();
+        let engine = SyncEngine::new(provider.clone());
+
+        let result = engine.transfer(staged_with(Action::Upload(id.clone())), &mut |_| {});
+
+        assert!(matches!(result, Err(Error::NotStaged(missing)) if missing == id));
+        assert!(provider.keys().is_empty());
+    }
+
+    #[test]
+    fn keep_both_of_a_note_that_was_not_staged_is_an_error() {
+        let id = NoteId::parse("a").unwrap();
+        let copy = NoteId::parse("a (copy)").unwrap();
+        let provider = MemoryProvider::new();
+        let engine = SyncEngine::new(provider.clone());
+
+        let result = engine.transfer(staged_with(Action::KeepBoth { id, copy }), &mut |_| {});
+
+        assert!(matches!(result, Err(Error::NotStaged(_))));
+        assert!(provider.keys().is_empty());
     }
 }

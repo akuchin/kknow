@@ -93,6 +93,9 @@ pub enum Error {
     #[error("cannot parse the manifest: {0}")]
     Manifest(#[from] serde_json::Error),
 
+    #[error("the note {0} was not staged for upload")]
+    NotStaged(NoteId),
+
     #[error("sync settings: no bucket is set")]
     NoBucket,
 

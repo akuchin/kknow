@@ -7,13 +7,21 @@ use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{Error, Result};
-use crate::note::{Note, NoteId, is_markdown_extension};
+use crate::note::{MARKDOWN_EXTENSIONS, Note, NoteId, is_markdown_extension};
 use crate::trash::Trash;
 
 #[derive(Debug)]
 pub struct Vault {
     root: PathBuf,
     notes: BTreeMap<NoteId, Note>,
+    duplicates: Vec<Duplicate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Duplicate {
+    pub id: NoteId,
+    pub kept: PathBuf,
+    pub skipped: PathBuf,
 }
 
 impl Vault {
@@ -29,6 +37,7 @@ impl Vault {
         let mut vault = Vault {
             root,
             notes: BTreeMap::new(),
+            duplicates: Vec::new(),
         };
         vault.rescan()?;
         Ok(vault)
@@ -36,7 +45,8 @@ impl Vault {
 
     pub fn rescan(&mut self) -> Result<()> {
         let root = self.root.clone();
-        let mut notes = BTreeMap::new();
+        let mut notes: BTreeMap<NoteId, Note> = BTreeMap::new();
+        let mut duplicates = Vec::new();
 
         let walker = WalkDir::new(&root)
             .follow_links(false)
@@ -62,19 +72,42 @@ impl Vault {
                 .metadata()
                 .map_err(|err| Error::io(entry.path(), io::Error::other(err)))?;
 
-            notes.insert(
-                id.clone(),
-                Note {
-                    id,
-                    path: entry.path().to_path_buf(),
-                    size: metadata.len(),
-                    modified: metadata.modified().ok(),
-                },
-            );
+            let note = Note {
+                id: id.clone(),
+                path: entry.path().to_path_buf(),
+                size: metadata.len(),
+                modified: metadata.modified().ok(),
+            };
+            match notes.entry(id.clone()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(note);
+                }
+                Entry::Occupied(mut slot) => {
+                    let skipped = if file_order(&note.path) < file_order(&slot.get().path) {
+                        slot.insert(note).path
+                    } else {
+                        note.path
+                    };
+                    duplicates.push(Duplicate {
+                        id,
+                        kept: PathBuf::new(),
+                        skipped,
+                    });
+                }
+            }
         }
 
+        for duplicate in &mut duplicates {
+            duplicate.kept = notes[&duplicate.id].path.clone();
+        }
+        duplicates.sort_by(|a, b| (&a.id, &a.skipped).cmp(&(&b.id, &b.skipped)));
         self.notes = notes;
+        self.duplicates = duplicates;
         Ok(())
+    }
+
+    pub fn duplicates(&self) -> &[Duplicate] {
+        &self.duplicates
     }
 
     pub fn root(&self) -> &Path {
@@ -106,7 +139,24 @@ impl Vault {
     }
 
     pub fn path_for(&self, id: &NoteId) -> PathBuf {
-        self.root.join(id.to_relative_path())
+        match self.notes.get(id) {
+            Some(note) => note.path.clone(),
+            None => self.root.join(id.to_relative_path()),
+        }
+    }
+
+    fn find_file(&self, id: &NoteId) -> Option<PathBuf> {
+        MARKDOWN_EXTENSIONS
+            .iter()
+            .map(|extension| self.root.join(format!("{id}.{extension}")))
+            .find(|path| path.is_file())
+    }
+
+    fn path_like(&self, id: &NoteId, model: &Path) -> PathBuf {
+        match model.extension().and_then(|extension| extension.to_str()) {
+            Some(extension) => self.root.join(format!("{id}.{extension}")),
+            None => self.root.join(id.to_relative_path()),
+        }
     }
 
     pub fn read(&self, id: &NoteId) -> Result<String> {
@@ -122,7 +172,9 @@ impl Vault {
             fs::create_dir_all(parent).map_err(|source| Error::io(parent, source))?;
         }
 
-        let temp = path.with_extension("md.tmp");
+        let mut temp_name = path.as_os_str().to_owned();
+        temp_name.push(".tmp");
+        let temp = PathBuf::from(temp_name);
         fs::write(&temp, content).map_err(|source| Error::io(&temp, source))?;
         fs::rename(&temp, &path).map_err(|source| Error::io(&path, source))?;
 
@@ -143,7 +195,12 @@ impl Vault {
     }
 
     pub fn refresh(&mut self, id: &NoteId) -> Result<Option<&Note>> {
-        let path = self.path_for(id);
+        let stored = self.path_for(id);
+        let path = if self.contains(id) && stored.is_file() {
+            stored
+        } else {
+            self.find_file(id).unwrap_or(stored)
+        };
 
         let metadata = match fs::metadata(&path) {
             Ok(metadata) if metadata.is_file() => metadata,
@@ -200,8 +257,8 @@ impl Vault {
             .ok_or_else(|| Error::NoteNotFound(from.clone()))?
             .path
             .clone();
-        let target = self.path_for(to);
-        if from != to && is_taken(&target, &source) {
+        let target = self.path_like(to, &source);
+        if from != to && (self.contains(to) || is_taken(&target, &source)) {
             return Err(Error::AlreadyExists(target));
         }
 
@@ -226,7 +283,7 @@ impl Vault {
             .ok_or_else(|| Error::NoteNotFound(from.clone()))?
             .path
             .clone();
-        let target = self.path_for(to);
+        let target = self.path_like(to, &source);
         if self.contains(to) || target.exists() {
             return Err(Error::AlreadyExists(target));
         }
@@ -280,14 +337,21 @@ impl Vault {
 
         let mut moved = Vec::with_capacity(inside.len());
         for old in inside {
-            let note = self.notes.remove(&old).expect("collected from the keys above");
+            let note = self
+                .notes
+                .remove(&old)
+                .expect("collected from the keys above");
             let renamed = format!("{to_key}/{}", &old.as_str()[from_prefix.len()..]);
             let new = NoteId::parse(&renamed).expect("the parts were valid");
+            let moved_path = match note.path.strip_prefix(&source) {
+                Ok(rest) => target.join(rest),
+                Err(_) => self.root.join(new.to_relative_path()),
+            };
             self.notes.insert(
                 new.clone(),
                 Note {
                     id: new.clone(),
-                    path: self.path_for(&new),
+                    path: moved_path,
                     size: note.size,
                     modified: note.modified,
                 },
@@ -377,6 +441,19 @@ fn walk_error(root: &Path, err: walkdir::Error) -> Error {
         .into_io_error()
         .unwrap_or_else(|| io::Error::other("directory loop"));
     Error::io(path, source)
+}
+
+fn file_order(path: &Path) -> (usize, &Path) {
+    let rank = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .and_then(|extension| {
+            MARKDOWN_EXTENSIONS
+                .iter()
+                .position(|known| known.eq_ignore_ascii_case(extension))
+        })
+        .unwrap_or(MARKDOWN_EXTENSIONS.len());
+    (rank, path)
 }
 
 fn has_markdown_extension(path: &Path) -> bool {
@@ -670,6 +747,112 @@ mod tests {
         assert!(vault.refresh(&id).unwrap().is_none());
 
         assert!(!vault.contains(&id));
+    }
+
+    fn vault_with(files: &[&str]) -> (tempfile::TempDir, Vault) {
+        let dir = tempfile::tempdir().unwrap();
+        for file in files {
+            let path = dir.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "text").unwrap();
+        }
+        let vault = Vault::open(dir.path()).unwrap();
+        (dir, vault)
+    }
+
+    fn id(text: &str) -> NoteId {
+        NoteId::parse(text).unwrap()
+    }
+
+    #[test]
+    fn write_keeps_the_real_file_of_a_note() {
+        let (dir, mut vault) = vault_with(&["a.markdown"]);
+        vault.write(&id("a"), "new").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(dir.path().join("a.markdown")).unwrap(),
+            "new"
+        );
+        assert!(!dir.path().join("a.md").exists());
+        assert!(!dir.path().join("a.markdown.tmp").exists());
+    }
+
+    #[test]
+    fn a_new_note_gets_the_md_extension() {
+        let (dir, mut vault) = vault_with(&["a.markdown"]);
+        assert_eq!(vault.path_for(&id("b")), vault.root().join("b.md"));
+        vault.write(&id("b"), "x").unwrap();
+        assert!(dir.path().join("b.md").is_file());
+    }
+
+    #[test]
+    fn refresh_keeps_the_real_file_after_an_external_change() {
+        let (dir, mut vault) = vault_with(&["a.markdown"]);
+        fs::write(dir.path().join("a.markdown"), "changed").unwrap();
+
+        let note = vault.refresh(&id("a")).unwrap().unwrap();
+
+        assert!(note.path.ends_with("a.markdown"));
+        assert_eq!(vault.read(&id("a")).unwrap(), "changed");
+    }
+
+    #[test]
+    fn refresh_finds_an_unknown_note_with_another_extension() {
+        let (dir, mut vault) = vault_with(&[]);
+        fs::write(dir.path().join("b.mdown"), "text").unwrap();
+
+        let note = vault.refresh(&id("b")).unwrap().unwrap();
+
+        assert!(note.path.ends_with("b.mdown"));
+    }
+
+    #[test]
+    fn rename_and_copy_keep_the_source_extension() {
+        let (dir, mut vault) = vault_with(&["a.markdown"]);
+        vault.copy(&id("a"), &id("b")).unwrap();
+        vault.rename(&id("a"), &id("c")).unwrap();
+
+        assert!(dir.path().join("b.markdown").is_file());
+        assert!(dir.path().join("c.markdown").is_file());
+        assert!(!dir.path().join("a.markdown").exists());
+        assert!(!dir.path().join("b.md").exists());
+        assert!(!dir.path().join("c.md").exists());
+    }
+
+    #[test]
+    fn rename_folder_keeps_the_extensions() {
+        let (dir, mut vault) = vault_with(&["Old/a.markdown", "Old/b.md"]);
+        vault.rename_folder("Old", "New").unwrap();
+
+        assert!(
+            vault
+                .get(&id("New/a"))
+                .unwrap()
+                .path
+                .ends_with("New/a.markdown")
+        );
+        assert!(vault.get(&id("New/b")).unwrap().path.ends_with("New/b.md"));
+        assert!(dir.path().join("New/a.markdown").is_file());
+    }
+
+    #[test]
+    fn rescan_keeps_one_file_per_note_and_reports_the_other() {
+        for order in [["a.md", "a.markdown"], ["a.markdown", "a.md"]] {
+            let (dir, vault) = vault_with(&order);
+
+            assert_eq!(vault.len(), 1);
+            assert!(vault.get(&id("a")).unwrap().path.ends_with("a.md"));
+            assert_eq!(
+                vault.duplicates(),
+                [Duplicate {
+                    id: id("a"),
+                    kept: vault.root().join("a.md"),
+                    skipped: vault.root().join("a.markdown"),
+                }]
+            );
+            assert!(dir.path().join("a.md").is_file());
+            assert!(dir.path().join("a.markdown").is_file());
+        }
     }
 
     #[test]

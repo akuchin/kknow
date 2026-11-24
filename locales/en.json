@@ -718,6 +718,8 @@
   "error.noS3": "this build has no S3 support",
   "error.missingRemote": "the manifest lists the note {{value}}, but the storage does not have it",
   "error.notUtf8": "the note {{value}} in the storage is not UTF-8",
+  "error.notStaged": "the note {{value}} was not staged for upload",
+  "error.noRandomNumbers": "no random numbers for the MCP token: {{detail}}",
   "error.remoteChanged": "the storage changed during the sync — run it again",
   "error.noAccess": "no access to {{path}}. Check the permissions of this folder; on macOS, also System Settings → Privacy & Security → Files and Folders",
   "error.pathMissing": "{{path}} does not exist",

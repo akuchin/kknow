@@ -8,6 +8,8 @@ use tantivy::snippet::SnippetGenerator;
 use tantivy::tokenizer::{LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, TantivyDocument, Term, doc};
 
+use crate::render::escape_html;
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
@@ -237,7 +239,7 @@ impl SearchIndex {
             let snippet = snippets.snippet_from_doc(&document);
             let snippet = if snippet.fragment().is_empty() {
                 text(&document, self.fields.body)
-                    .map(|body| shorten(&body, SNIPPET_CHARS))
+                    .map(|body| escape_html(&shorten(&body, SNIPPET_CHARS)))
                     .unwrap_or_default()
             } else {
                 snippet.to_html()
@@ -442,6 +444,17 @@ mod tests {
             "{}",
             hits[0].snippet
         );
+    }
+
+    #[test]
+    fn snippet_without_a_match_in_the_body_is_escaped() {
+        let index = index(&[("Plan", "Harbor", "<img src=x onerror=alert(1)>", &[])]);
+
+        let hits = index.search("harbor", 10).unwrap();
+
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].snippet.contains("&lt;img"), "{}", hits[0].snippet);
+        assert!(!hits[0].snippet.contains("<img"), "{}", hits[0].snippet);
     }
 
     #[test]

@@ -570,35 +570,66 @@ fn is_external(target: &str) -> bool {
 }
 
 pub(crate) fn decode_target(target: &str) -> String {
-    let mut decoded = String::with_capacity(target.len());
-    let mut chars = target.chars();
+    let source = target.as_bytes();
+    let mut bytes = Vec::with_capacity(source.len());
+    let mut position = 0;
 
-    while let Some(ch) = chars.next() {
-        if ch != '%' {
-            decoded.push(ch);
-            continue;
-        }
-        let rest = chars.as_str();
-        match rest
-            .get(..2)
-            .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-        {
-            Some(byte) if byte.is_ascii() => {
-                decoded.push(byte as char);
-                chars.next();
-                chars.next();
+    while position < source.len() {
+        let hex = (source[position] == b'%')
+            .then(|| source.get(position + 1..position + 3))
+            .flatten()
+            .and_then(hex_byte);
+        match hex {
+            Some(byte) => {
+                bytes.push(byte);
+                position += 3;
             }
-            _ => decoded.push(ch),
+            None => {
+                bytes.push(source[position]);
+                position += 1;
+            }
         }
     }
 
-    decoded
+    String::from_utf8(bytes).unwrap_or_else(|_| target.to_string())
+}
+
+fn hex_byte(pair: &[u8]) -> Option<u8> {
+    let pair = std::str::from_utf8(pair).ok()?;
+    if !pair.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    u8::from_str_radix(pair, 16).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::wikilink::WikiKind;
+
+    #[test]
+    fn decodes_percent_sequences_as_utf8() {
+        assert_eq!(decode_target("%D0%9F%D0%BB%D0%B0%D0%BD.md"), "План.md");
+        assert_eq!(decode_target("a%20b"), "a b");
+        assert_eq!(decode_target("%FF.md"), "%FF.md");
+        assert_eq!(decode_target("100%"), "100%");
+        assert_eq!(decode_target("%+1"), "%+1");
+    }
+
+    #[test]
+    fn encoded_non_latin_link_names_resolve() {
+        let source = parse("[x](%D0%9F%D0%BB%D0%B0%D0%BD.md)");
+        let plan = kknow_core::NoteId::parse("План").unwrap();
+        let from = kknow_core::NoteId::parse("Index").unwrap();
+        let target = source.markdown_links[0].target.clone();
+        let graph = crate::graph::LinkGraph::build([
+            (from.clone(), &source),
+            (plan.clone(), &parse("# Plan")),
+        ]);
+
+        assert_eq!(target, "План.md");
+        assert_eq!(graph.backlinks(&plan).len(), 1);
+    }
 
     #[test]
     fn collects_headings_and_title() {
