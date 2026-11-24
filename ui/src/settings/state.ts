@@ -1,4 +1,5 @@
 import { api, type AppSettings, type SyncStatus, type VaultView } from "../api";
+import { showError } from "./errors";
 
 export const state = {
   settings: null as AppSettings | null,
@@ -18,7 +19,7 @@ export async function patch(change: Partial<AppSettings>): Promise<void> {
   try {
     state.settings = await api.setSettings(next);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   view.render();
 }

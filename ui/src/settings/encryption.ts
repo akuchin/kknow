@@ -7,6 +7,7 @@ import {
 } from "../drafts";
 import { describeError, t, type Key } from "../i18n";
 import { row } from "./controls";
+import { showError } from "./errors";
 
 let redraw: () => Promise<void> = async () => {};
 
@@ -209,7 +210,7 @@ function unlockForm(vault: VaultView): HTMLElement {
       try {
         await api.syncNow(vault.id);
       } catch (error) {
-        console.error(error);
+        showError(error);
       }
       await redraw();
     });
@@ -237,7 +238,7 @@ function recoveryPanel(vault: VaultView, code: string): HTMLElement {
   copy.onclick = () => {
     void navigator.clipboard.writeText(code).then(
       () => (copy.textContent = t("settings.encryption.code.copied")),
-      (error: unknown) => console.error(error),
+      showError,
     );
   };
 

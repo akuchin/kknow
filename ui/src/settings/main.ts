@@ -13,6 +13,7 @@ import { state, view } from "./state";
 import { initEncryption } from "./encryption";
 import { initSyncForm } from "./sync-form";
 import { renderVaults, repaintVaults } from "./vaults";
+import { showError } from "./errors";
 
 const SECTIONS: { id: string; label: Key }[] = [
   { id: "general", label: "settings.section.general" },
@@ -68,7 +69,7 @@ function renderSections(): void {
     .then((value) => {
       version.textContent = `kknow ${value}`;
     })
-    .catch(console.error);
+    .catch(showError);
   el.sections.append(version);
 }
 
@@ -108,7 +109,7 @@ async function boot(): Promise<void> {
   try {
     state.settings = await api.getSettings();
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 
   if (state.settings && state.settings.locale !== locale) {
@@ -121,7 +122,7 @@ async function boot(): Promise<void> {
 
   await loadKeymap();
   void onKeymapChanged(takeKeymap);
-  window.addEventListener("focus", () => void api.getKeymap().then(takeKeymap, console.error));
+  window.addEventListener("focus", () => void api.getKeymap().then(takeKeymap, showError));
 
   void onSettingsChanged((incoming) => {
     const languageChanged = state.settings?.locale !== incoming.locale;
@@ -146,7 +147,7 @@ async function boot(): Promise<void> {
   try {
     setUpdate(await api.updateStatus());
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 
   render();

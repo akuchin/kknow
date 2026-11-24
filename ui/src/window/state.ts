@@ -37,7 +37,21 @@ export function createState() {
     for (const handler of [...listeners]) handler(value);
   }
 
+  function isOpen(vaultId: string | undefined, noteId: string): boolean {
+    return values.vault?.id === vaultId && values.note?.id === noteId;
+  }
+
+  function noteTicket() {
+    const vaultId = values.vault?.id;
+    const noteId = values.note?.id;
+    return {
+      isCurrent: () => noteId !== undefined && isOpen(vaultId, noteId),
+    };
+  }
+
   return {
+    isOpen,
+    noteTicket,
     get note(): NoteView | null {
       return values.note;
     },

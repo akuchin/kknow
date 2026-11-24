@@ -162,12 +162,12 @@ async function review(
   proposal: ProposalView,
   decisions: { accept: number[]; reject: number[]; feedback?: string },
 ): Promise<void> {
-  const id = state.note?.id;
+  const ticket = state.noteTicket();
   await calls.flush();
   try {
     const view = await api.reviewProposal(proposal.id, decisions);
     clearDraftsUnder(draftPrefix(proposal));
-    if (state.note?.id !== id) return;
+    if (!ticket.isCurrent()) return;
     calls.apply(view, { reload: true });
     setStatus(
       t(decisions.accept.length > 0 ? "status.proposalApplied" : "status.proposalRejected"),
@@ -180,10 +180,11 @@ async function review(
 async function drop(proposal: ProposalView): Promise<void> {
   const id = state.note?.id;
   if (!id) return;
+  const ticket = state.noteTicket();
   try {
     await api.dismissProposal(proposal.id);
     clearDraftsUnder(draftPrefix(proposal));
-    if (state.note?.id !== id) return;
+    if (!ticket.isCurrent()) return;
     calls.apply(await api.loadNote(id), { keepEditor: true });
   } catch (error) {
     fail(error);

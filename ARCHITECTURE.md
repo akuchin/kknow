@@ -1531,12 +1531,19 @@ and the statuses again, and `patch` writes the settings.
 | `commands.ts` | the command list and the command form |
 | `vaults.ts` | vaults, vault details and statistics |
 | `sync-form.ts` | the sync form of a vault: provider, S3, folder |
+| `errors.ts` | `showError`: the one error line of the window |
 | `main.ts` | the section list, the markup, `render`, the listeners, `boot` |
 
 The sections import `state.ts` and `controls.ts`, never `main.ts`. `main.ts`
 fills `view` before the first render, so a section can draw the window again
 without an import of `main.ts`. `sync-form.ts` gets the redraw of the vault
 page from `initSyncForm`, so it does not import `vaults.ts`.
+
+Each failed action goes to `showError` of `errors.ts`. It shows the text of
+`describeError` (the same coded texts as the main window) in one element with
+`role="alert"` in `#settings`. A new error replaces the old text, and the close
+button hides the line. Before, the errors went to `console.error`, and the user
+saw nothing. A guard test forbids `console.error` in `ui/src/settings`.
 
 ## Editor
 
@@ -2900,6 +2907,18 @@ output goes to stdout, and errors go to stderr. Thus `kknow run … | jq` works.
   `api.ts` repeated each struct by hand, and a renamed field gave the window a
   silent `undefined`. The mock imports the same types, so the compiler checks
   it too.
+  - The same test writes `Commands`: a map from each command name in
+    `tauri::generate_handler!` to `{ args; result }`. It reads the list from
+    `lib.rs` and the signatures of the `#[tauri::command]` functions from the
+    source with `syn` (a dev-dependency), and it takes the names of the types
+    from `ts-rs`, so `ts(rename)` works. Before, `api.ts` called `invoke<T>`
+    with a name string, and a renamed command or argument failed only at run
+    time. Now `call` of `ui/src/command.ts` is the only caller of `invoke`
+    outside the mock, and `tsc --noEmit` rejects a wrong name, a missing, extra
+    or wrongly typed argument. `ui/src/command.check.ts` keeps lines with
+    `@ts-expect-error` that prove it. A type that the generator cannot resolve
+    fails the test and names the command. Tauri injects `State`, `AppHandle`
+    and the like, so they are not arguments. `Request` marks a raw body.
   - The test fails when the file differs from the types. Write it again with
     `KKNOW_BLESS=1 cargo test -p kknow-desktop bindings`.
   - The crates have a `ts` feature, and only the dev-dependencies of
@@ -3153,6 +3172,29 @@ the code ("No comments" gives the reasons).
 the code, not its behaviour. It fails on an import cycle in `ui/src`, on a
 store setter outside its owner, on a file with more than 800 lines, and on a
 module-level `let` in `main.ts`. "Window code" gives the reasons.
+
+The stub of the core is in `ui/src/mock/`. `core.ts` keeps `invoke`,
+`Channel` and the dispatch. The handlers are in modules by domain (`vaults`,
+`locks`, `notes`, `trash`, `proposals`, `settings`, `runs`, `sync`, `git`,
+`files`). Each module exports an object `satisfies Handlers` of
+`handlers.ts`, which types every handler from `Commands`: an unknown command or
+a wrong argument fails `tsc`. The stub does not need to implement all
+commands. Shared state is in `store.ts` (`session` holds the values that change)
+and in `views.ts`. The modules do not import each other in a cycle.
+
+The window checks "is this still the same note" after an `await` with a ticket
+of `state.ts`. `state.noteTicket()` stores the vault ID and the note ID when the
+wait starts, and `isCurrent()` is true only when both are unchanged. A note ID
+is unique only in one vault, so a check of the note ID alone could apply the
+result of one vault to a note with the same name in another vault.
+`state.isOpen(vaultId, noteId)` is for code that already has both IDs. A guard
+test rejects a bare `state.note?.id ===` in `ui/src`.
+
+The lookup of a translation (plural form, fallback dictionary, `{{ name }}`) is
+in `ui/src/translate.ts` without `import.meta`, DOM or `localStorage`. The app
+(`i18n.ts`) and the e2e helpers (`e2e/window.ts`) use it, so a text in a test
+is the text of the app. `sessionStorage` `kknow:mock:fail` with
+`{"command", "code"}` makes one stub command fail with a coded error.
 
 Two stub features exist for these tests. Events that the stub commands send
 (now only `settings-changed`) go to every tab through a `BroadcastChannel`, as

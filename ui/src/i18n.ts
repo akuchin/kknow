@@ -1,15 +1,14 @@
 import type ru from "../../locales/ru.json";
 import { errorText } from "./error-view";
+import { fill, lookup, type Dict, type Params } from "./translate";
 
-export type Params = Record<string, string | number>;
+export type { Params };
 
 type Category = "zero" | "one" | "two" | "few" | "many" | "other";
 
 type Base<K> = K extends `${infer B}_${Category}` ? B : K;
 
 export type Key = Base<keyof typeof ru>;
-
-type Dict = Record<string, string>;
 
 const LOCALES: Record<string, Dict> = Object.fromEntries(
   Object.entries(
@@ -45,24 +44,14 @@ const dict = LOCALES[locale];
 const reference = LOCALES[FALLBACK];
 const plurals = new Intl.PluralRules(locale);
 
+const dictionaries = [dict, reference];
+
 export function t(key: Key, params: Params = {}): string {
-  const text = lookup(dict, key, params) ?? lookup(reference, key, params) ?? key;
-
-  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
-  );
-}
-
-function lookup(from: Dict, key: string, params: Params): string | undefined {
-  if (key in from) return from[key];
-  const category = plurals.select(Number(params.count ?? 0));
-  return from[`${key}_${category}`] ?? from[`${key}_other`];
+  return fill(lookup(dictionaries, plurals, key, params) ?? key, params);
 }
 
 export function maybe(key: string, params: Params = {}): string | undefined {
-  if (lookup(dict, key, params) === undefined && lookup(reference, key, params) === undefined) {
-    return undefined;
-  }
+  if (lookup(dictionaries, plurals, key, params) === undefined) return undefined;
   return t(key as Key, params);
 }
 

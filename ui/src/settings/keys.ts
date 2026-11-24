@@ -28,6 +28,7 @@ import {
 import { t, type Key } from "../i18n";
 import { heading, row } from "./controls";
 import { view } from "./state";
+import { showError } from "./errors";
 
 const ACTION_LABELS: Record<Exclude<Action, FixedAction>, Key> = {
   "palette.open": "settings.keys.action.palette.open",
@@ -91,7 +92,7 @@ async function saveKeymap(next: Keymap): Promise<void> {
     keymap = await api.setKeymap(next);
     useKeymap(keymap.keys);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   recording = null;
   keyNotice = null;
@@ -166,7 +167,7 @@ export async function loadKeymap(): Promise<void> {
     keymap = await api.getKeymap();
     useKeymap(keymap.keys);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 }
 
@@ -312,7 +313,7 @@ function keymapFile(file: string, resetAll: HTMLElement): HTMLElement {
   const finder = document.createElement("button");
   finder.className = "ghost";
   finder.textContent = t("settings.vaults.finder");
-  finder.onclick = () => void api.revealKeymap().catch(console.error);
+  finder.onclick = () => void api.revealKeymap().catch(showError);
 
   const line = document.createElement("div");
   line.className = "settings-vault-head settings-key-file";

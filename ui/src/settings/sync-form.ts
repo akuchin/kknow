@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { bindDraft, clearDraftsUnder, draftValue, setDraft } from "../drafts";
 import { describeError, t, type Key } from "../i18n";
+import { showError } from "./errors";
 
 let redraw: () => Promise<void> = async () => {};
 
@@ -47,7 +48,7 @@ export async function switchProvider(
     try {
       await api.forgetSyncSettings(vault.id);
     } catch (error) {
-      console.error(error);
+      showError(error);
     }
     await redraw();
     return;
@@ -260,7 +261,7 @@ export async function saveSync(
     saved = true;
     onSaved?.();
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await redraw();
   return saved;

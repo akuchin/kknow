@@ -195,6 +195,7 @@ async function reply(
   const current = state.note;
   if (!current || current.file) return;
   const id = current.id;
+  const ticket = state.noteTicket();
   await calls.flush();
   try {
     const target = thread
@@ -206,7 +207,7 @@ async function reply(
     const view = await api.replyThread(id, target, text);
     clearDraft(key);
     openReplies.delete(key);
-    if (state.note?.id !== id) return;
+    if (!ticket.isCurrent()) return;
     calls.apply(view, thread ? { keepEditor: true } : { reload: true });
     setStatus(t("status.replySent"));
   } catch (error) {

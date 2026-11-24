@@ -171,8 +171,9 @@ function lineText(line: { before: string; text: string; after: string }): HTMLEl
 }
 
 async function openAt(id: string, line: number): Promise<void> {
+  const vaultId = state.vault?.id;
   await openNote(id);
-  if (state.note?.id !== id) return;
+  if (!state.isOpen(vaultId, id)) return;
   if (state.mode === "read") scrollToLine(el.preview, line);
   else editor.goToLine(line);
 }
@@ -304,9 +305,10 @@ async function linkMention(mention: MentionView, button: HTMLButtonElement): Pro
   const note = state.note;
   if (!note || note.file) return;
   button.disabled = true;
+  const ticket = state.noteTicket();
   try {
     const backlinks = await api.linkMention(mention, note.id);
-    if (state.note?.id !== note.id) return;
+    if (!ticket.isCurrent()) return;
     setStatus(t("status.mentionLinked", { name: mention.title }));
     linksKey = null;
     mentionsKey = null;

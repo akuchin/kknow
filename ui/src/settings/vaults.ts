@@ -14,6 +14,7 @@ import { heading, row, select } from "./controls";
 import { encryptionSection } from "./encryption";
 import { state, view } from "./state";
 import { draftsGit, gitForm, pickFolder, s3Form, saveSync, switchProvider } from "./sync-form";
+import { showError } from "./errors";
 
 const COLORS = ["blue", "violet", "amber", "red", "green", "teal"];
 
@@ -155,7 +156,7 @@ async function renderVaultDetails(page: HTMLElement, vault: VaultView): Promise<
   const finder = document.createElement("button");
   finder.className = "ghost";
   finder.textContent = t("settings.vaults.finder");
-  finder.onclick = () => void api.revealNote(undefined, vault.id).catch(console.error);
+  finder.onclick = () => void api.revealNote(undefined, vault.id).catch(showError);
 
   const names = document.createElement("div");
   names.className = "settings-vault-names";
@@ -226,7 +227,7 @@ function labelChips(vault: VaultView): HTMLElement {
   input.onblur = () => {
     const added = typed();
     if (added.length === 0) return;
-    const saved = api.setVaultLabels(vault.id, [...vault.labels, ...added]).catch(console.error);
+    const saved = api.setVaultLabels(vault.id, [...vault.labels, ...added]).catch(showError);
     const redraw = (): void => void saved.then(() => renderVaults());
     if (pointerHeld) document.addEventListener("click", () => setTimeout(redraw), { once: true });
     else redraw();
@@ -262,7 +263,7 @@ async function renderVaultSync(page: HTMLElement, vault: VaultView): Promise<voi
   try {
     remote = await api.syncSettings(vault.id);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 
   const drafting = draftsGit(vault);
@@ -397,7 +398,7 @@ async function refreshVaults(): Promise<void> {
     const all = await api.syncStatuses();
     state.statuses = new Map(all.map((entry) => [entry.vault, entry]));
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
 
   if (!state.vaults.some((entry) => entry.id === picked)) {
@@ -413,7 +414,7 @@ async function addVault(): Promise<void> {
     const added = await api.addVault(path);
     picked = added.id;
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
@@ -424,7 +425,7 @@ async function removeVault(): Promise<void> {
     await api.removeVault(picked);
     picked = null;
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
@@ -433,7 +434,7 @@ async function rename(id: string, name: string): Promise<void> {
   try {
     await api.renameVault(id, name);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
@@ -442,7 +443,7 @@ async function recolor(id: string, color: string): Promise<void> {
   try {
     await api.setVaultColor(id, color);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
@@ -451,7 +452,7 @@ async function relabel(id: string, labels: string[]): Promise<void> {
   try {
     await api.setVaultLabels(id, labels);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
@@ -460,7 +461,7 @@ async function syncNow(id: string): Promise<void> {
   try {
     await api.syncNow(id);
   } catch (error) {
-    console.error(error);
+    showError(error);
   }
   await renderVaults();
 }
