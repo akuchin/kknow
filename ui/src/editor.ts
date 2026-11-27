@@ -2,7 +2,16 @@ import { autocompletion } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
-import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import {
+  SearchQuery,
+  closeSearchPanel,
+  getSearchQuery,
+  openSearchPanel,
+  search,
+  searchKeymap,
+  searchPanelOpen,
+  setSearchQuery,
+} from "@codemirror/search";
 import { EditorSelection, EditorState, type StateEffect } from "@codemirror/state";
 import { EditorView, drawSelection, keymap } from "@codemirror/view";
 
@@ -31,6 +40,7 @@ import {
 } from "./bookmarks";
 import { editorGutter, setLineNumbers } from "./gutter";
 import { confluence } from "./confluence";
+import type { FindQuery } from "./find-ranges";
 import { editorMenu } from "./editor-menu";
 import { codeLanguages, highlightStyle } from "./highlight";
 import { MAC, bindings } from "./actions";
@@ -480,8 +490,60 @@ export class Editor {
     this.view.dispatch({ effects: liveEnabled.of(this.live) });
   }
 
-  openSearch(): void {
+  openSearch(query?: FindQuery): void {
+    if (query) {
+      this.view.dispatch({
+        effects: setSearchQuery.of(
+          new SearchQuery({
+            search: query.text,
+            caseSensitive: query.caseSensitive,
+            wholeWord: query.wholeWord,
+            regexp: query.regexp,
+          }),
+        ),
+      });
+    }
     openSearchPanel(this.view);
+  }
+
+  closeSearch(): void {
+    closeSearchPanel(this.view);
+  }
+
+  searchState(): { query: FindQuery; open: boolean; ordinal: number } {
+    const found = getSearchQuery(this.view.state);
+    const query = {
+      text: found.search,
+      caseSensitive: found.caseSensitive,
+      wholeWord: found.wholeWord,
+      regexp: found.regexp,
+    };
+    const selection = this.view.state.selection.main;
+    const index = this.searchMatches().findIndex(
+      (match) => match.from === selection.from && match.to === selection.to,
+    );
+    return { query, open: searchPanelOpen(this.view.state), ordinal: Math.max(index, 0) };
+  }
+
+  selectMatch(ordinal: number): void {
+    const matches = this.searchMatches();
+    const match = matches[ordinal] ?? matches[0];
+    if (!match) return;
+    this.view.dispatch({
+      selection: EditorSelection.range(match.from, match.to),
+      effects: EditorView.scrollIntoView(match.from, { y: "center" }),
+    });
+  }
+
+  private searchMatches(): { from: number; to: number }[] {
+    const query = getSearchQuery(this.view.state);
+    if (!query.valid) return [];
+    const found: { from: number; to: number }[] = [];
+    const cursor = query.getCursor(this.view.state);
+    for (let step = cursor.next(); !step.done; step = cursor.next()) {
+      found.push({ from: step.value.from, to: step.value.to });
+    }
+    return found;
   }
 
   setScale(scale: number): void {

@@ -33,7 +33,7 @@ same in any keyboard layout, for example in Russian.
 |---|---|
 | <kbd>⌘K</kbd>, <kbd>⌘⇧P</kbd> | search in all vaults |
 | <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Enter</kbd> | select and open a result in the palette |
-| <kbd>⌘F</kbd> | search in the open note |
+| <kbd>⌘F</kbd> | search in the open note, in every view mode and in the trash view (replace only in the editor) |
 | <kbd>⌘G</kbd>, <kbd>⌘⇧G</kbd> | next and previous match |
 | <kbd>⌘⇧O</kbd> | go to a heading of the open note |
 | <kbd>⌘</kbd> + pointer on a link | a preview of the linked note or section |

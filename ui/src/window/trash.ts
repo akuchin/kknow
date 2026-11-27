@@ -5,6 +5,7 @@ import { icon } from "../icons";
 import { locale, t } from "../i18n";
 import { openMenu } from "../menu";
 import { el } from "./dom";
+import { trashFind } from "./find";
 import { openFound } from "./note";
 import { emptyItem, markActive, rowActions, rowMenu } from "./rows";
 import { state } from "./state";
@@ -210,6 +211,7 @@ async function viewTrashNote(owner: VaultView, trashed: TrashEntryView, note: st
 
 export function closeTrashView(): void {
   if (el.trashView.hidden) return;
+  trashFind.close();
   el.trashView.hidden = true;
   el.trashViewBody.innerHTML = "";
   trashViewing = null;

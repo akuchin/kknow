@@ -4,7 +4,7 @@ import { toggleAside } from "./aside";
 import { nextMode } from "../note-mode";
 import { showRunOutput } from "./commands";
 import { el } from "./dom";
-import { editor } from "./editor";
+import { initFind, openFind } from "./find";
 import { pickFile } from "./files";
 import { goToAdjacentBookmark, toggleCurrentBookmark } from "./marks";
 import { changeCurrentScale, flushPendingSave, setMode, travel } from "./note";
@@ -36,7 +36,7 @@ const windowActions: [Action, () => boolean | void][] = [
   ["bookmark.next", () => goToAdjacentBookmark(1)],
   ["bookmark.previous", () => goToAdjacentBookmark(-1)],
   ["palette.open", () => palette.open()],
-  ["note.find", () => editor.openSearch()],
+  ["note.find", () => openFind()],
   ["note.outline", () => palette.openOutline()],
   ["settings.open", () => void openSettings()],
   ["scale.larger", () => changeCurrentScale(1)],
@@ -45,6 +45,7 @@ const windowActions: [Action, () => boolean | void][] = [
 ];
 
 export function initKeys(): void {
+  initFind();
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) return;
 
