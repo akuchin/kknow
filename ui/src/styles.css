@@ -1007,6 +1007,33 @@ kbd {
   border-top: 1px solid var(--border);
 }
 
+.files-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.files-toggle .chevron {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.files-toggle[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+.file-list[hidden] {
+  display: none;
+}
+
 .files .file-list {
   padding-top: 2px;
 }
