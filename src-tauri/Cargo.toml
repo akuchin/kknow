@@ -48,7 +48,7 @@ tempfile.workspace = true
 # The bindings test writes `ui/src/bindings.ts` from the Rust types. The
 # `ts` features exist only here, so the app build has no ts-rs.
 ts-rs.workspace = true
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 kknow-app = { workspace = true, features = ["ts"] }
 kknow-sync = { workspace = true, features = ["s3", "ts"] }
 kknow-run = { workspace = true, features = ["ts"] }
