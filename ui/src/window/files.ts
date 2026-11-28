@@ -23,7 +23,41 @@ import { fail, setStatus } from "./status";
 import { copyText } from "./util";
 import { adoptVaults, refreshVaults } from "./vaults";
 
+const FILES_OPEN = "kknow:files:open";
+
 let dropHint: HTMLDivElement;
+let filesOpen = readFilesOpen();
+
+function readFilesOpen(): boolean {
+  try {
+    return localStorage.getItem(FILES_OPEN) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function applyFilesOpen(): void {
+  const label = t(filesOpen ? "sidebar.files.collapse" : "sidebar.files.expand");
+  el.fileList.hidden = !filesOpen;
+  el.filesToggle.setAttribute("aria-expanded", String(filesOpen));
+  el.filesToggle.title = label;
+  el.filesToggle.setAttribute("aria-label", label);
+  el.fileList.closest("section")!.dataset.open = String(filesOpen);
+}
+
+function saveFilesOpen(): void {
+  try {
+    localStorage.setItem(FILES_OPEN, String(filesOpen));
+  } catch {
+    return;
+  }
+}
+
+function setFilesOpen(open: boolean): void {
+  filesOpen = open;
+  saveFilesOpen();
+  applyFilesOpen();
+}
 
 export function initFiles(): void {
   dropHint = document.createElement("div");
@@ -32,6 +66,8 @@ export function initFiles(): void {
   dropHint.hidden = true;
   document.body.append(dropHint);
   el.openFile.onclick = () => void pickFile();
+  el.filesToggle.onclick = () => setFilesOpen(!filesOpen);
+  applyFilesOpen();
 }
 
 const MARKDOWN = /\.(md|markdown|mdown)$/i;
@@ -47,6 +83,8 @@ export async function refreshFiles(): Promise<void> {
 
 function renderFiles(): void {
   el.fileList.replaceChildren(...state.files.map(fileItem));
+  el.filesCount.textContent = String(state.files.length);
+  el.filesCount.hidden = state.files.length === 0;
   markActive(state.note?.id ?? null);
 }
 
@@ -144,6 +182,7 @@ async function openPath(opened: Opened): Promise<void> {
     await openFound(opened.id, opened.vault);
     return;
   }
+  setFilesOpen(true);
   await refreshFiles();
   await openFileView(opened.path);
 }

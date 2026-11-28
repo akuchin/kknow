@@ -348,6 +348,8 @@
   "sidebar.folder.newNote": "New note in “{{name}}”",
   "sidebar.files": "Files",
   "sidebar.files.open": "Open file…",
+  "sidebar.files.collapse": "Collapse the Files list",
+  "sidebar.files.expand": "Expand the Files list",
   "sidebar.file.menu": "What can be done to “{{name}}”",
   "sidebar.file.remove.detail": "The file stays on disk",
   "sidebar.file.removed": "“{{name}}” is out of the list; the file stays on disk",

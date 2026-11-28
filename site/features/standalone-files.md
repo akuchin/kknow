@@ -17,6 +17,16 @@ kknow adds the file to the **Files** section at the bottom of the sidebar. The
 list stays after a restart. kknow removes a file from the list if the file no
 longer exists.
 
+## Fold the list
+
+Click the **Files** title to fold the list to one row. The vault tree then
+takes the free space. Click the title again to open the list. kknow remembers
+your choice after a restart. The list is open by default.
+
+The number of files stays next to the title, so you see that a folded list is
+not empty. The **Open file…** button works in both states. When you open a new
+file, kknow opens a folded list, so you see the new row.
+
 ## Limits
 
 If the file is inside a vault from the list, kknow opens it as a note of that

@@ -357,6 +357,8 @@
   "sidebar.folder.newNote": "Новая заметка в «{{name}}»",
   "sidebar.files": "Файлы",
   "sidebar.files.open": "Открыть файл…",
+  "sidebar.files.collapse": "Свернуть список файлов",
+  "sidebar.files.expand": "Развернуть список файлов",
   "sidebar.file.menu": "Что можно сделать с «{{name}}»",
   "sidebar.file.remove.detail": "Файл останется на диске",
   "sidebar.file.removed": "«{{name}}» убран из списка; файл остался на диске",

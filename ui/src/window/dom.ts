@@ -40,6 +40,8 @@ function query() {
     noteList: document.querySelector<HTMLUListElement>("#note-list")!,
     labelFilter: document.querySelector<HTMLDivElement>("#label-filter")!,
     openFile: document.querySelector<HTMLButtonElement>("#open-file")!,
+    filesToggle: document.querySelector<HTMLButtonElement>("#files-toggle")!,
+    filesCount: document.querySelector<HTMLSpanElement>("#files-count")!,
     fileList: document.querySelector<HTMLUListElement>("#file-list")!,
     editor: document.querySelector<HTMLElement>("#editor")!,
     preview: document.querySelector<HTMLElement>("#preview")!,
@@ -232,8 +234,12 @@ export function initDom(): void {
          section below the tree, not a root in it: a file has no folders, no
          search and no sync, which is what makes a row a vault. -->
     <section class="files" aria-labelledby="files-title">
-      <div class="sidebar-head">
-        <span id="files-title" class="sidebar-title">${t("sidebar.files")}</span>
+      <div class="sidebar-head files-head">
+        <button id="files-toggle" class="files-toggle" aria-controls="file-list" aria-expanded="true">
+          ${iconMarkup("chevron").replace('class="icon"', 'class="icon chevron"')}
+          <span id="files-title" class="sidebar-title">${t("sidebar.files")}</span>
+          <span id="files-count" class="tree-count" hidden></span>
+        </button>
         <button id="open-file" class="ghost bare" title="${withShortcut(t("sidebar.files.open"), "file.open")}"
                 aria-label="${t("sidebar.files.open")}">
           ${iconMarkup("note")}
