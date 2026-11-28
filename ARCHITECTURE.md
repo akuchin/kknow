@@ -2092,6 +2092,20 @@ saw nothing. A guard test forbids `console.error` in `ui/src/settings`.
   `live-preview.ts`). It folds the block again when the panel closes. The
   decoration field also computes again when the query changes.
 
+- Search in the rendered text (`preview-find.ts`, wired in `window/find.ts`):
+  ⌘F opens a find bar for Read mode, for the preview pane of Side by side
+  mode and for the trash view. The CodeMirror panel stays in the editor.
+- The bar paints matches with the CSS Custom Highlight API, so the preview DOM
+  and its listeners stay intact. It wraps matches in `<mark class="find-match">`
+  only if the browser has no `CSS.highlights`. Close removes the marks.
+- A `MutationObserver` searches again in the next frame, because the preview
+  is filled in steps: HTML, diagrams, embeds.
+- A match stays inside one block element (`p`, `li`, `td`, `pre`…). The pure
+  part is `find-ranges.ts`, so `node --test` covers it without a DOM.
+- A mode change moves the open search with its query, options and ordinal. The
+  source and the rendered text differ, so the ordinal is the link, not a
+  position.
+
 ### Gutter
 
 - The editor has a gutter on the left (`ui/src/gutter.ts`). It has a narrow

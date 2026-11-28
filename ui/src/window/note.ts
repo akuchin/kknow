@@ -14,6 +14,7 @@ import { countWords } from "../statusbar";
 import { leafOf } from "../tree-model";
 import { app, el } from "./dom";
 import { editor } from "./editor";
+import { followMode, resetFindPane } from "./find";
 import { previewNotes, tableNotes } from "./notes-float";
 import { state } from "./state";
 import { fail, setStatus, status } from "./status";
@@ -70,6 +71,7 @@ export function setMode(
     button.setAttribute("aria-pressed", String(button.dataset.mode === next));
   }
   editor.setLive(next === "edit");
+  followMode(next);
 
   if (wasHidden && next !== "edit" && state.note && options.refresh !== false) {
     void refreshPreview(editor.getText());
@@ -340,6 +342,7 @@ export async function openNote(id: string): Promise<void> {
   await flushPendingSave();
   try {
     applyNote(await api.loadNote(id));
+    resetFindPane();
     hooks.opened(id);
     localStorage.removeItem(LAST_FILE);
     setStatus("");

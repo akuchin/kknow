@@ -157,12 +157,14 @@ stays as text and shows the error with the line number.
 
 ## Find in the note
 
-<kbd>⌘F</kbd> opens a search panel above the editor. It highlights all matches.
+<kbd>⌘F</kbd> searches the open note in every view mode. In Live preview it opens a search panel above the editor. In Read mode it opens a find bar above the rendered note. In Side by side mode it opens the search of the pane that you used last, the editor by default. The trash view has the same find bar. Both searches highlight all matches.
 
 - <kbd>⌘G</kbd> and <kbd>⌘⇧G</kbd> go to the next and the previous match.
-- Replace works for one match or for all matches.
+- Replace works for one match or for all matches, only in the editor panel. The find bar has no replace.
 - Checkboxes turn on case sensitivity, whole words and regular expressions.
 - Selected text becomes the query.
+- <kbd>Esc</kbd> closes the find bar. In the trash view, a second <kbd>Esc</kbd> closes the view.
+- When you change the view mode, an open search moves to the visible pane with the same query and options.
 
 <kbd>⌘⇧O</kbd> shows the headings of the note. Type to filter them and press
 <kbd>Enter</kbd> to go to a heading.
